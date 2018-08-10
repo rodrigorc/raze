@@ -1,27 +1,21 @@
 use std::ops::{AddAssign, SubAssign};
 
-#[cfg(target_endian="little")]
-#[derive(Copy, Clone)]
-#[repr(C)]
-struct B8x2 {
-    lo: u8, hi: u8
-}
-
-#[cfg(target_endian="big")]
-#[derive(Copy, Clone)]
-#[repr(C)]
-struct B8x2x {
-    hi: u8, lo: u8
-}
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union R16 {
     w: u16,
-    b: B8x2
+    b: [u8; 2]
 }
 
+#[cfg(target_endian="little")]
+const LO_IDX : usize = 0;
+#[cfg(target_endian="big")]
+const LO_IDX : usize = 1;
+
+const HI_IDX : usize = 1 - LO_IDX;
+
 impl R16 {
+
     pub fn as_u16(&self) -> u16 {
         unsafe { self.w }
     }
@@ -29,16 +23,16 @@ impl R16 {
         self.w = w;
     }
     pub fn lo(&self) -> u8 {
-        unsafe { self.b.lo }
+        unsafe { self.b[LO_IDX] }
     }
     pub fn hi(&self) -> u8 {
-        unsafe { self.b.hi }
+        unsafe { self.b[HI_IDX] }
     }
     pub fn set_lo(&mut self, b: u8) {
-        unsafe { self.b.lo = b; }
+        unsafe { self.b[LO_IDX] = b; }
     }
     pub fn set_hi(&mut self, b: u8) {
-        unsafe { self.b.hi = b; }
+        unsafe { self.b[HI_IDX] = b; }
     }
 }
 
