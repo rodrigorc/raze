@@ -116,7 +116,7 @@ impl Z80 {
         self.pc += 1;
         h << 8 | l
     }
-    fn reg_by_num(&mut self, r: u8, mem: &Memory) -> u8 {
+    fn reg_by_num(&mut self, r: u8, mem: &Memory, addr: u16) -> u8 {
         match r {
             0 => self.bc.hi(),
             1 => self.bc.lo(),
@@ -124,15 +124,12 @@ impl Z80 {
             3 => self.de.lo(),
             4 => self.hlx().hi(),
             5 => self.hlx().lo(),
-            6 => {
-                let addr = self.hlx_addr(mem);
-                mem.peek(addr)
-            }
+            6 => mem.peek(addr),
             7 => self.af.hi(),
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
-    fn set_reg_by_num(&mut self, r: u8, mem: &mut Memory, b: u8) {
+    fn set_reg_by_num(&mut self, r: u8, mem: &mut Memory, b: u8, addr: u16) {
         match r {
             0 => self.bc.set_hi(b),
             1 => self.bc.set_lo(b),
@@ -140,10 +137,7 @@ impl Z80 {
             3 => self.de.set_lo(b),
             4 => self.hlx_mut().set_hi(b),
             5 => self.hlx_mut().set_lo(b),
-            6 => {
-                let addr = self.hlx_addr(mem);
-                mem.poke(addr, b)
-            }
+            6 => mem.poke(addr, b),
             7 => self.af.set_hi(b),
             _ => panic!("unknown reg_by_num {}", r),
         }
@@ -403,6 +397,12 @@ impl Z80 {
             0xc3 => { //JP nn
                 self.pc = self.fetch_u16(mem).into();
             }
+            0xcd => { //CALL nn
+                let addr = self.fetch_u16(mem);
+                self.sp -= 2;
+                mem.poke16(self.sp.into(), self.pc.into());
+                self.pc = addr.into();
+            }
             0xd3 => { //OUT (n),A
                 let n = self.fetch(mem);
                 println!("OUT {:2x}, {:2x}", n, self.af.hi());
@@ -430,36 +430,41 @@ impl Z80 {
                 let rd = (c >> 3) & 0x07;
                 match c & 0b1100_0000 {
                     0x40 => { //LD r,r
-                        let r = self.reg_by_num(rs, mem);
-                        self.set_reg_by_num(rd, mem, r);
+                        let addr = self.hlx_addr(mem);
+                        let r = self.reg_by_num(rs, mem, addr);
+                        self.set_reg_by_num(rd, mem, r, addr);
                     }
                     _ => {
                         match c & 0b1111_1000 {
                             0xa0 => { //AND r
+                                let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
-                                let r = self.reg_by_num(rs, mem);
+                                let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.and_flags(a, r);
                                 self.af.set_hi(a);
                             }
                             0xa8 => { //XOR r
+                                let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
-                                let r = self.reg_by_num(rs, mem);
+                                let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.xor_flags(a, r);
                                 self.af.set_hi(a);
                             }
                             0xb0 => { //OR r
+                                let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
-                                let r = self.reg_by_num(rs, mem);
+                                let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.or_flags(a, r);
                                 self.af.set_hi(a);
                             }
                             0xb8 => { //CP r
+                                let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
-                                let r = self.reg_by_num(rs, mem);
+                                let r = self.reg_by_num(rs, mem, addr);
                                 self.sub_flags(a, r);
                             }
                             _ => {
-                                println!("unimplemented opcode {:2x}", c);
+                                println!("unimplemented opcode {:02x}", c);
                             }
                         }
                     }
@@ -470,9 +475,25 @@ impl Z80 {
     pub fn exec_cb(&mut self, mem: &mut Memory) {
         let addr = self.hlx_addr(mem);
         let c = self.fetch(mem);
-        match c {
+        let r = c & 0x07;
+        let n = (c >> 3) & 0x07;
+        match c & 0b1100_0000 {
+            0x40 => { //BIT n,r
+                let b = self.reg_by_num(r, mem, addr);
+                self.and_flags(b, 1 << n);
+            }
+            0x80 => { //RES n,r
+                let mut b = self.reg_by_num(r, mem, addr);
+                set_flag8(&mut b, n, false);
+                self.set_reg_by_num(r, mem, b, addr);
+            }
+            0xc0 => { //SET n,r
+                let mut b = self.reg_by_num(r, mem, addr);
+                set_flag8(&mut b, n, true);
+                self.set_reg_by_num(r, mem, b, addr);
+            }
             _ => {
-                println!("unimplemented opcode CB {:2x}", c);
+                println!("unimplemented opcode CB {:02x}", c);
             },
         }
     }
@@ -543,7 +564,7 @@ impl Z80 {
                 }
             }
             _ => {
-                println!("unimplemented opcode ED {:2x}", c);
+                println!("unimplemented opcode ED {:02x}", c);
             },
         }
     }
