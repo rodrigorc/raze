@@ -351,6 +351,10 @@ impl Z80 {
             0x11 => { //LD DE,nn
                 self.de = self.fetch_u16(mem).into();
             }
+            0x16 => { //LD D,n
+                let n = self.fetch(mem);
+                self.de.set_hi(n);
+            }
             0x18 => { //JR d
                 let d = self.fetch(mem);
                 self.pc += d as i8 as i16 as u16;
@@ -360,6 +364,10 @@ impl Z80 {
                 let mut de : u16 = self.de.into();
                 hl = self.add16_flags(hl, de);
                 self.hlx().set(hl);
+            }
+            0x1e => { //LD E,n
+                let n = self.fetch(mem);
+                self.de.set_lo(n);
             }
             0x20 => { //JR NZ,d
                 let d = self.fetch(mem);
@@ -378,6 +386,10 @@ impl Z80 {
             0x23 => { //INC HL
                 *self.hlx() += 1;
             }
+            0x26 => { //LD H,n
+                let n = self.fetch(mem);
+                self.hlx().set_hi(n);
+            }
             0x28 => { //JR Z,d
                 let d = self.fetch(mem);
                 if flag8(self.af.lo(), FLAG_Z) {
@@ -391,6 +403,10 @@ impl Z80 {
             }
             0x2b => { //DEC HL
                 *self.hlx() -= 1;
+            }
+            0x26 => { //LD L,n
+                let n = self.fetch(mem);
+                self.hlx().set_lo(n);
             }
             0x30 => { //JR NC,d
                 let d = self.fetch(mem);
