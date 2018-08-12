@@ -105,16 +105,25 @@ impl Z80 {
         }
     }
     fn fetch(&mut self, mem: &Memory) -> u8 {
-        let c = mem.peek(self.pc.into());
+        let c = mem.peek(self.pc);
         self.pc += 1;
         c
     }
     fn fetch_u16(&mut self, mem: &mut Memory) -> u16 {
-        let l = mem.peek(self.pc.into()) as u16;
+        let l = mem.peek(self.pc) as u16;
         self.pc += 1;
-        let h = mem.peek(self.pc.into()) as u16;
+        let h = mem.peek(self.pc) as u16;
         self.pc += 1;
         h << 8 | l
+    }
+    fn push(&mut self, mem: &mut Memory, x: u16) {
+        self.sp -= 2;
+        mem.poke_u16(self.sp, self.pc.into());
+    }
+    fn pop(&mut self, mem: &mut Memory) -> u16 {
+        let x = mem.peek_u16(self.sp);
+        self.sp += 2;
+        x
     }
     fn reg_by_num(&mut self, r: u8, mem: &Memory, addr: u16) -> u8 {
         match r {
@@ -333,7 +342,7 @@ impl Z80 {
             }
             0x22 => { //LD (nn),HL
                 let addr = self.fetch_u16(mem);
-                mem.poke16(addr, self.hlx().as_u16());
+                mem.poke_u16(addr, self.hlx().as_u16());
             }
             0x23 => { //INC HL
                 *self.hlx_mut() += 1;
@@ -346,7 +355,7 @@ impl Z80 {
             }
             0x2a => { //LD HL,(nn)
                 let addr = self.fetch_u16(mem);
-                let d = mem.peek16(addr);
+                let d = mem.peek_u16(addr);
                 self.hlx_mut().set(d);
             }
             0x2b => { //DEC HL
@@ -394,13 +403,16 @@ impl Z80 {
                 let n = self.fetch(mem);
                 self.af.set_hi(n);
             }
+            0x76 => { //HALT
+                println!("unimplemented HALT");
+            }
             0xc3 => { //JP nn
                 self.pc = self.fetch_u16(mem).into();
             }
             0xcd => { //CALL nn
                 let addr = self.fetch_u16(mem);
-                self.sp -= 2;
-                mem.poke16(self.sp.into(), self.pc.into());
+                let pc = self.pc.into();
+                self.push(mem, pc);
                 self.pc = addr.into();
             }
             0xd3 => { //OUT (n),A
@@ -502,7 +514,7 @@ impl Z80 {
         match c {
             0x43 => { //LD (nn),BC
                 let addr = self.fetch_u16(mem);
-                mem.poke16(addr, self.bc.into());
+                mem.poke_u16(addr, self.bc.into());
             }
             0x47 => { //LD I,A
                 self.ir.set_hi(self.af.hi());
@@ -518,14 +530,14 @@ impl Z80 {
             }
             0x53 => { //LD (nn),DE
                 let addr = self.fetch_u16(mem);
-                mem.poke16(addr, self.de.into());
+                mem.poke_u16(addr, self.de.into());
             }
             0x56 => { //IM 1
                 self.im = InterruptMode::IM1;
             }
             0xb0 => { //LDIR
-                let hl = self.hl.into();
-                let de = self.de.into();
+                let hl = self.hl;
+                let de = self.de;
                 let x = mem.peek(hl);
                 mem.poke(de, x);
 
@@ -544,8 +556,8 @@ impl Z80 {
                 }
             }
             0xb8 => { //LDDR
-                let hl = self.hl.into();
-                let de = self.de.into();
+                let hl = self.hl;
+                let de = self.de;
                 let x = mem.peek(hl);
                 mem.poke(de, x);
 

@@ -13,10 +13,11 @@ impl Memory {
         f_rom.read_exact(&mut data[0..0x4000])?;
         Ok(Memory { data })
     }
-    pub fn peek(&self, addr: u16) -> u8 {
-        self.data[addr as usize]
+    pub fn peek(&self, addr: impl Into<u16>) -> u8 {
+        self.data[addr.into() as usize]
     }
-    pub fn poke(&mut self, addr: u16, data: u8) {
+    pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
+        let addr = addr.into();
         if addr < 0x4000 {
             println!("writing to rom {:4x} <- {:2x}", addr, data);
             for i in 0..0x10000 {
@@ -34,13 +35,15 @@ impl Memory {
         println!("{:4x} <- {:2x}", addr, data);
         self.data[addr as usize] = data;
     }
-    pub fn peek16(&self, addr: u16) -> u16 {
+    pub fn peek_u16(&self, addr: impl Into<u16>) -> u16 {
+        let addr = addr.into();
         let lo = self.peek(addr) as u16;
         let addr = addr.wrapping_add(1);
         let hi = self.peek(addr) as u16;
         (hi << 8) | lo
     }
-    pub fn poke16(&mut self, addr: u16, data: u16) {
+    pub fn poke_u16(&mut self, addr: impl Into<u16>, data: u16) {
+        let addr = addr.into();
         self.poke(addr, data as u8);
         let addr = addr.wrapping_add(1);
         self.poke(addr, (data >> 8) as u8);
