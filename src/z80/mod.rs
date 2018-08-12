@@ -317,6 +317,38 @@ impl Z80 {
                 r = self.inc_flags(r);
                 self.bc.set_hi(r);
             }
+            0x05 => { //DEC B
+                let mut r = self.bc.hi();
+                r = self.dec_flags(r);
+                self.bc.set_hi(r);
+            }
+            0x06 => { //LD B,n
+                let n = self.fetch(mem);
+                self.bc.set_hi(n);
+            }
+            0x0c => { //INC C
+                let mut r = self.bc.lo();
+                r = self.inc_flags(r);
+                self.bc.set_lo(r);
+            }
+            0x0d => { //DEC C
+                let mut r = self.bc.lo();
+                r = self.dec_flags(r);
+                self.bc.set_lo(r);
+            }
+            0x0e => { //LD C,n
+                let n = self.fetch(mem);
+                self.bc.set_lo(n);
+            }
+            0x10 => { //DJNZ d
+                let d = self.fetch(mem);
+                let mut b = self.bc.hi();
+                b = b.wrapping_sub(1);
+                self.bc.set_hi(b);
+                if b != 0 {
+                    self.pc += d as i8 as i16 as u16;
+                }
+            }
             0x11 => { //LD DE,nn
                 self.de = self.fetch_u16(mem).into();
             }
