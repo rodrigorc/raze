@@ -116,9 +116,9 @@ impl Z80 {
         self.pc += 1;
         h << 8 | l
     }
-    fn push(&mut self, mem: &mut Memory, x: u16) {
+    fn push(&mut self, mem: &mut Memory, x: impl Into<u16>) {
         self.sp -= 2;
-        mem.poke_u16(self.sp, self.pc.into());
+        mem.poke_u16(self.sp, x.into());
     }
     fn pop(&mut self, mem: &mut Memory) -> u16 {
         let x = mem.peek_u16(self.sp);
@@ -144,21 +144,14 @@ impl Z80 {
             1 => self.bc.set_lo(b),
             2 => self.de.set_hi(b),
             3 => self.de.set_lo(b),
-            4 => self.hlx_mut().set_hi(b),
-            5 => self.hlx_mut().set_lo(b),
+            4 => self.hlx().set_hi(b),
+            5 => self.hlx().set_lo(b),
             6 => mem.poke(addr, b),
             7 => self.af.set_hi(b),
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
-    fn hlx(&self) -> &R16 {
-        match self.prefix {
-            XYPrefix::None => &self.hl,
-            XYPrefix::IX => &self.ix,
-            XYPrefix::IY => &self.iy,
-        }
-    }
-    fn hlx_mut(&mut self) -> &mut R16 {
+    fn hlx(&mut self) -> &mut R16 {
         match self.prefix {
             XYPrefix::None => &mut self.hl,
             XYPrefix::IX => &mut self.ix,
@@ -360,7 +353,7 @@ impl Z80 {
                 let mut hl = self.hlx().as_u16();
                 let mut de : u16 = self.de.into();
                 hl = self.add16_flags(hl, de);
-                *self.hlx_mut() = hl.into();
+                self.hlx().set(hl);
             }
             0x20 => { //JR NZ,d
                 let d = self.fetch(mem);
@@ -370,14 +363,14 @@ impl Z80 {
             }
             0x21 => { //LD HL,nn
                 let d = self.fetch_u16(mem);
-                self.hlx_mut().set(d);
+                self.hlx().set(d);
             }
             0x22 => { //LD (nn),HL
                 let addr = self.fetch_u16(mem);
                 mem.poke_u16(addr, self.hlx().as_u16());
             }
             0x23 => { //INC HL
-                *self.hlx_mut() += 1;
+                *self.hlx() += 1;
             }
             0x28 => { //JR Z,d
                 let d = self.fetch(mem);
@@ -388,10 +381,10 @@ impl Z80 {
             0x2a => { //LD HL,(nn)
                 let addr = self.fetch_u16(mem);
                 let d = mem.peek_u16(addr);
-                self.hlx_mut().set(d);
+                self.hlx().set(d);
             }
             0x2b => { //DEC HL
-                *self.hlx_mut() -= 1;
+                *self.hlx() -= 1;
             }
             0x30 => { //JR NC,d
                 let d = self.fetch(mem);
@@ -441,9 +434,13 @@ impl Z80 {
             0xc3 => { //JP nn
                 self.pc = self.fetch_u16(mem).into();
             }
+            0xc5 => { //PUSH BC
+                let bc = self.bc;
+                self.push(mem, bc);
+            }
             0xcd => { //CALL nn
                 let addr = self.fetch_u16(mem);
-                let pc = self.pc.into();
+                let pc = self.pc;
                 self.push(mem, pc);
                 self.pc = addr.into();
             }
@@ -451,16 +448,28 @@ impl Z80 {
                 let n = self.fetch(mem);
                 println!("OUT {:2x}, {:2x}", n, self.af.hi());
             }
+            0xd5 => { //PUSH DE
+                let de = self.de;
+                self.push(mem, de);
+            }
             0xd9 => { //EXX
                 swap(&mut self.bc, &mut self.bc_);
                 swap(&mut self.de, &mut self.de_);
                 swap(&mut self.hl, &mut self.hl_);
+            }
+            0xe5 => { //PUSH HL
+                let hl = *self.hlx();
+                self.push(mem, hl);
             }
             0xeb => { //EX DE,HL
                 swap(&mut self.de, &mut self.hl);
             }
             0xf3 => { //DI
                 self.iff1 = false;
+            }
+            0xf5 => { //PUSH af
+                let af = self.af;
+                self.push(mem, af);
             }
             0xf9 => { //LD SP,HL
                 self.sp = *self.hlx();
@@ -480,6 +489,40 @@ impl Z80 {
                     }
                     _ => {
                         match c & 0b1111_1000 {
+                            0x80 => { //ADD r
+                                let addr = self.hlx_addr(mem);
+                                let a = self.af.hi();
+                                let r = self.reg_by_num(rs, mem, addr);
+                                let a = self.add_flags(a, r);
+                                self.af.set_hi(a);
+                            }
+                            0x88 => { //ADC r
+                                let addr = self.hlx_addr(mem);
+                                let a = self.af.hi();
+                                let mut r = self.reg_by_num(rs, mem, addr);
+                                if flag8(self.af.lo(), FLAG_C) {
+                                    r = r.wrapping_add(1);
+                                }
+                                let a = self.add_flags(a, r);
+                                self.af.set_hi(a);
+                            }
+                            0x90 => { //SUB r
+                                let addr = self.hlx_addr(mem);
+                                let a = self.af.hi();
+                                let r = self.reg_by_num(rs, mem, addr);
+                                let a = self.sub_flags(a, r);
+                                self.af.set_hi(a);
+                            }
+                            0x98 => { //SBC r
+                                let addr = self.hlx_addr(mem);
+                                let a = self.af.hi();
+                                let mut r = self.reg_by_num(rs, mem, addr);
+                                if flag8(self.af.lo(), FLAG_C) {
+                                    r = r.wrapping_add(1);
+                                }
+                                let a = self.sub_flags(a, r);
+                                self.af.set_hi(a);
+                            }
                             0xa0 => { //AND r
                                 let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
