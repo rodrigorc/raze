@@ -437,6 +437,10 @@ impl Z80 {
             0x76 => { //HALT
                 println!("unimplemented HALT");
             }
+            0xc1 => { //POP BC
+                let bc = self.pop(mem);
+                self.bc.set(bc);
+            }
             0xc3 => { //JP nn
                 self.pc = self.fetch_u16(mem).into();
             }
@@ -444,11 +448,19 @@ impl Z80 {
                 let bc = self.bc;
                 self.push(mem, bc);
             }
+            0xc9 => { //RET
+                let pc = self.pop(mem);
+                self.pc.set(pc);
+            }
             0xcd => { //CALL nn
                 let addr = self.fetch_u16(mem);
                 let pc = self.pc;
                 self.push(mem, pc);
                 self.pc = addr.into();
+            }
+            0xd1 => { //POP DE
+                let de = self.pop(mem);
+                self.de.set(de);
             }
             0xd3 => { //OUT (n),A
                 let n = self.fetch(mem);
@@ -463,12 +475,26 @@ impl Z80 {
                 swap(&mut self.de, &mut self.de_);
                 swap(&mut self.hl, &mut self.hl_);
             }
+            0xe1 => { //POP HL
+                let hl = self.pop(mem);
+                self.hlx().set(hl);
+            }
             0xe5 => { //PUSH HL
                 let hl = *self.hlx();
                 self.push(mem, hl);
             }
+            0xe6 => { //AND n
+                let n = self.fetch(mem);
+                let mut a = self.af.hi();
+                a = self.and_flags(a, n);
+                self.af.set_hi(a);
+            }
             0xeb => { //EX DE,HL
                 swap(&mut self.de, &mut self.hl);
+            }
+            0xf1 => { //POP AF
+                let af = self.pop(mem);
+                self.af.set(af);
             }
             0xf3 => { //DI
                 self.iff1 = false;
@@ -476,6 +502,12 @@ impl Z80 {
             0xf5 => { //PUSH af
                 let af = self.af;
                 self.push(mem, af);
+            }
+            0xf6 => { //OR n
+                let n = self.fetch(mem);
+                let mut a = self.af.hi();
+                a = self.or_flags(a, n);
+                self.af.set_hi(a);
             }
             0xf9 => { //LD SP,HL
                 self.sp = *self.hlx();
