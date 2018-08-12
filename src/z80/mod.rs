@@ -40,12 +40,7 @@ fn set_flag16(f: &mut u16, bit: u16, set: bool) {
 }
 #[inline]
 fn parity(mut b: u8) -> bool {
-    let mut r = true;
-    while b != 0 {
-        if flag8(b, 1) { r = !r; }
-        b >>= 1;
-    }
-    r
+    (b.count_ones()) % 2 == 0
 }
 
 #[inline]
@@ -332,6 +327,17 @@ impl Z80 {
             0x0e => { //LD C,n
                 let n = self.fetch(mem);
                 self.bc.set_lo(n);
+            }
+            0x0f => { //RLCA
+                let mut a = self.af.hi();
+                let mut f = self.af.lo();
+                let b7 = flag8(a, 7);
+                a = a.rotate_left(1);
+                set_flag8(&mut f, FLAG_C, b7);
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_H, false);
+                self.af.set_hi(a);
+                self.af.set_lo(f);
             }
             0x10 => { //DJNZ d
                 let d = self.fetch(mem);
