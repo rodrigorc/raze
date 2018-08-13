@@ -471,6 +471,12 @@ impl Z80 {
             0x76 => { //HALT
                 println!("unimplemented HALT");
             }
+            0xc0 => { //RET NZ 
+                if !flag8(self.af.lo(), FLAG_Z) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
+            }
             0xc1 => { //POP BC
                 let bc = self.pop(mem);
                 self.bc.set(bc);
@@ -488,6 +494,12 @@ impl Z80 {
                 let a = self.af.hi();
                 let a = self.add_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xc8 => { //RET Z 
+                if flag8(self.af.lo(), FLAG_Z) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
             }
             0xc9 => { //RET
                 let pc = self.pop(mem);
@@ -508,6 +520,12 @@ impl Z80 {
                 let a = self.add_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xd0 => { //RET NC 
+                if !flag8(self.af.lo(), FLAG_C) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
+            }
             0xd1 => { //POP DE
                 let de = self.pop(mem);
                 self.de.set(de);
@@ -526,6 +544,12 @@ impl Z80 {
                 let a = self.sub_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xd8 => { //RET C 
+                if flag8(self.af.lo(), FLAG_C) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
+            }
             0xd9 => { //EXX
                 swap(&mut self.bc, &mut self.bc_);
                 swap(&mut self.de, &mut self.de_);
@@ -539,6 +563,12 @@ impl Z80 {
                 }
                 let a = self.sub_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xe0 => { //RET PO 
+                if !flag8(self.af.lo(), FLAG_PV) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
             }
             0xe1 => { //POP HL
                 let hl = self.pop(mem);
@@ -554,6 +584,12 @@ impl Z80 {
                 a = self.and_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xe8 => { //RET PE 
+                if flag8(self.af.lo(), FLAG_PV) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
+            }
             0xeb => { //EX DE,HL
                 swap(&mut self.de, &mut self.hl);
             }
@@ -562,6 +598,12 @@ impl Z80 {
                 let a = self.af.hi();
                 let a = self.xor_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xf0 => { //RET P 
+                if !flag8(self.af.lo(), FLAG_S) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
             }
             0xf1 => { //POP AF
                 let af = self.pop(mem);
@@ -579,6 +621,12 @@ impl Z80 {
                 let mut a = self.af.hi();
                 a = self.or_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xf8 => { //RET M 
+                if flag8(self.af.lo(), FLAG_S) {
+                    let pc = self.pop(mem);
+                    self.pc.set(pc);
+                }
             }
             0xf9 => { //LD SP,HL
                 self.sp = *self.hlx();
