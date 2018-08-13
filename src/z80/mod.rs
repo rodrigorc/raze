@@ -618,6 +618,11 @@ impl Z80 {
                 let a = self.add_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xc7 => { //RST 00
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x00);
+            }
             0xc8 => { //RET Z 
                 if flag8(self.af.lo(), FLAG_Z) {
                     let pc = self.pop(mem);
@@ -632,7 +637,7 @@ impl Z80 {
                 let addr = self.fetch_u16(mem);
                 let pc = self.pc;
                 self.push(mem, pc);
-                self.pc = addr.into();
+                self.pc.set(addr);
             }
             0xce => { //ADC n
                 let mut n = self.fetch(mem);
@@ -642,6 +647,11 @@ impl Z80 {
                 }
                 let a = self.add_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xcf => { //RST 08
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x08);
             }
             0xd0 => { //RET NC 
                 if !flag8(self.af.lo(), FLAG_C) {
@@ -667,6 +677,11 @@ impl Z80 {
                 let a = self.sub_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xd7 => { //RST 10
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x10);
+            }
             0xd8 => { //RET C 
                 if flag8(self.af.lo(), FLAG_C) {
                     let pc = self.pop(mem);
@@ -686,6 +701,11 @@ impl Z80 {
                 }
                 let a = self.sub_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xdf => { //RST 18
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x18);
             }
             0xe0 => { //RET PO 
                 if !flag8(self.af.lo(), FLAG_PV) {
@@ -712,6 +732,11 @@ impl Z80 {
                 a = self.and_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xe7 => { //RST 20
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x20);
+            }
             0xe8 => { //RET PE 
                 if flag8(self.af.lo(), FLAG_PV) {
                     let pc = self.pop(mem);
@@ -729,6 +754,11 @@ impl Z80 {
                 let a = self.af.hi();
                 let a = self.xor_flags(a, n);
                 self.af.set_hi(a);
+            }
+            0xef => { //RST 28
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x28);
             }
             0xf0 => { //RET P 
                 if !flag8(self.af.lo(), FLAG_S) {
@@ -753,6 +783,11 @@ impl Z80 {
                 a = self.or_flags(a, n);
                 self.af.set_hi(a);
             }
+            0xf7 => { //RST 30
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x30);
+            }
             0xf8 => { //RET M 
                 if flag8(self.af.lo(), FLAG_S) {
                     let pc = self.pop(mem);
@@ -769,6 +804,11 @@ impl Z80 {
                 let n = self.fetch(mem);
                 let a = self.af.hi();
                 self.sub_flags(a, n);
+            }
+            0xff => { //RST 38
+                let pc = self.pc;
+                self.push(mem, pc);
+                self.pc.set(0x38);
             }
             _ => {
                 let rs = c & 0x07;
