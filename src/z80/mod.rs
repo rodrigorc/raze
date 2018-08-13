@@ -300,6 +300,9 @@ impl Z80 {
                 let d = self.fetch_u16(mem);
                 self.bc.set(d);
             }
+            0x03 => { //INC BC
+                self.bc += 1;
+            }
             0x04 => { //INC B
                 let mut r = self.bc.hi();
                 r = self.inc_flags(r);
@@ -313,6 +316,9 @@ impl Z80 {
             0x06 => { //LD B,n
                 let n = self.fetch(mem);
                 self.bc.set_hi(n);
+            }
+            0x0b => { //DEC BC
+                self.bc -= 1;
             }
             0x0c => { //INC C
                 let mut r = self.bc.lo();
@@ -351,6 +357,9 @@ impl Z80 {
             0x11 => { //LD DE,nn
                 self.de = self.fetch_u16(mem).into();
             }
+            0x13 => { //INC DE
+                self.de += 1;
+            }
             0x16 => { //LD D,n
                 let n = self.fetch(mem);
                 self.de.set_hi(n);
@@ -364,6 +373,9 @@ impl Z80 {
                 let mut de : u16 = self.de.into();
                 hl = self.add16_flags(hl, de);
                 self.hlx().set(hl);
+            }
+            0x1b => { //DEC DE
+                self.de -= 1;
             }
             0x1e => { //LD E,n
                 let n = self.fetch(mem);
@@ -418,6 +430,9 @@ impl Z80 {
                 let addr = self.fetch_u16(mem);
                 mem.poke(addr, self.af.hi());
             }
+            0x33 => { //INC SP
+                self.sp += 1;
+            }
             0x34 => { //INC (HL)
                 let addr = self.hlx_addr(mem);
                 let mut b = mem.peek(addr);
@@ -441,6 +456,9 @@ impl Z80 {
                     self.pc += d as i8 as i16 as u16;
                 }
             }
+            0x3b => { //DEC SP
+                self.sp -= 1;
+            }
             0x3c => { //INC A
                 let mut r = self.af.hi();
                 r = self.inc_flags(r);
@@ -458,11 +476,18 @@ impl Z80 {
                 self.bc.set(bc);
             }
             0xc3 => { //JP nn
-                self.pc = self.fetch_u16(mem).into();
+                let pc = self.fetch_u16(mem);
+                self.pc.set(pc);
             }
             0xc5 => { //PUSH BC
                 let bc = self.bc;
                 self.push(mem, bc);
+            }
+            0xc6 => { //ADD n
+                let n = self.fetch(mem);
+                let a = self.af.hi();
+                let a = self.add_flags(a, n);
+                self.af.set_hi(a);
             }
             0xc9 => { //RET
                 let pc = self.pop(mem);
@@ -473,6 +498,15 @@ impl Z80 {
                 let pc = self.pc;
                 self.push(mem, pc);
                 self.pc = addr.into();
+            }
+            0xce => { //ADC n
+                let mut n = self.fetch(mem);
+                let a = self.af.hi();
+                if flag8(self.af.lo(), FLAG_C) {
+                    n = n.wrapping_add(1);
+                }
+                let a = self.add_flags(a, n);
+                self.af.set_hi(a);
             }
             0xd1 => { //POP DE
                 let de = self.pop(mem);
@@ -486,10 +520,25 @@ impl Z80 {
                 let de = self.de;
                 self.push(mem, de);
             }
+            0xd6 => { //SUB n
+                let n = self.fetch(mem);
+                let a = self.af.hi();
+                let a = self.sub_flags(a, n);
+                self.af.set_hi(a);
+            }
             0xd9 => { //EXX
                 swap(&mut self.bc, &mut self.bc_);
                 swap(&mut self.de, &mut self.de_);
                 swap(&mut self.hl, &mut self.hl_);
+            }
+            0xde => { //SBC n
+                let mut n = self.fetch(mem);
+                let a = self.af.hi();
+                if flag8(self.af.lo(), FLAG_C) {
+                    n = n.wrapping_add(1);
+                }
+                let a = self.sub_flags(a, n);
+                self.af.set_hi(a);
             }
             0xe1 => { //POP HL
                 let hl = self.pop(mem);
@@ -507,6 +556,12 @@ impl Z80 {
             }
             0xeb => { //EX DE,HL
                 swap(&mut self.de, &mut self.hl);
+            }
+            0xee => { //XOR n
+                let n = self.fetch(mem);
+                let a = self.af.hi();
+                let a = self.xor_flags(a, n);
+                self.af.set_hi(a);
             }
             0xf1 => { //POP AF
                 let af = self.pop(mem);
@@ -531,7 +586,11 @@ impl Z80 {
             0xfb => { //EI
                 self.iff1 = true;
             }
-            
+            0xfe => { //CP n
+                let n = self.fetch(mem);
+                let a = self.af.hi();
+                self.sub_flags(a, n);
+            }
             _ => {
                 let rs = c & 0x07;
                 let rd = (c >> 3) & 0x07;
