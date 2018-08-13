@@ -420,6 +420,14 @@ impl Z80 {
                 let n = self.fetch(mem);
                 self.hlx().set_lo(n);
             }
+            0x2f => { //CPL
+                let mut a = self.af.hi();
+                let mut f = self.af.lo();
+                a = a ^ 0xff;
+                set_flag8(&mut f, FLAG_H, true);
+                set_flag8(&mut f, FLAG_N, true);
+                self.af.set_hi(a);
+            }
             0x30 => { //JR NC,d
                 let d = self.fetch(mem);
                 if !flag8(self.af.lo(), FLAG_C) {
@@ -450,6 +458,13 @@ impl Z80 {
                 let n = self.fetch(mem);
                 mem.poke(addr, n);
             }
+            0x37 => { //SCF
+                let mut f = self.af.lo();
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_H, false);
+                set_flag8(&mut f, FLAG_C, true);
+                self.af.set_lo(f);
+            }
             0x38 => { //JR C,d
                 let d = self.fetch(mem);
                 if flag8(self.af.lo(), FLAG_C) {
@@ -467,6 +482,13 @@ impl Z80 {
             0x3e => { //LD A,n
                 let n = self.fetch(mem);
                 self.af.set_hi(n);
+            }
+            0x3f => { //CCF
+                let mut f = self.af.lo();
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_H, false);
+                f ^= FLAG_C;
+                self.af.set_lo(f);
             }
             0x76 => { //HALT
                 println!("unimplemented HALT");
@@ -589,6 +611,9 @@ impl Z80 {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
+            }
+            0xe9 => { //JP (HL)
+                self.pc = *self.hlx();
             }
             0xeb => { //EX DE,HL
                 swap(&mut self.de, &mut self.hl);
