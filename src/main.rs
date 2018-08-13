@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![warn(unreachable_patterns)]
 
 use std::env;
 use std::io::{self, ErrorKind};

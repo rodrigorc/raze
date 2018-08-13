@@ -360,6 +360,16 @@ impl Z80 {
             0x13 => { //INC DE
                 self.de += 1;
             }
+            0x14 => { //INC D
+                let mut r = self.de.hi();
+                r = self.inc_flags(r);
+                self.de.set_hi(r);
+            }
+            0x15 => { //DEC D
+                let mut r = self.de.hi();
+                r = self.dec_flags(r);
+                self.de.set_hi(r);
+            }
             0x16 => { //LD D,n
                 let n = self.fetch(mem);
                 self.de.set_hi(n);
@@ -376,6 +386,16 @@ impl Z80 {
             }
             0x1b => { //DEC DE
                 self.de -= 1;
+            }
+            0x1c => { //INC E
+                let mut r = self.de.lo();
+                r = self.inc_flags(r);
+                self.de.set_lo(r);
+            }
+            0x1d => { //DEC E
+                let mut r = self.de.lo();
+                r = self.dec_flags(r);
+                self.de.set_lo(r);
             }
             0x1e => { //LD E,n
                 let n = self.fetch(mem);
@@ -398,6 +418,16 @@ impl Z80 {
             0x23 => { //INC HL
                 *self.hlx() += 1;
             }
+            0x24 => { //INC H
+                let mut r = self.hlx().hi();
+                r = self.inc_flags(r);
+                self.hlx().set_hi(r);
+            }
+            0x25 => { //DEC H
+                let mut r = self.hlx().hi();
+                r = self.dec_flags(r);
+                self.hlx().set_hi(r);
+            }
             0x26 => { //LD H,n
                 let n = self.fetch(mem);
                 self.hlx().set_hi(n);
@@ -416,7 +446,17 @@ impl Z80 {
             0x2b => { //DEC HL
                 *self.hlx() -= 1;
             }
-            0x26 => { //LD L,n
+            0x2c => { //INC L
+                let mut r = self.hlx().lo();
+                r = self.inc_flags(r);
+                self.hlx().set_lo(r);
+            }
+            0x2d => { //DEC L
+                let mut r = self.hlx().lo();
+                r = self.dec_flags(r);
+                self.hlx().set_lo(r);
+            }
+            0x2e => { //LD L,n
                 let n = self.fetch(mem);
                 self.hlx().set_lo(n);
             }
@@ -477,6 +517,11 @@ impl Z80 {
             0x3c => { //INC A
                 let mut r = self.af.hi();
                 r = self.inc_flags(r);
+                self.af.set_hi(r);
+            }
+            0x3d => { //DEC A
+                let mut r = self.af.hi();
+                r = self.dec_flags(r);
                 self.af.set_hi(r);
             }
             0x3e => { //LD A,n
