@@ -406,6 +406,19 @@ impl Z80 {
                 let n = self.fetch(mem);
                 self.de.set_hi(n);
             }
+            0x17 => { //RLA
+                let mut a = self.af.hi();
+                let mut f = self.af.lo();
+                let b7 = flag8(a, 7);
+                let c = flag8(f, FLAG_C);
+                a <<= 1;
+                set_flag8(&mut a, 0, c);
+                set_flag8(&mut f, FLAG_C, b7);
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_H, false);
+                self.af.set_hi(a);
+                self.af.set_lo(f);
+            }
             0x18 => { //JR d
                 let d = self.fetch(mem);
                 self.pc += d as i8 as i16 as u16;
@@ -436,6 +449,19 @@ impl Z80 {
             0x1e => { //LD E,n
                 let n = self.fetch(mem);
                 self.de.set_lo(n);
+            }
+            0x1f => { //RRA
+                let mut a = self.af.hi();
+                let mut f = self.af.lo();
+                let b0 = flag8(a, 0);
+                let c = flag8(f, FLAG_C);
+                a >>= 1;
+                set_flag8(&mut a, 7, c);
+                set_flag8(&mut f, FLAG_C, b0);
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_H, false);
+                self.af.set_hi(a);
+                self.af.set_lo(f);
             }
             0x20 => { //JR NZ,d
                 let d = self.fetch(mem);
@@ -604,9 +630,23 @@ impl Z80 {
                 let bc = self.pop(mem);
                 self.bc.set(bc);
             }
+            0xc2 => { //JP NZ,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_Z) {
+                    self.pc.set(addr);
+                }
+            }
             0xc3 => { //JP nn
                 let pc = self.fetch_u16(mem);
                 self.pc.set(pc);
+            }
+            0xc4 => { //CALL NZ,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_Z) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xc5 => { //PUSH BC
                 let bc = self.bc;
@@ -632,6 +672,20 @@ impl Z80 {
             0xc9 => { //RET
                 let pc = self.pop(mem);
                 self.pc.set(pc);
+            }
+            0xca => { //JP Z,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_Z) {
+                    self.pc.set(addr);
+                }
+            }
+            0xcc => { //CALL Z,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_Z) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xcd => { //CALL nn
                 let addr = self.fetch_u16(mem);
@@ -663,9 +717,23 @@ impl Z80 {
                 let de = self.pop(mem);
                 self.de.set(de);
             }
+            0xd2 => { //JP NC,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_C) {
+                    self.pc.set(addr);
+                }
+            }
             0xd3 => { //OUT (n),A
                 let n = self.fetch(mem);
                 println!("OUT {:2x}, {:2x}", n, self.af.hi());
+            }
+            0xd4 => { //CALL NC,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_C) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xd5 => { //PUSH DE
                 let de = self.de;
@@ -693,6 +761,20 @@ impl Z80 {
                 swap(&mut self.de, &mut self.de_);
                 swap(&mut self.hl, &mut self.hl_);
             }
+            0xda => { //JP C,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_C) {
+                    self.pc.set(addr);
+                }
+            }
+            0xdc => { //CALL C,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_C) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
+            }
             0xde => { //SBC n
                 let mut n = self.fetch(mem);
                 let a = self.af.hi();
@@ -717,10 +799,24 @@ impl Z80 {
                 let hl = self.pop(mem);
                 self.hlx().set(hl);
             }
+            0xe2 => { //JP PO,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_PV) {
+                    self.pc.set(addr);
+                }
+            }
             0xe3 => { //EX (SP),HL
                 let x = mem.peek_u16(self.sp);
                 mem.poke_u16(self.sp, self.hlx().as_u16());
                 self.hlx().set(x);
+            }
+            0xe4 => { //CALL PO,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_PV) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xe5 => { //PUSH HL
                 let hl = *self.hlx();
@@ -746,8 +842,22 @@ impl Z80 {
             0xe9 => { //JP (HL)
                 self.pc = *self.hlx();
             }
+            0xea => { //JP PE,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_PV) {
+                    self.pc.set(addr);
+                }
+            }
             0xeb => { //EX DE,HL
                 swap(&mut self.de, &mut self.hl);
+            }
+            0xec => { //CALL PE,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_PV) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xee => { //XOR n
                 let n = self.fetch(mem);
@@ -770,8 +880,22 @@ impl Z80 {
                 let af = self.pop(mem);
                 self.af.set(af);
             }
+            0xf2 => { //JP P,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_S) {
+                    self.pc.set(addr);
+                }
+            }
             0xf3 => { //DI
                 self.iff1 = false;
+            }
+            0xf4 => { //CALL P,nn
+                let addr = self.fetch_u16(mem);
+                if !flag8(self.af.lo(), FLAG_S) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xf5 => { //PUSH af
                 let af = self.af;
@@ -797,8 +921,22 @@ impl Z80 {
             0xf9 => { //LD SP,HL
                 self.sp = *self.hlx();
             }
+            0xfa => { //JP M,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_S) {
+                    self.pc.set(addr);
+                }
+            }
             0xfb => { //EI
                 self.iff1 = true;
+            }
+            0xfc => { //CALL M,nn
+                let addr = self.fetch_u16(mem);
+                if flag8(self.af.lo(), FLAG_S) {
+                    let pc = self.pc;
+                    self.push(mem, pc);
+                    self.pc.set(addr);
+                }
             }
             0xfe => { //CP n
                 let n = self.fetch(mem);
@@ -926,6 +1064,10 @@ impl Z80 {
             0x47 => { //LD I,A
                 self.ir.set_hi(self.af.hi());
             }
+            0x4b => { //LD BC,(nn)
+                let addr = self.fetch_u16(mem);
+                self.bc.set(mem.peek_u16(addr));
+            }
             0x52 => { //SBC HL,DE
                 let mut hl = self.hl.into();
                 let mut de : u16 = self.de.into();
@@ -941,6 +1083,26 @@ impl Z80 {
             }
             0x56 => { //IM 1
                 self.im = InterruptMode::IM1;
+            }
+            0x5b => { //LD DE,(nn)
+                let addr = self.fetch_u16(mem);
+                self.de.set(mem.peek_u16(addr));
+            }
+            0x63 => { //LD (nn),HL
+                let addr = self.fetch_u16(mem);
+                mem.poke_u16(addr, self.hl.into());
+            }
+            0x6b => { //LD HL,(nn)
+                let addr = self.fetch_u16(mem);
+                self.hl.set(mem.peek_u16(addr));
+            }
+            0x73 => { //LD (nn),SP
+                let addr = self.fetch_u16(mem);
+                mem.poke_u16(addr, self.sp.into());
+            }
+            0x7b => { //LD SP,(nn)
+                let addr = self.fetch_u16(mem);
+                self.sp.set(mem.peek_u16(addr));
             }
             0xb0 => { //LDIR
                 let hl = self.hl;
