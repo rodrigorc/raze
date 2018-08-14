@@ -32,7 +32,7 @@ impl Memory {
             panic!();
             //return; //writing in rom
         }
-        println!("{:4x} <- {:2x}", addr, data);
+        println!("M {:04x} <- {:02x}", addr, data);
         self.data[addr as usize] = data;
     }
     pub fn peek_u16(&self, addr: impl Into<u16>) -> u16 {
@@ -47,5 +47,8 @@ impl Memory {
         self.poke(addr, data as u8);
         let addr = addr.wrapping_add(1);
         self.poke(addr, (data >> 8) as u8);
+    }
+    pub fn slice(&self, addr: u16, end: u16) -> &[u8] {
+        &self.data[addr as usize..end as usize]
     }
 }

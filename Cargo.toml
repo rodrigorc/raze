@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
 
 [dependencies]
+png = "*"
