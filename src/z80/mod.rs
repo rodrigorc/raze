@@ -99,6 +99,10 @@ impl Z80 {
             prefix: XYPrefix::None,
         }
     }
+    pub fn dump_regs(&self) {
+        println!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}",
+                 self.pc.as_u16(), self.af.as_u16() & 0xffc1 , self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
+    }
     fn fetch(&mut self, mem: &Memory) -> u8 {
         let c = mem.peek(self.pc);
         self.pc += 1;
@@ -112,8 +116,11 @@ impl Z80 {
         h << 8 | l
     }
     fn push(&mut self, mem: &mut Memory, x: impl Into<u16>) {
-        self.sp -= 2;
-        mem.poke_u16(self.sp, x.into());
+        let x = x.into();
+        self.sp -= 1;
+        mem.poke(self.sp, (x >> 8) as u8);
+        self.sp -= 1;
+        mem.poke(self.sp, x as u8);
     }
     fn pop(&mut self, mem: &mut Memory) -> u16 {
         let x = mem.peek_u16(self.sp);
@@ -142,6 +149,30 @@ impl Z80 {
             4 => self.hlx().set_hi(b),
             5 => self.hlx().set_lo(b),
             6 => mem.poke(addr, b),
+            7 => self.af.set_hi(b),
+            _ => panic!("unknown reg_by_num {}", r),
+        }
+    }
+    fn reg_by_num2(&mut self, r: u8, mem: &Memory, addr: u16) -> u8 {
+        match r {
+            0 => self.bc.hi(),
+            1 => self.bc.lo(),
+            2 => self.de.hi(),
+            3 => self.de.lo(),
+            4 => self.hl.hi(),
+            5 => self.hl.lo(),
+            7 => self.af.hi(),
+            _ => panic!("unknown reg_by_num {}", r),
+        }
+    }
+    fn set_reg_by_num2(&mut self, r: u8, mem: &mut Memory, b: u8, addr: u16) {
+        match r {
+            0 => self.bc.set_hi(b),
+            1 => self.bc.set_lo(b),
+            2 => self.de.set_hi(b),
+            3 => self.de.set_lo(b),
+            4 => self.hl.set_hi(b),
+            5 => self.hl.set_lo(b),
             7 => self.af.set_hi(b),
             _ => panic!("unknown reg_by_num {}", r),
         }
@@ -272,7 +303,6 @@ impl Z80 {
         r
     }
     pub fn exec(&mut self, mem: &mut Memory) {
-        println!("PC {:4x}", self.pc.as_u16());
         let c = match self.fetch(mem) {
             0xdd => {
                 self.prefix = XYPrefix::IX;
@@ -287,9 +317,6 @@ impl Z80 {
                 c
             }
         };
-        if self.prefix != XYPrefix::None {
-            println!("prefix {:?} {:2x}", self.prefix, c);
-        }
         match c {
             0xcb => { self.exec_cb(mem); }
             0xed => { self.exec_ed(mem); }
@@ -324,7 +351,7 @@ impl Z80 {
             0x07 => { //RLCA
                 let mut a = self.af.hi();
                 let mut f = self.af.lo();
-                let b7 = flag8(a, 7);
+                let b7 = flag8(a, 0x80);
                 a = a.rotate_left(1);
                 set_flag8(&mut f, FLAG_C, b7);
                 set_flag8(&mut f, FLAG_N, false);
@@ -365,7 +392,7 @@ impl Z80 {
             0x0f => { //RRCA
                 let mut a = self.af.hi();
                 let mut f = self.af.lo();
-                let b0 = flag8(a, 0);
+                let b0 = flag8(a, 0x01);
                 a = a.rotate_right(1);
                 set_flag8(&mut f, FLAG_C, b0);
                 set_flag8(&mut f, FLAG_N, false);
@@ -409,7 +436,7 @@ impl Z80 {
             0x17 => { //RLA
                 let mut a = self.af.hi();
                 let mut f = self.af.lo();
-                let b7 = flag8(a, 7);
+                let b7 = flag8(a, 0x80);
                 let c = flag8(f, FLAG_C);
                 a <<= 1;
                 set_flag8(&mut a, 0, c);
@@ -453,7 +480,7 @@ impl Z80 {
             0x1f => { //RRA
                 let mut a = self.af.hi();
                 let mut f = self.af.lo();
-                let b0 = flag8(a, 0);
+                let b0 = flag8(a, 0x01);
                 let c = flag8(f, FLAG_C);
                 a >>= 1;
                 set_flag8(&mut a, 7, c);
@@ -530,7 +557,7 @@ impl Z80 {
             0x2f => { //CPL
                 let mut a = self.af.hi();
                 let mut f = self.af.lo();
-                a = a ^ 0xff;
+                a ^= 0xff;
                 set_flag8(&mut f, FLAG_H, true);
                 set_flag8(&mut f, FLAG_N, true);
                 self.af.set_hi(a);
@@ -725,7 +752,8 @@ impl Z80 {
             }
             0xd3 => { //OUT (n),A
                 let n = self.fetch(mem);
-                println!("OUT {:2x}, {:2x}", n, self.af.hi());
+                let n = ((self.af.hi() as u16) << 8) | n as u16;
+                println!("OUT {:04x}, {:02x}", n, self.af.hi());
             }
             0xd4 => { //CALL NC,nn
                 let addr = self.fetch_u16(mem);
@@ -954,8 +982,17 @@ impl Z80 {
                 match c & 0b1100_0000 {
                     0x40 => { //LD r,r
                         let addr = self.hlx_addr(mem);
-                        let r = self.reg_by_num(rs, mem, addr);
-                        self.set_reg_by_num(rd, mem, r, addr);
+                        if rs == 6 {
+                            let r = self.reg_by_num(rs, mem, addr);
+                            self.set_reg_by_num2(rd, mem, r, addr);
+                        } else if rd == 6 {
+                            let r = self.reg_by_num2(rs, mem, addr);
+                            self.set_reg_by_num(rd, mem, r, addr);
+                        }
+                        else {
+                            let r = self.reg_by_num(rs, mem, addr);
+                            self.set_reg_by_num(rd, mem, r, addr);
+                        }
                     }
                     _ => {
                         match c & 0b1111_1000 {
@@ -1041,12 +1078,12 @@ impl Z80 {
             }
             0x80 => { //RES n,r
                 let mut b = self.reg_by_num(r, mem, addr);
-                set_flag8(&mut b, n, false);
+                set_flag8(&mut b, 1 << n, false);
                 self.set_reg_by_num(r, mem, b, addr);
             }
             0xc0 => { //SET n,r
                 let mut b = self.reg_by_num(r, mem, addr);
-                set_flag8(&mut b, n, true);
+                set_flag8(&mut b, 1 << n, true);
                 self.set_reg_by_num(r, mem, b, addr);
             }
             _ => {
