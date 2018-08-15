@@ -451,7 +451,8 @@ impl Z80 {
                 }
             }
             0x11 => { //LD DE,nn
-                self.de = self.fetch_u16(mem).into();
+                let nn = self.fetch_u16(mem);
+                self.de.set(nn);
             }
             0x12 => { //LD (DE),A
                 let a = self.af.hi();
@@ -1205,6 +1206,62 @@ impl Z80 {
                     self.set_reg_by_num(r, mem, b, addr);
                     self.af.set_lo(f);
                 }
+                0x20 => { //SLA r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b7 = flag8(b, 0x80);
+                    b <<= 1;
+                    set_flag8(&mut f, FLAG_C, b7);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                0x28 => { //SRA r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b0 = flag8(b, 0x01);
+                    b = ((b as i8) >> 1) as u8;
+                    set_flag8(&mut f, FLAG_C, b0);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                0x30 => { //SL1 r (undoc)
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b7 = flag8(b, 0x80);
+                    b = (b << 1) | 1;
+                    set_flag8(&mut f, FLAG_C, b7);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                0x38 => { //SRL r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b0 = flag8(b, 0x01);
+                    b >>= 1;
+                    set_flag8(&mut f, FLAG_C, b0);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
                 _ => {
                     println!("unimplemented opcode CB {:02x}", c);
                 },
@@ -1214,9 +1271,18 @@ impl Z80 {
     pub fn exec_ed(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let c = self.fetch(mem);
         match c {
+            0x42 => { //SBC HL,BC
+                let mut hl = self.hl.as_u16();
+                let mut bc = self.bc.as_u16();
+                if flag8(self.af.lo(), FLAG_C) {
+                    bc = bc.wrapping_add(1);
+                }
+                hl = self.sub16_flags(hl, bc);
+                self.hl.set(hl);
+            }
             0x43 => { //LD (nn),BC
                 let addr = self.fetch_u16(mem);
-                mem.poke_u16(addr, self.bc.into());
+                mem.poke_u16(addr, self.bc.as_u16());
             }
             0x47 => { //LD I,A
                 self.ir.set_hi(self.af.hi());
@@ -1226,17 +1292,17 @@ impl Z80 {
                 self.bc.set(mem.peek_u16(addr));
             }
             0x52 => { //SBC HL,DE
-                let mut hl = self.hl.into();
-                let mut de : u16 = self.de.into();
+                let mut hl = self.hl.as_u16();
+                let mut de = self.de.as_u16();
                 if flag8(self.af.lo(), FLAG_C) {
                     de = de.wrapping_add(1);
                 }
                 hl = self.sub16_flags(hl, de);
-                self.hl = hl.into();
+                self.hl.set(hl);
             }
             0x53 => { //LD (nn),DE
                 let addr = self.fetch_u16(mem);
-                mem.poke_u16(addr, self.de.into());
+                mem.poke_u16(addr, self.de.as_u16());
             }
             0x56 => { //IM 1
                 self.im = InterruptMode::IM1;
@@ -1245,17 +1311,35 @@ impl Z80 {
                 let addr = self.fetch_u16(mem);
                 self.de.set(mem.peek_u16(addr));
             }
+            0x62 => { //SBC HL,HL
+                let mut hl = self.hl.as_u16();
+                let mut rr = self.hl.as_u16();
+                if flag8(self.af.lo(), FLAG_C) {
+                    rr = rr.wrapping_add(1);
+                }
+                hl = self.sub16_flags(hl, rr);
+                self.hl.set(hl);
+            }
             0x63 => { //LD (nn),HL
                 let addr = self.fetch_u16(mem);
-                mem.poke_u16(addr, self.hl.into());
+                mem.poke_u16(addr, self.hl.as_u16());
             }
             0x6b => { //LD HL,(nn)
                 let addr = self.fetch_u16(mem);
                 self.hl.set(mem.peek_u16(addr));
             }
+            0x72 => { //SBC HL,SP
+                let mut hl = self.hl.as_u16();
+                let mut sp : u16 = self.sp.as_u16();
+                if flag8(self.af.lo(), FLAG_C) {
+                    sp = sp.wrapping_add(1);
+                }
+                hl = self.sub16_flags(hl, sp);
+                self.hl.set(hl);
+            }
             0x73 => { //LD (nn),SP
                 let addr = self.fetch_u16(mem);
-                mem.poke_u16(addr, self.sp.into());
+                mem.poke_u16(addr, self.sp.as_u16());
             }
             0x78 => { //IN A,(C)
                 let bc = self.bc.as_u16();

@@ -78,9 +78,9 @@ impl InOut for Spectrum {
             0xfe => {
                 match hi {
                     0b1101_1111 => {
-                        //self.x += 1;
-                        //if self.x % 3 == 0  { 0b1111_1110 } else { 0xff } //P
-                        0xfe
+                        self.x += 1;
+                        if self.x % 3 == 0  { 0b1111_1110 } else { 0xff } //P
+                        //0xfe
                     }
                     _ => 0xff,
                 }
@@ -116,7 +116,7 @@ fn main() -> io::Result<()> {
             }
             z80.interrupt(&mut memory);
         }
-        if count == 1_000_000 { break }
+        if count == 2_000_000 { break }
     }
     Ok(())
 }
