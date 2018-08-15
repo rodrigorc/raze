@@ -74,17 +74,19 @@ fn main() -> io::Result<()> {
     let mut z80 = Z80::new();
 
     let mut count = 0;
-    const SCROPS : i32 = 1000;
+    const SCROPS : i32 = 10_000;
     loop {
         z80.dump_regs();
         z80.exec(&mut memory);
         count += 1;
         if count % SCROPS == 0 {
-            let screen = memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
-            write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
-            std::fs::write(format!("scr{:06}.bin", count / SCROPS), screen)?;
+            {
+                let screen = memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
+                write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
+            }
+            z80.interrupt(&mut memory);
         }
-        if count == 700*SCROPS { break }
+        if count == 1_000_000 { break }
     }
     Ok(())
 }

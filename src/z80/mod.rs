@@ -67,6 +67,12 @@ enum XYPrefix {
     None, IX, IY,
 }
 
+enum NextOp {
+    Fetch,
+    Interrupt,
+    Halt,
+}
+
 pub struct Z80 {
     pc: R16,
     sp: R16,
@@ -80,6 +86,7 @@ pub struct Z80 {
     iff1: bool,
     im: InterruptMode,
     prefix: XYPrefix,
+    next_op: NextOp,
 }
 
 impl Z80 {
@@ -97,11 +104,19 @@ impl Z80 {
             iff1: false,
             im: InterruptMode::IM0,
             prefix: XYPrefix::None,
+            next_op: NextOp::Fetch,
         }
     }
     pub fn dump_regs(&self) {
         println!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}",
                  self.pc.as_u16(), self.af.as_u16() & 0xffc1 , self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
+    }
+    pub fn interrupt(&mut self, mem: &mut Memory) {
+        if !self.iff1 {
+            return;
+        }
+        self.next_op = NextOp::Interrupt;
+        self.iff1 = false;
     }
     fn fetch(&mut self, mem: &Memory) -> u8 {
         let c = mem.peek(self.pc);
@@ -303,7 +318,28 @@ impl Z80 {
         r
     }
     pub fn exec(&mut self, mem: &mut Memory) {
-        let c = match self.fetch(mem) {
+        let c = match self.next_op {
+            NextOp::Fetch => self.fetch(mem),
+            NextOp::Halt => 0x00, //NOP
+            NextOp::Interrupt => {
+                self.next_op = NextOp::Fetch;
+                match self.im {
+                    InterruptMode::IM0 => {
+                        println!("IM0 interrupt!");
+                        0x00 //NOP
+                    }
+                    InterruptMode::IM1 => {
+                        self.iff1 = false;
+                        0xff //RST 38
+                    }
+                    InterruptMode::IM2 => {
+                        println!("IM2 interrupt!");
+                        0x00 //TODO
+                    }
+                }
+            }
+        };
+        let c = match c {
             0xdd => {
                 self.prefix = XYPrefix::IX;
                 self.fetch(mem)
@@ -645,7 +681,11 @@ impl Z80 {
                 self.af.set_lo(f);
             }
             0x76 => { //HALT
-                println!("unimplemented HALT");
+                println!("HALT");
+                if !self.iff1 {
+                    println!("DI/HALT deadlock!");
+                }
+                self.next_op = NextOp::Halt;
             }
             0xc0 => { //RET NZ 
                 if !flag8(self.af.lo(), FLAG_Z) {
@@ -1136,6 +1176,15 @@ impl Z80 {
             0x73 => { //LD (nn),SP
                 let addr = self.fetch_u16(mem);
                 mem.poke_u16(addr, self.sp.into());
+            }
+            0x78 => { //IN A,(C)
+                let bc = self.bc.as_u16();
+                println!("IN {:04x}", bc);
+                self.af.set_hi(0xff);
+            }
+            0x79 => { //OUT (C),A
+                let bc = self.bc.as_u16();
+                println!("OUT {:04x}, {:02x}", bc, self.af.hi());
             }
             0x7b => { //LD SP,(nn)
                 let addr = self.fetch_u16(mem);
