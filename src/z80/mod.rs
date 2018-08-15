@@ -5,6 +5,11 @@ mod r16;
 use super::Memory;
 use self::r16::R16;
 
+pub trait InOut {
+    fn do_in(&mut self, port: u16) -> u8;
+    fn do_out(&mut self, port: u16, value: u8);
+}
+
 const FLAG_S  : u8 = 0b1000_0000;
 const FLAG_Z  : u8 = 0b0100_0000;
 const FLAG_F5 : u8 = 0b0010_0000;
@@ -317,7 +322,7 @@ impl Z80 {
         self.af.set_lo(f);
         r
     }
-    pub fn exec(&mut self, mem: &mut Memory) {
+    pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let c = match self.next_op {
             NextOp::Fetch => self.fetch(mem),
             NextOp::Halt => 0x00, //NOP
@@ -348,14 +353,14 @@ impl Z80 {
                 self.prefix = XYPrefix::IY;
                 self.fetch(mem)
             }
-            c => {
+            _ => {
                 self.prefix = XYPrefix::None;
                 c
             }
         };
         match c {
-            0xcb => { self.exec_cb(mem); }
-            0xed => { self.exec_ed(mem); }
+            0xcb => { self.exec_cb(mem, io); }
+            0xed => { self.exec_ed(mem, io); }
 
             0x00 => { //NOP
             }
@@ -792,8 +797,9 @@ impl Z80 {
             }
             0xd3 => { //OUT (n),A
                 let n = self.fetch(mem);
-                let n = ((self.af.hi() as u16) << 8) | n as u16;
-                println!("OUT {:04x}, {:02x}", n, self.af.hi());
+                let a = self.af.hi();
+                let n = ((a as u16) << 8) | n as u16;
+                io.do_out(n, a);
             }
             0xd4 => { //CALL NC,nn
                 let addr = self.fetch_u16(mem);
@@ -839,8 +845,8 @@ impl Z80 {
                 let n = self.fetch(mem);
                 let a = self.af.hi();
                 let port = ((a as u16) << 8) | (n as u16); 
-                println!("IN {:04x}", port);
-                self.af.set_hi(0b11111111);
+                let a = io.do_in(port);
+                self.af.set_hi(a);
             }
             0xdc => { //CALL C,nn
                 let addr = self.fetch_u16(mem);
@@ -1113,7 +1119,7 @@ impl Z80 {
             },
         }
     }
-    pub fn exec_cb(&mut self, mem: &mut Memory) {
+    pub fn exec_cb(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let addr = self.hlx_addr(mem);
         let c = self.fetch(mem);
         let r = c & 0x07;
@@ -1138,7 +1144,7 @@ impl Z80 {
                 set_flag8(&mut b, 1 << n, true);
                 self.set_reg_by_num(r, mem, b, addr);
             }
-            c => match c & 0b1111_1000 {
+            _ => match c & 0b1111_1000 {
                 0x00 => { //RLC r
                     let mut b = self.reg_by_num(r, mem, addr);
                     let mut f = self.af.lo();
@@ -1205,7 +1211,7 @@ impl Z80 {
             }
         }
     }
-    pub fn exec_ed(&mut self, mem: &mut Memory) {
+    pub fn exec_ed(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let c = self.fetch(mem);
         match c {
             0x43 => { //LD (nn),BC
@@ -1254,8 +1260,7 @@ impl Z80 {
             0x78 => { //IN A,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.af.lo();
-                println!("IN {:04x}", bc);
-                let b = 0b11111111;
+                let b = io.do_in(bc);
                 set_flag8(&mut f, FLAG_N, false);
                 set_flag8(&mut f, FLAG_PV, parity(b));
                 set_flag8(&mut f, FLAG_Z, b == 0);
@@ -1266,7 +1271,7 @@ impl Z80 {
             }
             0x79 => { //OUT (C),A
                 let bc = self.bc.as_u16();
-                println!("OUT {:04x}, {:02x}", bc, self.af.hi());
+                io.do_out(bc, self.af.hi());
             }
             0x7b => { //LD SP,(nn)
                 let addr = self.fetch_u16(mem);

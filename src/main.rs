@@ -14,7 +14,7 @@ mod memory;
 mod z80;
 
 use memory::Memory;
-use z80::Z80;
+use z80::{Z80, InOut};
 
 fn write_screen(path: impl AsRef<Path>, data: &[u8]) -> io::Result<()> {
     let file = File::create(path)?;
@@ -66,6 +66,35 @@ fn write_screen(path: impl AsRef<Path>, data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+struct Spectrum {
+    x: i32
+}
+
+impl InOut for Spectrum {
+    fn do_in(&mut self, port: u16) -> u8 {
+        let lo = port as u8;
+        let hi = (port >> 8) as u8;
+        let r = match lo {
+            0xfe => {
+                match hi {
+                    0b1101_1111 => {
+                        //self.x += 1;
+                        //if self.x % 3 == 0  { 0b1111_1110 } else { 0xff } //P
+                        0xfe
+                    }
+                    _ => 0xff,
+                }
+            }
+            _ => 0xff,
+        };
+        println!("IN {:04x}, {:02x}", port, r);
+        r
+    }
+    fn do_out(&mut self, port: u16, value: u8) {
+        println!("OUT {:04x}, {:02x}", port, value);
+    }
+}
+
 fn main() -> io::Result<()> {
     let mut args = env::args_os();
     let _program = args.next().ok_or(ErrorKind::InvalidData)?;
@@ -73,11 +102,12 @@ fn main() -> io::Result<()> {
     let mut memory = Memory::new(&rom)?;
     let mut z80 = Z80::new();
 
+    let mut spectrum = Spectrum { x: 0};
     let mut count = 0;
     const SCROPS : i32 = 10_000;
     loop {
         z80.dump_regs();
-        z80.exec(&mut memory);
+        z80.exec(&mut memory, &mut spectrum);
         count += 1;
         if count % SCROPS == 0 {
             {
