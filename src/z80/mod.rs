@@ -475,7 +475,7 @@ impl Z80 {
                 let b7 = flag8(a, 0x80);
                 let c = flag8(f, FLAG_C);
                 a <<= 1;
-                set_flag8(&mut a, 0, c);
+                set_flag8(&mut a, 1, c);
                 set_flag8(&mut f, FLAG_C, b7);
                 set_flag8(&mut f, FLAG_N, false);
                 set_flag8(&mut f, FLAG_H, false);
@@ -519,7 +519,7 @@ impl Z80 {
                 let b0 = flag8(a, 0x01);
                 let c = flag8(f, FLAG_C);
                 a >>= 1;
-                set_flag8(&mut a, 7, c);
+                set_flag8(&mut a, 0x80, c);
                 set_flag8(&mut f, FLAG_C, b0);
                 set_flag8(&mut f, FLAG_N, false);
                 set_flag8(&mut f, FLAG_H, false);
@@ -835,6 +835,13 @@ impl Z80 {
                     self.pc.set(addr);
                 }
             }
+            0xdb => { //IN A,(n)
+                let n = self.fetch(mem);
+                let a = self.af.hi();
+                let port = ((a as u16) << 8) | (n as u16); 
+                println!("IN {:04x}", port);
+                self.af.set_hi(0b11111111);
+            }
             0xdc => { //CALL C,nn
                 let addr = self.fetch_u16(mem);
                 if flag8(self.af.lo(), FLAG_C) {
@@ -1114,7 +1121,12 @@ impl Z80 {
         match c & 0b1100_0000 {
             0x40 => { //BIT n,r
                 let b = self.reg_by_num(r, mem, addr);
-                self.and_flags(b, 1 << n);
+                let r = b & (1 << n);
+                let mut f = self.af.lo();
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_Z, r == 0);
+                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
+                self.af.set_lo(f);
             }
             0x80 => { //RES n,r
                 let mut b = self.reg_by_num(r, mem, addr);
@@ -1126,9 +1138,71 @@ impl Z80 {
                 set_flag8(&mut b, 1 << n, true);
                 self.set_reg_by_num(r, mem, b, addr);
             }
-            _ => {
-                println!("unimplemented opcode CB {:02x}", c);
-            },
+            c => match c & 0b1111_1000 {
+                0x00 => { //RLC r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b7 = flag8(b, 0x80);
+                    b = b.rotate_left(1);
+                    set_flag8(&mut f, FLAG_C, b7);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                0x08 => { //RRC r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b0 = flag8(b, 0x01);
+                    b = b.rotate_right(1);
+                    set_flag8(&mut f, FLAG_C, b0);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                0x10 => { //RL r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b7 = flag8(b, 0x80);
+                    let c = flag8(f, FLAG_C);
+                    b <<= 1;
+                    set_flag8(&mut b, 1, c);
+                    set_flag8(&mut f, FLAG_C, b7);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                0x18 => { //RR r
+                    let mut b = self.reg_by_num(r, mem, addr);
+                    let mut f = self.af.lo();
+                    let b0 = flag8(b, 0x01);
+                    let c = flag8(f, FLAG_C);
+                    b >>= 1;
+                    set_flag8(&mut b, 0x80, c);
+                    set_flag8(&mut f, FLAG_C, b0);
+                    set_flag8(&mut f, FLAG_N, false);
+                    set_flag8(&mut f, FLAG_H, false);
+                    set_flag8(&mut f, FLAG_PV, parity(b));
+                    set_flag8(&mut f, FLAG_Z, b == 0);
+                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    self.set_reg_by_num(r, mem, b, addr);
+                    self.af.set_lo(f);
+                }
+                _ => {
+                    println!("unimplemented opcode CB {:02x}", c);
+                },
+            }
         }
     }
     pub fn exec_ed(&mut self, mem: &mut Memory) {
@@ -1179,8 +1253,16 @@ impl Z80 {
             }
             0x78 => { //IN A,(C)
                 let bc = self.bc.as_u16();
+                let mut f = self.af.lo();
                 println!("IN {:04x}", bc);
-                self.af.set_hi(0xff);
+                let b = 0b11111111;
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_PV, parity(b));
+                set_flag8(&mut f, FLAG_Z, b == 0);
+                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                //FLAG_H
+                self.af.set_hi(b);
+                self.af.set_lo(f);
             }
             0x79 => { //OUT (C),A
                 let bc = self.bc.as_u16();
