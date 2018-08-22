@@ -1284,6 +1284,19 @@ impl Z80 {
                 let addr = self.fetch_u16(mem);
                 mem.poke_u16(addr, self.bc.as_u16());
             }
+            0x44 => { //NEG
+                let a = self.af.hi();
+                let mut f = self.af.lo();
+                let new_a = -(a as i8) as u8;
+                set_flag8(&mut f, FLAG_C, a == 0x00);
+                set_flag8(&mut f, FLAG_N, true);
+                set_flag8(&mut f, FLAG_PV, a == 0x80);
+                set_flag8(&mut f, FLAG_Z, new_a == 0);
+                set_flag8(&mut f, FLAG_S, flag8(new_a, 0x80));
+                self.af.set_hi(new_a);
+                self.af.set_lo(f);
+
+            }
             0x47 => { //LD I,A
                 self.ir.set_hi(self.af.hi());
             }
