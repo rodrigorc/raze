@@ -116,7 +116,7 @@ fn main() -> io::Result<()> {
             }
             z80.interrupt(&mut memory);
         }
-        if count == 2_000_000 { break }
+        //if count == 2_000_000 { break }
     }
     Ok(())
 }
