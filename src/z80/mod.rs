@@ -563,6 +563,38 @@ impl Z80 {
                 let n = self.fetch(mem);
                 self.hlx().set_hi(n);
             }
+            0x27 => { //DAA
+                let a = self.af.hi();
+                let mut f = self.af.lo();
+                let n = flag8(f, FLAG_N);
+                let c = flag8(f, FLAG_C);
+                let h = flag8(f, FLAG_H);
+                let (plus_a, new_c) = match (n, c, a >> 4, h, a & 0x0f) {
+                    (false, false, 0x0..=0x9, false, 0x0..=0x9) => (0x00, false),
+                    (false, false, 0x0..=0x8, false, 0xa..=0xf) => (0x06, false),
+                    (false, false, 0x0..=0x9, true,  0x0..=0x3) => (0x06, false),
+                    (false, false, 0xa..=0xf, false, 0x0..=0x9) => (0x60, true),
+                    (false, false, 0x9..=0xf, false, 0xa..=0xf) => (0x66, true),
+                    (false, false, 0xa..=0xf, true,  0x0..=0x3) => (0x66, true),
+                    (false, true,  0x0..=0x2, false, 0x0..=0x9) => (0x60, true),
+                    (false, true,  0x0..=0x2, false, 0xa..=0xf) => (0x66, true),
+                    (false, true,  0x0..=0x3, true,  0x0..=0x3) => (0x66, true),
+                    (true,  false, 0x0..=0x9, false, 0x0..=0x9) => (0x00, false),
+                    (true,  false, 0x0..=0x8, true,  0x6..=0xf) => (0xfa, false),
+                    (true,  true,  0x7..=0xf, false, 0x0..=0x9) => (0xa0, true),
+                    (true,  true,  0x6..=0xf, true,  0x6..=0xf) => (0x9a, true),
+                    _ => unreachable!(),
+                };
+                let a = a.wrapping_add(plus_a);
+                set_flag8(&mut f, FLAG_C, new_c);
+                //TODO H
+                set_flag8(&mut f, FLAG_H, false);
+                set_flag8(&mut f, FLAG_PV, parity(a));
+                set_flag8(&mut f, FLAG_Z, a == 0);
+                set_flag8(&mut f, FLAG_S, flag8(a, 0x80));
+                self.af.set_hi(a);
+                self.af.set_lo(f);
+            }
             0x28 => { //JR Z,d
                 let d = self.fetch(mem);
                 if flag8(self.af.lo(), FLAG_Z) {
