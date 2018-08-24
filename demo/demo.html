@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+#stage {
+    width: 800px;
+    height: 600px;
+    position: relative;
+    margin: 0 auto;
+    border: 2px solid black
+}
+#stage canvas {
+    position: absolute;
+}
+#game-layer {
+    z-index: 2;
+}
+#background-layer {
+    z-index: 1;
+    background: grey;
+}
+</style>
+</head>
+<body>
+
+
+<div id="stage">
+  <canvas id="game-layer" width="800" height="600"></canvas>
+  <canvas id="background-layer" width="800" height="600"></canvas>
+</div>
+ 
+<script src="demo.js"></script>
+</body>

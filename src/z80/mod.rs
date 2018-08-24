@@ -2,7 +2,7 @@ use std::mem::swap;
 
 mod r16;
 
-use super::Memory;
+use memory::Memory;
 use self::r16::R16;
 
 pub trait InOut {
@@ -127,7 +127,7 @@ impl Z80 {
         }
     }
     pub fn dump_regs(&self) {
-        println!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}",
+        log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}",
                  self.pc.as_u16(),
                  self.af.as_u16() & 0xffd7,
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
@@ -355,7 +355,7 @@ impl Z80 {
                 self.next_op = NextOp::Fetch;
                 match self.im {
                     InterruptMode::IM0 => {
-                        println!("IM0 interrupt!");
+                        log!("IM0 interrupt!");
                         0x00 //NOP
                     }
                     InterruptMode::IM1 => {
@@ -363,7 +363,7 @@ impl Z80 {
                         0xff //RST 38
                     }
                     InterruptMode::IM2 => {
-                        println!("IM2 interrupt!");
+                        log!("IM2 interrupt!");
                         0x00 //TODO
                     }
                 }
@@ -746,8 +746,9 @@ impl Z80 {
                 self.af.set_lo(f);
             }
             0x76 => { //HALT
+                log!("HALT");
                 if !self.iff1 {
-                    println!("DI/HALT deadlock!");
+                    log!("DI/HALT deadlock!");
                 }
                 self.next_op = NextOp::Halt;
             }
@@ -1158,7 +1159,7 @@ impl Z80 {
                                 self.sub_flags(a, r, false);
                             }
                             _ => {
-                                println!("unimplemented opcode {:02x}", c);
+                                log!("unimplemented opcode {:02x}", c);
                             }
                         }
                     }
@@ -1311,7 +1312,7 @@ impl Z80 {
                     self.af.set_lo(f);
                 }
                 _ => {
-                    println!("unimplemented opcode CB {:02x}", c);
+                    log!("unimplemented opcode CB {:02x}", c);
                 },
             }
         }
@@ -1653,7 +1654,7 @@ impl Z80 {
                 }
             }
             _ => {
-                println!("unimplemented opcode ED {:02x}", c);
+                log!("unimplemented opcode ED {:02x}", c);
             },
         }
     }

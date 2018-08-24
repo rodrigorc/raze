@@ -7,11 +7,16 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new(rom: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn new_from_file(rom: impl AsRef<Path>) -> io::Result<Self> {
         let mut data = vec![0; 0x10000];
         let mut f_rom = File::open(&rom)?;
         f_rom.read_exact(&mut data[0..0x4000])?;
         Ok(Memory { data })
+    }
+    pub fn new_from_bytes(rom: &[u8]) -> Self {
+        let mut data = vec![0; 0x10000];
+        data[0..rom.len()].copy_from_slice(rom);
+        Memory { data }
     }
     pub fn peek(&self, addr: impl Into<u16>) -> u8 {
         self.data[addr.into() as usize]
@@ -23,7 +28,6 @@ impl Memory {
             //println!("writing to rom {:4x} <- {:2x}", addr, data);
             return;
         }
-        //println!("M {:04x} <- {:02x}", addr, data);
         self.data[addr as usize] = data;
     }
     pub fn peek_u16(&self, addr: impl Into<u16>) -> u16 {
