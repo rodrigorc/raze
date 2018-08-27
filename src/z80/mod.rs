@@ -62,6 +62,20 @@ fn carry16(a: u16, b: u16, c: u16) -> bool {
     let mc = flag16(c, 0x8000);
     (mc && ma && mb) || (!mc && (ma || mb))
 }
+#[inline]
+fn half_carry8(a: u8, b: u8, c: u8) -> bool {
+    let ma = flag8(a, 0x08);
+    let mb = flag8(b, 0x08);
+    let mc = flag8(c, 0x08);
+    (mc && ma && mb) || (!mc && (ma || mb))
+}
+#[inline]
+fn half_carry16(a: u16, b: u16, c: u16) -> bool {
+    let ma = flag16(a, 0x0800);
+    let mb = flag16(b, 0x0800);
+    let mc = flag16(c, 0x0800);
+    (mc && ma && mb) || (!mc && (ma || mb))
+}
 
 enum InterruptMode {
     IM0, IM1, IM2,
@@ -114,7 +128,9 @@ impl Z80 {
     }
     pub fn dump_regs(&self) {
         println!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}",
-                 self.pc.as_u16(), self.af.as_u16() & 0xffc1 , self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
+                 self.pc.as_u16(),
+                 self.af.as_u16() & 0xffd7,
+                 self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
     }
     pub fn interrupt(&mut self, mem: &mut Memory) {
         if !self.iff1 {
@@ -223,10 +239,10 @@ impl Z80 {
         set_flag8(&mut f, FLAG_N, true);
         set_flag8(&mut f, FLAG_C, carry8(r, b, a));
         set_flag8(&mut f, FLAG_PV,
-                 (flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80)));
+                 (flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80)));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, half_carry8(r, b, a));
         self.af.set_lo(f);
         r
     }
@@ -236,9 +252,10 @@ impl Z80 {
         set_flag8(&mut f, FLAG_N, true);
         set_flag8(&mut f, FLAG_C, carry16(r, b, a));
         set_flag8(&mut f, FLAG_PV,
-                 flag16(a, 0x8000) == flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(r, 0x8000));
+                 flag16(a, 0x8000) != flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(r, 0x8000));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag16(r, 0x8000));
+        set_flag8(&mut f, FLAG_H, half_carry16(r, b, a));
         self.af.set_lo(f);
         r
     }
@@ -251,7 +268,7 @@ impl Z80 {
                  (flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80)));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, half_carry8(a, b, r));
         self.af.set_lo(f);
         r
     }
@@ -260,6 +277,8 @@ impl Z80 {
         let mut f = self.af.lo();
         set_flag8(&mut f, FLAG_N, false);
         set_flag8(&mut f, FLAG_C, carry16(a, b, r));
+        //No PV, Z, S flags!
+        set_flag8(&mut f, FLAG_H, half_carry16(a, b, r));
         self.af.set_lo(f);
         r
     }
@@ -271,7 +290,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_Z,
                  r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, (r & 0x0f) == 0x00);
         self.af.set_lo(f);
         r
     }
@@ -282,7 +301,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_PV, r == 0x7f);
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, (r & 0x0f) == 0x0f);
         self.af.set_lo(f);
         r
     }
@@ -294,7 +313,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_PV, parity(r));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, true);
         self.af.set_lo(f);
         r
     }
@@ -306,7 +325,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_PV, parity(r));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, false);
         self.af.set_lo(f);
         r
     }
@@ -318,7 +337,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_PV, parity(r));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        //TODO FLAG_H
+        set_flag8(&mut f, FLAG_H, false);
         self.af.set_lo(f);
         r
     }
@@ -635,6 +654,7 @@ impl Z80 {
                 set_flag8(&mut f, FLAG_H, true);
                 set_flag8(&mut f, FLAG_N, true);
                 self.af.set_hi(a);
+                self.af.set_lo(f);
             }
             0x30 => { //JR NC,d
                 let d = self.fetch(mem);
@@ -713,9 +733,10 @@ impl Z80 {
             }
             0x3f => { //CCF
                 let mut f = self.af.lo();
+                let c = flag8(f, FLAG_C);
                 set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                f ^= FLAG_C;
+                set_flag8(&mut f, FLAG_H, c);
+                set_flag8(&mut f, FLAG_C, !c);
                 self.af.set_lo(f);
             }
             0x76 => { //HALT
@@ -1162,9 +1183,11 @@ impl Z80 {
                 let b = self.reg_by_num(r, mem, addr);
                 let r = b & (1 << n);
                 let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_Z, r == 0);
                 set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
+                set_flag8(&mut f, FLAG_Z, r == 0);
+                set_flag8(&mut f, FLAG_PV, parity(r));
+                set_flag8(&mut f, FLAG_H, true);
+                set_flag8(&mut f, FLAG_N, false);
                 self.af.set_lo(f);
             }
             0x80 => { //RES n,r
@@ -1334,16 +1357,8 @@ impl Z80 {
             }
             0x44 => { //NEG
                 let a = self.af.hi();
-                let mut f = self.af.lo();
-                let new_a = -(a as i8) as u8;
-                set_flag8(&mut f, FLAG_C, a == 0x00);
-                set_flag8(&mut f, FLAG_N, true);
-                set_flag8(&mut f, FLAG_PV, a == 0x80);
-                set_flag8(&mut f, FLAG_Z, new_a == 0);
-                set_flag8(&mut f, FLAG_S, flag8(new_a, 0x80));
-                self.af.set_hi(new_a);
-                self.af.set_lo(f);
-
+                let a = self.sub_flags(0, a);
+                self.af.set_hi(a);
             }
             0x45 => { //RETN
                 let pc = self.pop(mem);
@@ -1617,7 +1632,7 @@ impl Z80 {
                 let mut f = self.af.lo();
                 set_flag8(&mut f, FLAG_N, false);
                 set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_PV, false);
+                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
                 self.af.set_lo(f);
 
                 if self.bc.as_u16() != 0 {
@@ -1637,7 +1652,7 @@ impl Z80 {
                 let mut f = self.af.lo();
                 set_flag8(&mut f, FLAG_N, false);
                 set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_PV, false);
+                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
                 self.af.set_lo(f);
 
                 if self.bc.as_u16() != 0 {

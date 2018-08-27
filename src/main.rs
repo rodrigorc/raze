@@ -79,19 +79,19 @@ impl InOut for Spectrum {
                 match hi {
                     0b1101_1111 => {
                         self.x += 1;
-                        if self.x % 3 == 0  { 0b1111_1110 } else { 0xff } //P
-                        //0xfe
+                        //if self.x % 3 == 0  { 0b1111_1110 } else { 0xff } //P
+                        0xfe
                     }
                     _ => 0xff,
                 }
             }
             _ => 0xff,
         };
-        println!("IN {:04x}, {:02x}", port, r);
+        //println!("IN {:04x}, {:02x}", port, r);
         r
     }
     fn do_out(&mut self, port: u16, value: u8) {
-        println!("OUT {:04x}, {:02x}", port, value);
+        //println!("OUT {:04x}, {:02x}", port, value);
     }
 }
 
@@ -110,13 +110,13 @@ fn main() -> io::Result<()> {
         z80.exec(&mut memory, &mut spectrum);
         count += 1;
         if count % SCROPS == 0 {
-            {
+            if false {
                 let screen = memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
                 write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
             }
             z80.interrupt(&mut memory);
         }
-        //if count == 2_000_000 { break }
+        if count == 10_000_000 { break }
     }
     Ok(())
 }

@@ -19,20 +19,11 @@ impl Memory {
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let addr = addr.into();
         if addr < 0x4000 {
+            //writing in rom
             println!("writing to rom {:4x} <- {:2x}", addr, data);
-            for i in 0..0x10000 {
-                if (i % 0x10) == 0 {
-                    print!("{:04x}:", i);
-                }
-                print!(" {:02x}", self.data[i]);
-                if (i % 0x10) == 15 {
-                    println!();
-                }
-            }
-            panic!();
-            //return; //writing in rom
+            return;
         }
-        println!("M {:04x} <- {:02x}", addr, data);
+        //println!("M {:04x} <- {:02x}", addr, data);
         self.data[addr as usize] = data;
     }
     pub fn peek_u16(&self, addr: impl Into<u16>) -> u16 {
