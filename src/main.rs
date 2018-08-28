@@ -77,10 +77,33 @@ impl InOut for Spectrum {
         let r = match lo {
             0xfe => {
                 match hi {
-                    0b1101_1111 => {
-                        self.x += 1;
-                        //if self.x % 3 == 0  { 0b1111_1110 } else { 0xff } //P
-                        0xfe
+                    0xdf => {
+                        if 500 < self.x && self.x < 600 {
+                            0xfe //P
+                        } else {
+                            0xff
+                        }
+                    }
+                    0xf7 => {
+                        if 700 < self.x && self.x < 750 {
+                            0xfd //2
+                        } else {
+                            0xff
+                        }
+                    }
+                    0xef => {
+                        if 800 < self.x && self.x < 850 {
+                            0xfe //0
+                        } else {
+                            0xff
+                        }
+                    }
+                    0xbf => {
+                        if 900 < self.x && self.x < 1000 {
+                            0xfe //enter
+                        } else {
+                            0xff
+                        }
                     }
                     _ => 0xff,
                 }
@@ -88,6 +111,7 @@ impl InOut for Spectrum {
             _ => 0xff,
         };
         //println!("IN {:04x}, {:02x}", port, r);
+        self.x += 1;
         r
     }
     fn do_out(&mut self, port: u16, value: u8) {
@@ -110,13 +134,13 @@ fn main() -> io::Result<()> {
         z80.exec(&mut memory, &mut spectrum);
         count += 1;
         if count % SCROPS == 0 {
-            if false {
+            if true {
                 let screen = memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
                 write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
             }
             z80.interrupt(&mut memory);
         }
-        if count == 10_000_000 { break }
+        if count == 2_000_000 { break }
     }
     Ok(())
 }

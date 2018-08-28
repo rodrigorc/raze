@@ -233,9 +233,12 @@ impl Z80 {
             }
         }
     }
-    fn sub_flags(&mut self, a: u8, b: u8) -> u8 {
+    fn sub_flags(&mut self, a: u8, mut b: u8, with_carry: bool) -> u8 {
         let r = a.wrapping_sub(b);
         let mut f = self.af.lo();
+        if with_carry && flag8(f, FLAG_C) {
+            b = b.wrapping_add(1);
+        }
         set_flag8(&mut f, FLAG_N, true);
         set_flag8(&mut f, FLAG_C, carry8(r, b, a));
         set_flag8(&mut f, FLAG_PV,
@@ -259,9 +262,12 @@ impl Z80 {
         self.af.set_lo(f);
         r
     }
-    fn add_flags(&mut self, a: u8, b: u8) -> u8 {
-        let r = a.wrapping_add(b);
+    fn add_flags(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
         let mut f = self.af.lo();
+        let mut r = a.wrapping_add(b);
+        if with_carry && flag8(f, FLAG_C) {
+            r = r.wrapping_add(1);
+        }
         set_flag8(&mut f, FLAG_N, false);
         set_flag8(&mut f, FLAG_C, carry8(a, b, r));
         set_flag8(&mut f, FLAG_PV,
@@ -740,7 +746,6 @@ impl Z80 {
                 self.af.set_lo(f);
             }
             0x76 => { //HALT
-                println!("HALT");
                 if !self.iff1 {
                     println!("DI/HALT deadlock!");
                 }
@@ -781,7 +786,7 @@ impl Z80 {
             0xc6 => { //ADD n
                 let n = self.fetch(mem);
                 let a = self.af.hi();
-                let a = self.add_flags(a, n);
+                let a = self.add_flags(a, n, false);
                 self.af.set_hi(a);
             }
             0xc7 => { //RST 00
@@ -820,12 +825,9 @@ impl Z80 {
                 self.pc.set(addr);
             }
             0xce => { //ADC n
-                let mut n = self.fetch(mem);
+                let n = self.fetch(mem);
                 let a = self.af.hi();
-                if flag8(self.af.lo(), FLAG_C) {
-                    n = n.wrapping_add(1);
-                }
-                let a = self.add_flags(a, n);
+                let a = self.add_flags(a, n, true);
                 self.af.set_hi(a);
             }
             0xcf => { //RST 08
@@ -870,7 +872,7 @@ impl Z80 {
             0xd6 => { //SUB n
                 let n = self.fetch(mem);
                 let a = self.af.hi();
-                let a = self.sub_flags(a, n);
+                let a = self.sub_flags(a, n, false);
                 self.af.set_hi(a);
             }
             0xd7 => { //RST 10
@@ -913,10 +915,7 @@ impl Z80 {
             0xde => { //SBC n
                 let mut n = self.fetch(mem);
                 let a = self.af.hi();
-                if flag8(self.af.lo(), FLAG_C) {
-                    n = n.wrapping_add(1);
-                }
-                let a = self.sub_flags(a, n);
+                let a = self.sub_flags(a, n, true);
                 self.af.set_hi(a);
             }
             0xdf => { //RST 18
@@ -1076,7 +1075,7 @@ impl Z80 {
             0xfe => { //CP n
                 let n = self.fetch(mem);
                 let a = self.af.hi();
-                self.sub_flags(a, n);
+                self.sub_flags(a, n, false);
             }
             0xff => { //RST 38
                 let pc = self.pc;
@@ -1107,34 +1106,28 @@ impl Z80 {
                                 let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
                                 let r = self.reg_by_num(rs, mem, addr);
-                                let a = self.add_flags(a, r);
+                                let a = self.add_flags(a, r, false);
                                 self.af.set_hi(a);
                             }
                             0x88 => { //ADC r
                                 let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
-                                let mut r = self.reg_by_num(rs, mem, addr);
-                                if flag8(self.af.lo(), FLAG_C) {
-                                    r = r.wrapping_add(1);
-                                }
-                                let a = self.add_flags(a, r);
+                                let r = self.reg_by_num(rs, mem, addr);
+                                let a = self.add_flags(a, r, true);
                                 self.af.set_hi(a);
                             }
                             0x90 => { //SUB r
                                 let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
                                 let r = self.reg_by_num(rs, mem, addr);
-                                let a = self.sub_flags(a, r);
+                                let a = self.sub_flags(a, r, false);
                                 self.af.set_hi(a);
                             }
                             0x98 => { //SBC r
                                 let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
                                 let mut r = self.reg_by_num(rs, mem, addr);
-                                if flag8(self.af.lo(), FLAG_C) {
-                                    r = r.wrapping_add(1);
-                                }
-                                let a = self.sub_flags(a, r);
+                                let a = self.sub_flags(a, r, true);
                                 self.af.set_hi(a);
                             }
                             0xa0 => { //AND r
@@ -1162,7 +1155,7 @@ impl Z80 {
                                 let addr = self.hlx_addr(mem);
                                 let a = self.af.hi();
                                 let r = self.reg_by_num(rs, mem, addr);
-                                self.sub_flags(a, r);
+                                self.sub_flags(a, r, false);
                             }
                             _ => {
                                 println!("unimplemented opcode {:02x}", c);
@@ -1357,7 +1350,7 @@ impl Z80 {
             }
             0x44 => { //NEG
                 let a = self.af.hi();
-                let a = self.sub_flags(0, a);
+                let a = self.sub_flags(0, a, false);
                 self.af.set_hi(a);
             }
             0x45 => { //RETN
@@ -1522,7 +1515,7 @@ impl Z80 {
                 set_flag8(&mut f, FLAG_S, flag8(new_a, 0x80));
                 self.af.set_hi(new_a);
                 self.af.set_lo(f);
-                mem.poke(self.hl, x);
+                mem.poke(self.hl, new_x);
             }
             0x68 => { //IN L,(C)
                 let bc = self.bc.as_u16();
@@ -1566,7 +1559,7 @@ impl Z80 {
                 set_flag8(&mut f, FLAG_S, flag8(new_a, 0x80));
                 self.af.set_hi(new_a);
                 self.af.set_lo(f);
-                mem.poke(self.hl, x);
+                mem.poke(self.hl, new_x);
             }
             0x70 => { //IN F,(C)
                 let bc = self.bc.as_u16();

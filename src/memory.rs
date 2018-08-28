@@ -19,8 +19,8 @@ impl Memory {
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let addr = addr.into();
         if addr < 0x4000 {
-            //writing in rom
-            println!("writing to rom {:4x} <- {:2x}", addr, data);
+            //writing to rom
+            //println!("writing to rom {:4x} <- {:2x}", addr, data);
             return;
         }
         //println!("M {:04x} <- {:02x}", addr, data);
