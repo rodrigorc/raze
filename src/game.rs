@@ -1,22 +1,114 @@
 use js::{*, Canvas::*};
 use z80::{Z80, InOut};
 use memory::Memory;
+use tape::Tape;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Pixel(u8,u8,u8,u8);
 
+enum TapePhase {
+    Pause{t: u32}, //500000 T
+    Leader{ pulse: u32, t: u32 }, //8063 or 3223 pulses of 2168 T each
+    FirstSync{ t: u32 }, //667 T
+    SecondSync{ t: u32 }, //735 T
+    Data{ pos: u32, bit: u8, t: u32 }, //2 * 855 T or 1710 T
+}
+
+struct TapePos {
+    block: u32,
+    phase: TapePhase,
+}
+
 struct IO {
     keys: [[bool; 5]; 8],
     frame_counter: u32,
+    time: u32,
+    tape: Option<(Tape, TapePos)>,
+    last_mic: bool,
+    last_mic_time: u32,
+    last_border: u8,
 }
 
-pub struct Game {
-    memory: Memory,
-    z80: Z80,
-    io: IO,
-    image: Vec<Pixel>,
+impl IO {
+    fn add_time(&mut self, tstates: u32) {
+        self.time += tstates;
+        self.last_mic_time += tstates;
+    }
 }
+
+fn play_tape(d: u32, tape: &Tape, pos: TapePos) -> Option<(bool, TapePos)> {
+    let mic;
+    let TapePos{ mut block, phase } = pos;
+    if (block as usize) >= tape.data.len() {
+        return None;
+    }
+    let next = match phase {
+        TapePhase::Pause{t} => {
+            mic = false;
+            if t < 500000 {
+                TapePhase::Pause{ t: t + d }
+            } else {
+                log!("leader");
+                TapePhase::Leader{ pulse: 0, t: 0 }
+            }
+        }
+        TapePhase::Leader{pulse, t} => {
+            mic = pulse % 2 != 0;
+            if t < 2168 {
+                TapePhase::Leader{ pulse, t: t + d }
+            } else if pulse < 3223 {
+                TapePhase::Leader{ pulse: pulse + 1, t: 0 }
+            } else {
+                log!("firstsync");
+                TapePhase::FirstSync{ t: 0 }
+            }
+        }
+        TapePhase::FirstSync{t} => {
+            mic = false;
+            if t < 667 {
+                TapePhase::FirstSync{ t: t + d }
+            } else {
+                log!("secondsync");
+                TapePhase::SecondSync{ t: 0 }
+            }
+        }
+        TapePhase::SecondSync{t} => {
+            mic = true;
+            if t < 735 {
+                TapePhase::SecondSync{ t: t + d }
+            } else {
+                log!("data");
+                TapePhase::Data{ pos: 0, bit: 0, t: 0 }
+            }
+        }
+        TapePhase::Data{pos, bit, t } => {
+            let byte = tape.data[block as usize][pos as usize];
+            let v = byte & (0x80 >> bit) != 0;
+            let len = if v { 1710 } else { 855 };
+            if t < len {
+                mic = false;
+                TapePhase::Data{ pos, bit, t: t + d }
+            } else {
+                mic = true;
+                if t < 2 * len {
+                    TapePhase::Data{ pos, bit, t: t + d }
+                } else if bit < 8 - 1 {
+                    TapePhase::Data{ pos, bit: bit + 1, t: 0 }
+                } else if (pos as usize) < tape.data[block as usize].len() - 1 {
+                    TapePhase::Data{ pos: pos + 1, bit: 0, t: 0 }
+                } else if (block as usize) < tape.data.len() {
+                    block += 1;
+                    TapePhase::Pause{ t: 0 }
+                } else {
+                    return None;
+                }
+            }
+        }
+    };
+    Some((mic, TapePos{ block, phase: next }))
+}
+
 
 impl InOut for IO {
     fn do_in(&mut self, port: u16) -> u8 {
@@ -34,24 +126,56 @@ impl InOut for IO {
                     }
                 }
             }
-            if self.frame_counter % 200 < 100 {
-                r &= 0b1011_1111; //cassette
+
+            if let Some((tape, pos)) = self.tape.take() {
+                let delta = self.time;
+                self.time = 0;
+                let mic = if let Some((mic, next)) = play_tape(delta, &tape, pos) {
+                    self.tape = Some((tape, next));
+                    if self.last_mic != mic {
+                        //log!("MIC {} {}", self.last_mic_time, mic as u8);
+                        self.last_mic = mic;
+                        self.last_mic_time = 0;
+                    }
+                    mic
+                } else {
+                    false
+                };
+                if !mic {
+                    r &= 0b1011_1111;
+                }
             }
         }
         //log!("IN {:04x}, {:02x}", port, r);
         r
     }
     fn do_out(&mut self, port: u16, value: u8) {
-        log!("OUT {:04x}, {:02x}", port, value);
+        //log!("OUT {:04x}, {:02x}", port, value);
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         //ULA IO port
         if lo & 1 == 0 {
-            let c = value & 7;
-            Bg.fillStyle(["#000", "#00a", "#a00", "#a0a", "#0a0", "#0aa", "#aa0", "#aaa"][c as usize]);
-            Bg.fillRect(0.0, 0.0, 800.0, 600.0);
+            let border = value & 7;
+            if self.last_border != border {
+                self.last_border = border;
+                //log!("BORDER {}", border);
+                Bg.fillStyle(["#000", "#00a", "#a00", "#a0a", "#0a0", "#0aa", "#aa0", "#aaa"][border as usize]);
+                Bg.fillRect(0.0, 0.0, 800.0, 600.0);
+            }
+            let ear = value & 0x04 != 0;
+            let delta = self.time;
+            self.time = 0;
+            //log!("EAR {} {}", delta, ear as u8);
+            //log!("OUT {:04x}, {:02x}", port, value);
         }
     }
+}
+
+pub struct Game {
+    memory: Memory,
+    z80: Z80,
+    io: IO,
+    image: Vec<Pixel>,
 }
 
 fn write_screen(inv: bool, data: &[u8], ps: &mut [Pixel]) {
@@ -107,22 +231,28 @@ impl Game {
         let mut z80 = Z80::new();
         let game = Game{
             memory, z80,
-            io: IO { keys: Default::default(), frame_counter: 0 },
+            io: IO { keys: Default::default(), frame_counter: 0, time: 0, tape: None, last_mic: false, last_mic_time: 0, last_border: 0xff },
             image: vec![Pixel(0,0,0,0xff); 256 * 192],
         };
         game.into()
     }
     pub fn draw_frame(&mut self) {
         //log!("Draw!");
-        self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
-        const NUM_OPS : i32 = 10_000;
-        for _ in 0..NUM_OPS {
-            /*if self.io.keys[0][0] {
-                self.z80.dump_regs();
-            }*/
-            self.z80.exec(&mut self.memory, &mut self.io);
+
+        let n = if self.io.tape.is_some() { 50 } else { 1 };
+
+        for _ in 0..n {
+            self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
+            const NUM_OPS : i32 = 10_000;
+            for _ in 0..NUM_OPS {
+                /*if self.io.keys[0][0] {
+                  self.z80.dump_regs();
+                  }*/
+                let t = self.z80.exec(&mut self.memory, &mut self.io);
+                self.io.add_time(t);
+            }
+            self.z80.interrupt(&mut self.memory);
         }
-        self.z80.interrupt(&mut self.memory);
         let screen = self.memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
         write_screen(self.io.frame_counter % 32 < 16, screen, &mut self.image);
         Fg.putImageData(256, 192, &self.image);
@@ -147,6 +277,15 @@ impl Game {
             let r = (key >> 4) & 0x07;
             self.io.keys[r][k] = true;
             key >>= 8;
+        }
+    }
+    pub fn load_file(&mut self, data: Vec<u8>) {
+        match Tape::new(data) {
+            Ok(t) => {
+                self.io.time = 0;
+                self.io.tape = Some((t, TapePos { block: 0, phase: TapePhase::Pause { t: 0 } }));
+            }
+            Err(e) => alert!("{}", e),
         }
     }
 }

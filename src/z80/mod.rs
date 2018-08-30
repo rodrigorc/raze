@@ -347,7 +347,8 @@ impl Z80 {
         self.af.set_lo(f);
         r
     }
-    pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
+    //Returns the number of T-states used
+    pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) -> u32 {
         let c = match self.next_op {
             NextOp::Fetch => self.fetch(mem),
             NextOp::Halt => 0x00, //NOP
@@ -1166,6 +1167,7 @@ impl Z80 {
                 }
             },
         }
+        6
     }
     pub fn exec_cb(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let addr = self.hlx_addr(mem);

@@ -66,6 +66,9 @@ function onDocumentLoad() {
             window.addEventListener('keyup', ev => onKeyUp(ev))
             window.requestAnimationFrame(renderFrame);
         });
+
+    document.getElementById('files').addEventListener('change', handleFileSelect, false);
+
 }
 
 function renderFrame(time) {
@@ -205,6 +208,21 @@ function getKeyCode(ev) {
     default:
         return null;
     }
+}
+
+function handleFileSelect(evt) {
+    var f = evt.target.files[0];
+    console.log("reading " + f.name);
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        let data = this.result;
+        console.log("data " + data.byteLength);
+        var ptr = Module.exports.wasm_alloc(data.byteLength);
+        var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
+        d.set(new Uint8Array(data));
+        Module.exports.wasm_load_file(Module.game, ptr, data.byteLength);
+    }
+    var data = reader.readAsArrayBuffer(f);
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);

@@ -112,9 +112,24 @@ pub extern "C" fn wasm_main() -> *mut Game {
     Box::into_raw(game)
 }
 #[no_mangle]
+pub extern "C" fn wasm_alloc(size: usize) -> *mut u8 {
+    use std::mem;
+    let mut v = Vec::with_capacity(size);
+    let ptr = v.as_mut_ptr();
+    mem::forget(v);
+    ptr
+}
+#[no_mangle]
 pub extern "C" fn wasm_draw_frame(game: *mut Game) {
     let game = unsafe { &mut *game };
     game.draw_frame();
+}
+#[no_mangle]
+pub extern "C" fn wasm_load_file(game: *mut Game, ptr: *mut u8, size: usize) {
+    let (game, data) = unsafe {
+        (&mut *game, Vec::from_raw_parts(ptr, size, size))
+    };
+    game.load_file(data);
 }
 #[no_mangle]
 pub extern "C" fn wasm_mouse_move(game: *mut Game, x: f32, y: f32) {
