@@ -1633,6 +1633,27 @@ impl Z80 {
                     self.pc -= 2;
                 }
             }
+            0xb1 => { //CPIR
+                let hl = self.hl;
+                let x = mem.peek(hl);
+                let a = self.af.hi();
+                let mut f = self.af.lo();
+
+                self.hl += 1;
+                self.bc -= 1;
+
+                let r = a.wrapping_sub(x);
+                set_flag8(&mut f, FLAG_Z, r == 0);
+                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
+                set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
+                set_flag8(&mut f, FLAG_N, true);
+                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
+                self.af.set_lo(f);
+
+                if self.bc.as_u16() != 0 && r != 0 {
+                    self.pc -= 2;
+                }
+            }
             0xb8 => { //LDDR
                 let hl = self.hl;
                 let de = self.de;
@@ -1650,6 +1671,27 @@ impl Z80 {
                 self.af.set_lo(f);
 
                 if self.bc.as_u16() != 0 {
+                    self.pc -= 2;
+                }
+            }
+            0xb9 => { //CPDR
+                let hl = self.hl;
+                let x = mem.peek(hl);
+                let a = self.af.hi();
+                let mut f = self.af.lo();
+
+                self.hl -= 1;
+                self.bc -= 1;
+
+                let r = a.wrapping_sub(x);
+                set_flag8(&mut f, FLAG_Z, r == 0);
+                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
+                set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
+                set_flag8(&mut f, FLAG_N, true);
+                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
+                self.af.set_lo(f);
+
+                if self.bc.as_u16() != 0 && r != 0 {
                     self.pc -= 2;
                 }
             }
