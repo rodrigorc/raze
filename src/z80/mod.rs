@@ -347,7 +347,133 @@ impl Z80 {
         self.af.set_lo(f);
         r
     }
-    //Returns the number of T-states used
+    fn ldi(&mut self, mem: &mut Memory) {
+        let hl = self.hl;
+        let de = self.de;
+        let x = mem.peek(hl);
+        mem.poke(de, x);
+
+        self.hl += 1;
+        self.de += 1;
+        self.bc -= 1;
+
+        let mut f = self.af.lo();
+        set_flag8(&mut f, FLAG_N, false);
+        set_flag8(&mut f, FLAG_H, false);
+        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
+        self.af.set_lo(f);
+    }
+    fn ldd(&mut self, mem: &mut Memory) {
+        let hl = self.hl;
+        let de = self.de;
+        let x = mem.peek(hl);
+        mem.poke(de, x);
+
+        self.hl -= 1;
+        self.de -= 1;
+        self.bc -= 1;
+
+        let mut f = self.af.lo();
+        set_flag8(&mut f, FLAG_N, false);
+        set_flag8(&mut f, FLAG_H, false);
+        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
+        self.af.set_lo(f);
+
+    }
+    fn cpi(&mut self, mem: &mut Memory) -> u8 {
+        let hl = self.hl;
+        let x = mem.peek(hl);
+        let a = self.af.hi();
+        let mut f = self.af.lo();
+
+        self.hl += 1;
+        self.bc -= 1;
+
+        let r = a.wrapping_sub(x);
+        set_flag8(&mut f, FLAG_Z, r == 0);
+        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
+        set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
+        set_flag8(&mut f, FLAG_N, true);
+        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
+        self.af.set_lo(f);
+        r
+    }
+    fn cpd(&mut self, mem: &mut Memory) -> u8{
+        let hl = self.hl;
+        let x = mem.peek(hl);
+        let a = self.af.hi();
+        let mut f = self.af.lo();
+
+        self.hl -= 1;
+        self.bc -= 1;
+
+        let r = a.wrapping_sub(x);
+        set_flag8(&mut f, FLAG_Z, r == 0);
+        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
+        set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
+        set_flag8(&mut f, FLAG_N, true);
+        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
+        self.af.set_lo(f);
+        r
+    }
+    fn daa(&mut self) {
+        let a = self.af.hi();
+        let mut f = self.af.lo();
+        const O : u8 = 0;
+        const N : u8 = FLAG_N;
+        const C : u8 = FLAG_C;
+        const H : u8 = FLAG_H;
+        const CH : u8 = FLAG_C | FLAG_H;
+        const NH : u8 = FLAG_N | FLAG_H;
+        const NC : u8 = FLAG_N | FLAG_C;
+        const NCH : u8 = FLAG_N | FLAG_C | FLAG_H;
+        let (plus_a, new_c, new_h) =
+            match (f & (FLAG_N | FLAG_C | FLAG_H), a >> 4, a & 0x0f) {
+                (O, 0x0..=0x9, 0x0..=0x9) => (0x00, false, false),
+                (O, 0x0..=0x8, 0xa..=0xf) => (0x06, false, true),
+                (O, _, 0x0..=0x9) => (0x60, true, false),
+                (O, _, 0xa..=0xf) => (0x66, true, true),
+
+                (H,  0x0..=0x9, 0x0..=0x9) => (0x06, false, false),
+                (H,  0x0..=0x8, 0xa..=0xf) => (0x06, false, true),
+                (H,  _, 0x0..=0x9) => (0x66, true, false),
+                (H,  _, 0xa..=0xf) => (0x66, true, true),
+
+                (C, _, 0x0..=0x9) => (0x60, true, false),
+                (C, _, 0xa..=0xf) => (0x66, true, true),
+
+                (CH,  _, 0x0..=0x9) => (0x66, true, false),
+                (CH,  _, 0xa..=0xf) => (0x66, true, true),
+
+                (N, 0x0..=0x9, 0x0..=0x9) => (0x00, false, false),
+                (N, 0x0..=0x8, 0xa..=0xf) => (0xfa, false, false),
+                (N, _, 0x0..=0x9) => (0xa0, true, false),
+                (N, _, 0xa..=0xf) => (0x9a, true, false),
+
+                (NH,  0x0..=0x9, 0x0..=0x5) => (0xfa, false, true),
+                (NH,  _, 0x0..=0x5) => (0x9a, true, true),
+                (NH,  0x0..=0x8, 0x6..=0xf) => (0xfa, false, false),
+                (NH,  0xa..=0xf, 0x6..=0xf) => (0x9a, true, false),
+                (NH,  0x9..=0x9, 0x6..=0x9) => (0xfa, false, false),
+                (NH,  0x9..=0x9, 0xa..=0xf) => (0x9a, true, false),
+
+                (NC, _, 0x0..=0x9) => (0xa0, true, false),
+                (NC, _, 0xa..=0xf) => (0x9a, true, false),
+
+                (NCH,  _, 0x0..=0x5) => (0x9a, true, true),
+                (NCH,  _, 0x6..=0xf) => (0x9a, true, false),
+
+                _ => unreachable!()
+            };
+        let a = a.wrapping_add(plus_a);
+        set_flag8(&mut f, FLAG_C, new_c);
+        set_flag8(&mut f, FLAG_H, new_h);
+        set_flag8(&mut f, FLAG_PV, parity(a));
+        set_flag8(&mut f, FLAG_Z, a == 0);
+        set_flag8(&mut f, FLAG_S, flag8(a, 0x80));
+        self.af.set_hi(a);
+        self.af.set_lo(f);
+    }
     pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) -> u32 {
         let c = match self.next_op {
             NextOp::Fetch => self.fetch(mem),
@@ -590,36 +716,7 @@ impl Z80 {
                 self.hlx().set_hi(n);
             }
             0x27 => { //DAA
-                let a = self.af.hi();
-                let mut f = self.af.lo();
-                let n = flag8(f, FLAG_N);
-                let c = flag8(f, FLAG_C);
-                let h = flag8(f, FLAG_H);
-                let (plus_a, new_c, new_h) = match (n, c, a >> 4, h, a & 0x0f) {
-                    (false, false, 0x0..=0x9, false, 0x0..=0x9) => (0x00, false, false),
-                    (false, false, 0x0..=0x8, false, 0xa..=0xf) => (0x06, false, true),
-                    (false, false, 0x0..=0x9, true,  0x0..=0x3) => (0x06, false, true),
-                    (false, false, 0xa..=0xf, false, 0x0..=0x9) => (0x60, true, false),
-                    (false, false, 0x9..=0xf, false, 0xa..=0xf) => (0x66, true, true),
-                    (false, false, 0xa..=0xf, true,  0x0..=0x3) => (0x66, true, true),
-                    (false, true,  0x0..=0x2, false, 0x0..=0x9) => (0x60, true, false),
-                    (false, true,  0x0..=0x2, false, 0xa..=0xf) => (0x66, true, true),
-                    (false, true,  0x0..=0x3, true,  0x0..=0x3) => (0x66, true, true),
-
-                    (true,  false, 0x0..=0x9, false, 0x0..=0x9) => (0x00, false, false),
-                    (true,  false, 0x0..=0x8, true,  0x6..=0xf) => (0xfa, false, true),
-                    (true,  true,  0x7..=0xf, false, 0x0..=0x9) => (0xa0, true, false),
-                    (true,  true,  0x6..=0xf, true,  0x6..=0xf) => (0x9a, true, true),
-                    _ => unreachable!(),
-                };
-                let a = a.wrapping_add(plus_a);
-                set_flag8(&mut f, FLAG_C, new_c);
-                set_flag8(&mut f, FLAG_H, new_h);
-                set_flag8(&mut f, FLAG_PV, parity(a));
-                set_flag8(&mut f, FLAG_Z, a == 0);
-                set_flag8(&mut f, FLAG_S, flag8(a, 0x80));
-                self.af.set_hi(a);
-                self.af.set_lo(f);
+                self.daa();
             }
             0x28 => { //JR Z,d
                 let d = self.fetch(mem);
@@ -1615,84 +1712,38 @@ impl Z80 {
                 let addr = self.fetch_u16(mem);
                 self.sp.set(mem.peek_u16(addr));
             }
+            0xa0 => { //LDI
+                self.ldi(mem);
+            }
+            0xa1 => { //CPI
+                self.cpi(mem);
+            }
+            0xa8 => { //LDD
+                self.ldd(mem);
+            }
+            0xa9 => { //CPD
+                self.cpd(mem);
+            }
             0xb0 => { //LDIR
-                let hl = self.hl;
-                let de = self.de;
-                let x = mem.peek(hl);
-                mem.poke(de, x);
-
-                self.hl += 1;
-                self.de += 1;
-                self.bc -= 1;
-
-                let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-                self.af.set_lo(f);
-
+                self.ldi(mem);
                 if self.bc.as_u16() != 0 {
                     self.pc -= 2;
                 }
             }
             0xb1 => { //CPIR
-                let hl = self.hl;
-                let x = mem.peek(hl);
-                let a = self.af.hi();
-                let mut f = self.af.lo();
-
-                self.hl += 1;
-                self.bc -= 1;
-
-                let r = a.wrapping_sub(x);
-                set_flag8(&mut f, FLAG_Z, r == 0);
-                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-                set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
-                set_flag8(&mut f, FLAG_N, true);
-                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-                self.af.set_lo(f);
-
+                let r = self.cpi(mem);
                 if self.bc.as_u16() != 0 && r != 0 {
                     self.pc -= 2;
                 }
             }
             0xb8 => { //LDDR
-                let hl = self.hl;
-                let de = self.de;
-                let x = mem.peek(hl);
-                mem.poke(de, x);
-
-                self.hl -= 1;
-                self.de -= 1;
-                self.bc -= 1;
-
-                let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-                self.af.set_lo(f);
-
+                self.ldd(mem);
                 if self.bc.as_u16() != 0 {
                     self.pc -= 2;
                 }
             }
             0xb9 => { //CPDR
-                let hl = self.hl;
-                let x = mem.peek(hl);
-                let a = self.af.hi();
-                let mut f = self.af.lo();
-
-                self.hl -= 1;
-                self.bc -= 1;
-
-                let r = a.wrapping_sub(x);
-                set_flag8(&mut f, FLAG_Z, r == 0);
-                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-                set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
-                set_flag8(&mut f, FLAG_N, true);
-                set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-                self.af.set_lo(f);
-
+                let r = self.cpd(mem);
                 if self.bc.as_u16() != 0 && r != 0 {
                     self.pc -= 2;
                 }
