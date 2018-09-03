@@ -233,11 +233,11 @@ impl Z80 {
             }
         }
     }
-    fn sub_flags(&mut self, a: u8, mut b: u8, with_carry: bool) -> u8 {
-        let r = a.wrapping_sub(b);
+    fn sub_flags(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
+        let mut r = a.wrapping_sub(b);
         let mut f = self.af.lo();
         if with_carry && flag8(f, FLAG_C) {
-            b = b.wrapping_add(1);
+            r = r.wrapping_sub(1);
         }
         set_flag8(&mut f, FLAG_N, true);
         set_flag8(&mut f, FLAG_C, carry8(r, b, a));
