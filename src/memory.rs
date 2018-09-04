@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::fs::File;
 use std::path::Path;
 
@@ -7,7 +7,11 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new_from_file(rom: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn new()-> Self {
+        let data = vec![0; 0x10000];
+        Memory{ data }
+    }
+    pub fn new_rom(rom: impl AsRef<Path>) -> io::Result<Self> {
         let mut data = vec![0; 0x10000];
         let mut f_rom = File::open(&rom)?;
         f_rom.read_exact(&mut data[0..0x4000])?;
@@ -45,5 +49,13 @@ impl Memory {
     }
     pub fn slice(&self, addr: u16, end: u16) -> &[u8] {
         &self.data[addr as usize..end as usize]
+    }
+    pub fn save(&self, mut w: impl Write) -> io::Result<()> {
+        w.write_all(&self.data)?;
+        Ok(())
+    }
+    pub fn load(&mut self, mut r: impl Read) -> io::Result<()> {
+        r.read_exact(&mut self.data)?;
+        Ok(())
     }
 }
