@@ -242,7 +242,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_N, true);
         set_flag8(&mut f, FLAG_C, carry8(r, b, a));
         set_flag8(&mut f, FLAG_PV,
-                 (flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80)));
+                 flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
         set_flag8(&mut f, FLAG_H, half_carry8(r, b, a));
@@ -271,7 +271,7 @@ impl Z80 {
         set_flag8(&mut f, FLAG_N, false);
         set_flag8(&mut f, FLAG_C, carry8(a, b, r));
         set_flag8(&mut f, FLAG_PV,
-                 (flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80)));
+                 flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80));
         set_flag8(&mut f, FLAG_Z, r == 0);
         set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
         set_flag8(&mut f, FLAG_H, half_carry8(a, b, r));
@@ -490,8 +490,12 @@ impl Z80 {
                         0xff //RST 38
                     }
                     InterruptMode::IM2 => {
-                        log!("IM2 interrupt!");
-                        0x00 //TODO
+                        let v = (self.ir.hi() as u16) << 8; //assume 0x00 in the data bus
+                        let v = mem.peek_u16(v);
+                        let pc = self.pc;
+                        self.push(mem, pc);
+                        self.pc.set(v);
+                        return 0;
                     }
                 }
             }
