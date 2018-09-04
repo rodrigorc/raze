@@ -1,4 +1,5 @@
 use std::mem::swap;
+use std::io::{self, Read, Write};
 
 mod r16;
 
@@ -77,15 +78,17 @@ fn half_carry16(a: u16, b: u16, c: u16) -> bool {
     (mc && ma && mb) || (!mc && (ma || mb))
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum InterruptMode {
     IM0, IM1, IM2,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum XYPrefix {
     None, IX, IY,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum NextOp {
     Fetch,
     Interrupt,
@@ -131,6 +134,110 @@ impl Z80 {
                  self.pc.as_u16(),
                  self.af.as_u16() & 0xffd7,
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
+    }
+    #[cfg(feature="dump_ops")]
+    pub fn dump_add(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                self.af.set_lo(0);
+                let a2 = self.add_flags(a, r, false);
+                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.af.lo() & 0xd7);
+            }
+        }
+    }
+    #[cfg(feature="dump_ops")]
+    pub fn dump_adc(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                for f in 0..=0xff {
+                    self.af.set_lo(f);
+                    let a2 = self.add_flags(a, r, true);
+                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.af.lo() & 0xd7);
+                }
+            }
+        }
+    }
+    #[cfg(feature="dump_ops")]
+    pub fn dump_sub(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                self.af.set_lo(0);
+                let a2 = self.sub_flags(a, r, false);
+                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.af.lo() & 0xd7);
+            }
+        }
+    }
+    #[cfg(feature="dump_ops")]
+    pub fn dump_sbc(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                for f in 0..=0xff {
+                    self.af.set_lo(f);
+                    let a2 = self.sub_flags(a, r, true);
+                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.af.lo() & 0xd7);
+                }
+            }
+        }
+    }
+    #[cfg(feature="dump_ops")]
+    pub fn dump_daa(&mut self) {
+        for f in 0..=0xff {
+            for a in 0..=0xff {
+                self.af.set_hi(a);
+                self.af.set_lo(f);
+                self.daa();
+                println!("{:02x} {:02x} {:02x} {:02x}", a, f, self.af.hi(), self.af.lo() & 0xd7);
+            }
+        }
+    }
+    pub fn save(&self, mut w: impl Write) -> io::Result<()> {
+        let (next_op, iff1) = {
+            match (self.next_op, self.iff1) {
+                (NextOp::Interrupt, _) => (NextOp::Fetch, true),
+                x => x,
+            }
+        };
+        let data = [
+            self.pc.lo(), self.pc.hi(),
+            self.sp.lo(), self.sp.hi(),
+            self.af.lo(), self.af.hi(),
+            self.af_.lo(), self.af_.hi(),
+            self.bc.lo(), self.bc.hi(),
+            self.bc_.lo(), self.bc_.hi(),
+            self.de.lo(), self.de.hi(),
+            self.de_.lo(), self.de_.hi(),
+            self.hl.lo(), self.hl.hi(),
+            self.hl_.lo(), self.hl_.hi(),
+            self.ix.lo(), self.ix.hi(),
+            self.iy.lo(), self.iy.hi(),
+            self.ir.lo(), self.ir.hi(),
+            iff1 as u8,
+            self.im as u8,
+            next_op as u8,
+        ];
+        w.write_all(&data)?;
+        Ok(())
+    }
+    pub fn load(&mut self, mut r: impl Read) -> io::Result<()> {
+        let mut data = [0; 2 * 13 + 3];
+        r.read_exact(&mut data)?;
+        self.pc.set_lo(data[0]); self.pc.set_hi(data[1]);
+        self.sp.set_lo(data[2]); self.sp.set_hi(data[3]);
+        self.af.set_lo(data[4]); self.af.set_hi(data[5]);
+        self.af_.set_lo(data[6]); self.af_.set_hi(data[7]);
+        self.bc.set_lo(data[8]); self.bc.set_hi(data[9]);
+        self.bc_.set_lo(data[10]); self.bc_.set_hi(data[11]);
+        self.de.set_lo(data[12]); self.de.set_hi(data[13]);
+        self.de_.set_lo(data[14]); self.de_.set_hi(data[15]);
+        self.hl.set_lo(data[16]); self.hl.set_hi(data[17]);
+        self.hl_.set_lo(data[18]); self.hl_.set_hi(data[19]);
+        self.ix.set_lo(data[20]); self.ix.set_hi(data[21]);
+        self.iy.set_lo(data[22]); self.iy.set_hi(data[23]);
+        self.ir.set_lo(data[24]); self.ir.set_hi(data[25]);
+        self.iff1 = data[26] != 0;
+        self.im = match data[27] { 0 => InterruptMode::IM0, 1 => InterruptMode::IM1, 2 => InterruptMode::IM2, _ => panic!("invalid IM") };
+        self.next_op = match data[28] { 0=> NextOp::Fetch, 1 => NextOp::Fetch, 2 => NextOp::Halt, _ => panic!("invalid NextOp") };
+        Ok(())
     }
     pub fn interrupt(&mut self, mem: &mut Memory) {
         if !self.iff1 {

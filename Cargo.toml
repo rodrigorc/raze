@@ -7,4 +7,17 @@ authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
 crate-type=["cdylib"]
 
 [dependencies]
-#png = "*"
+png = { version = "*", optional = true }
+
+[features]
+dump_ops = []
+
+[[bin]]
+name = "console"
+path = "src/main.rs"
+required-features = ["png"]
+
+[[bin]]
+name = "dump_op"
+path = "src/dump_op.rs"
+required-features = ["dump_ops"]
