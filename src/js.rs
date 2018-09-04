@@ -37,13 +37,12 @@ pub fn log(s: impl AsRef<str>)
 
 macro_rules! log {
     ( $($e:tt)* ) => {
-        ::js::log(format!($($e)*))
+        $crate::js::log(format!($($e)*))
     };
 }
-#[macro_export]
 macro_rules! alert {
     ( $($e:tt)* ) => {
-        ::js::alert(format!($($e)*))
+        $crate::js::alert(format!($($e)*))
     };
 }
 
