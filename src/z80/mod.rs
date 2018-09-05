@@ -296,7 +296,7 @@ impl Z80 {
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
-    fn reg_by_num2(&mut self, r: u8, mem: &Memory, addr: u16) -> u8 {
+    fn reg_by_num_no_pre(&mut self, r: u8, mem: &Memory) -> u8 {
         match r {
             0 => self.bc.hi(),
             1 => self.bc.lo(),
@@ -308,7 +308,7 @@ impl Z80 {
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
-    fn set_reg_by_num2(&mut self, r: u8, mem: &mut Memory, b: u8, addr: u16) {
+    fn set_reg_by_num_no_pre(&mut self, r: u8, mem: &mut Memory, b: u8) {
         match r {
             0 => self.bc.set_hi(b),
             1 => self.bc.set_lo(b),
@@ -1297,17 +1297,17 @@ impl Z80 {
                 let rd = (c >> 3) & 0x07;
                 match c & 0b1100_0000 {
                     0x40 => { //LD r,r
-                        let addr = self.hlx_addr(mem);
                         if rs == 6 {
+                            let addr = self.hlx_addr(mem);
                             let r = self.reg_by_num(rs, mem, addr);
-                            self.set_reg_by_num2(rd, mem, r, addr);
+                            self.set_reg_by_num_no_pre(rd, mem, r);
                         } else if rd == 6 {
-                            let r = self.reg_by_num2(rs, mem, addr);
+                            let addr = self.hlx_addr(mem);
+                            let r = self.reg_by_num_no_pre(rs, mem);
                             self.set_reg_by_num(rd, mem, r, addr);
-                        }
-                        else {
-                            let r = self.reg_by_num(rs, mem, addr);
-                            self.set_reg_by_num(rd, mem, r, addr);
+                        } else {
+                            let r = self.reg_by_num(rs, mem, 0);
+                            self.set_reg_by_num(rd, mem, r, 0);
                         }
                     }
                     _ => {
@@ -1802,6 +1802,7 @@ impl Z80 {
                 set_flag8(&mut f, FLAG_PV, parity(b));
                 set_flag8(&mut f, FLAG_Z, b == 0);
                 set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                set_flag8(&mut f, FLAG_H, false);
                 //FLAG_H
                 self.af.set_hi(b);
                 self.af.set_lo(f);
