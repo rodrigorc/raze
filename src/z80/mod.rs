@@ -104,7 +104,9 @@ pub struct Z80 {
     hl: R16, hl_: R16,
     ix: R16,
     iy: R16,
-    ir: R16,
+    i: u8,
+    r_: u8, //bit 7 should not be used, use r7 instead
+    r7: bool,
     iff1: bool,
     im: InterruptMode,
     prefix: XYPrefix,
@@ -122,7 +124,9 @@ impl Z80 {
             hl: R16::default(), hl_: R16::default(),
             ix: R16::default(),
             iy: R16::default(),
-            ir: R16::default(),
+            i: 0,
+            r_: 0,
+            r7: false,
             iff1: false,
             im: InterruptMode::IM0,
             prefix: XYPrefix::None,
@@ -130,10 +134,11 @@ impl Z80 {
         }
     }
     pub fn dump_regs(&self) {
-        log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}",
+        log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}",
                  self.pc.as_u16(),
                  self.af.as_u16() & 0xffd7,
-                 self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16());
+                 self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16(),
+                 self.i, self.r());
     }
     #[cfg(feature="dump_ops")]
     pub fn dump_add(&mut self) {
@@ -210,7 +215,7 @@ impl Z80 {
             self.hl_.lo(), self.hl_.hi(),
             self.ix.lo(), self.ix.hi(),
             self.iy.lo(), self.iy.hi(),
-            self.ir.lo(), self.ir.hi(),
+            self.r(), self.i,
             iff1 as u8,
             self.im as u8,
             next_op as u8,
@@ -233,7 +238,8 @@ impl Z80 {
         self.hl_.set_lo(data[18]); self.hl_.set_hi(data[19]);
         self.ix.set_lo(data[20]); self.ix.set_hi(data[21]);
         self.iy.set_lo(data[22]); self.iy.set_hi(data[23]);
-        self.ir.set_lo(data[24]); self.ir.set_hi(data[25]);
+        self.set_r(data[24]);
+        self.i = data[25];
         self.iff1 = data[26] != 0;
         self.im = match data[27] { 0 => InterruptMode::IM0, 1 => InterruptMode::IM1, 2 => InterruptMode::IM2, _ => panic!("invalid IM") };
         self.next_op = match data[28] { 0=> NextOp::Fetch, 1 => NextOp::Fetch, 2 => NextOp::Halt, _ => panic!("invalid NextOp") };
@@ -245,6 +251,18 @@ impl Z80 {
         }
         self.next_op = NextOp::Interrupt;
         self.iff1 = false;
+    }
+    #[inline]
+    fn r(&self) -> u8 {
+        (self.r_ & 0x7f) | if self.r7 { 0x80 } else { 0x00 }
+    }
+    fn set_r(&mut self, r: u8) {
+        self.r_ = r;
+        self.r7 = flag8(r, 0x80);
+    }
+    #[inline]
+    fn inc_r(&mut self) {
+        self.r_ = self.r_.wrapping_add(1);
     }
     fn fetch(&mut self, mem: &Memory) -> u8 {
         let c = mem.peek(self.pc);
@@ -583,9 +601,13 @@ impl Z80 {
     }
     pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) -> u32 {
         let c = match self.next_op {
-            NextOp::Fetch => self.fetch(mem),
+            NextOp::Fetch => {
+                self.inc_r();
+                self.fetch(mem)
+            }
             NextOp::Halt => 0x00, //NOP
             NextOp::Interrupt => {
+                self.inc_r();
                 self.next_op = NextOp::Fetch;
                 match self.im {
                     InterruptMode::IM0 => {
@@ -597,7 +619,7 @@ impl Z80 {
                         0xff //RST 38
                     }
                     InterruptMode::IM2 => {
-                        let v = (self.ir.hi() as u16) << 8; //assume 0x00 in the data bus
+                        let v = (self.i as u16) << 8; //assume 0x00 in the data bus
                         let v = mem.peek_u16(v);
                         let pc = self.pc;
                         self.push(mem, pc);
@@ -610,10 +632,12 @@ impl Z80 {
         let c = match c {
             0xdd => {
                 self.prefix = XYPrefix::IX;
+                self.inc_r();
                 self.fetch(mem)
             }
             0xfd => {
                 self.prefix = XYPrefix::IY;
+                self.inc_r();
                 self.fetch(mem)
             }
             _ => {
@@ -1380,6 +1404,9 @@ impl Z80 {
     pub fn exec_cb(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let addr = self.hlx_addr(mem);
         let c = self.fetch(mem);
+        if self.prefix == XYPrefix::None {
+            self.inc_r();
+        }
         let r = c & 0x07;
         let n = (c >> 3) & 0x07;
         match c & 0b1100_0000 {
@@ -1529,6 +1556,9 @@ impl Z80 {
     }
     pub fn exec_ed(&mut self, mem: &mut Memory, io: &mut dyn InOut) {
         let c = self.fetch(mem);
+        if self.prefix == XYPrefix::None {
+            self.inc_r();
+        }
         match c {
             0x40 => { //IN B,(C)
                 let bc = self.bc.as_u16();
@@ -1573,7 +1603,7 @@ impl Z80 {
                 self.im = InterruptMode::IM0;
             }
             0x47 => { //LD I,A
-                self.ir.set_hi(self.af.hi());
+                self.i = self.af.hi();
             }
             0x48 => { //IN C,(C)
                 let bc = self.bc.as_u16();
@@ -1610,7 +1640,7 @@ impl Z80 {
             }
             0x4f => { //LD R,A
                 let a = self.af.hi();
-                self.ir.set_lo(a);
+                self.set_r(a);
             }
             0x50 => { //IN D,(C)
                 let bc = self.bc.as_u16();
@@ -1645,8 +1675,15 @@ impl Z80 {
                 self.im = InterruptMode::IM1;
             }
             0x57 => { //LD A,I
-                let i = self.ir.hi();
+                let i = self.i;
+                let mut f = self.af.lo();
+                set_flag8(&mut f, FLAG_H, false);
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_PV, self.iff1);
+                set_flag8(&mut f, FLAG_Z, i == 0);
+                set_flag8(&mut f, FLAG_S, flag8(i, 0x80));
                 self.af.set_hi(i);
+                self.af.set_lo(f);
             }
             0x58 => { //IN H,(C)
                 let bc = self.bc.as_u16();
@@ -1681,8 +1718,15 @@ impl Z80 {
                 self.im = InterruptMode::IM2;
             }
             0x5f => { //LD A,R
-                let r = self.ir.lo();
+                let r = self.r();
+                let mut f = self.af.lo();
+                set_flag8(&mut f, FLAG_H, false);
+                set_flag8(&mut f, FLAG_N, false);
+                set_flag8(&mut f, FLAG_PV, self.iff1);
+                set_flag8(&mut f, FLAG_Z, r == 0);
+                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
                 self.af.set_hi(r);
+                self.af.set_lo(f);
             }
             0x60 => { //IN H,(C)
                 let bc = self.bc.as_u16();
