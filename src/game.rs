@@ -159,7 +159,7 @@ impl InOut for IO {
             if self.last_border != border {
                 self.last_border = border;
                 //log!("BORDER {}", border);
-                Bg.fillStyle(["#000", "#00a", "#a00", "#a0a", "#0a0", "#0aa", "#aa0", "#aaa"][border as usize]);
+                Bg.fillStyle(["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"][border as usize]);
                 Bg.fillRect(0.0, 0.0, 800.0, 600.0);
             }
             let ear = value & 0x04 != 0;
@@ -203,7 +203,7 @@ fn write_screen(inv: bool, data: &[u8], ps: &mut [Pixel]) {
             let d = data[orow + x];
             for b in 0..8 {
                 let pix = ((d >> (7-b)) & 1) != 0;
-                let v = if (attr & 0b0100_0000) != 0 { 0xff } else { 0xaa };
+                let v = if (attr & 0b0100_0000) != 0 { 0xff } else { 0xd7 };
                 let blink = inv && (attr & 0b1000_0000) != 0;
 
                 let c = if pix ^ blink {
