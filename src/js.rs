@@ -1,5 +1,5 @@
 use game::Game;
-use std::mem::size_of;
+use std::mem;
 
 #[allow(non_snake_case)]
 mod imports {
@@ -101,7 +101,7 @@ impl Canvas {
         unsafe { imports::lineWidth(self as i32, w) };
     }
     pub fn putImageData<T>(self, w: i32, h: i32, data: &[T]) {
-        unsafe { imports::putImageData(self as i32, w, h, data.as_ptr() as *const u8, data.len() * size_of::<T>()) };
+        unsafe { imports::putImageData(self as i32, w, h, data.as_ptr() as *const u8, data.len() * mem::size_of::<T>()) };
     }
 }
 
@@ -112,7 +112,6 @@ pub extern "C" fn wasm_main() -> *mut Game {
 }
 #[no_mangle]
 pub extern "C" fn wasm_alloc(size: usize) -> *mut u8 {
-    use std::mem;
     let mut v = Vec::with_capacity(size);
     let ptr = v.as_mut_ptr();
     mem::forget(v);
@@ -129,6 +128,14 @@ pub extern "C" fn wasm_load_file(game: *mut Game, ptr: *mut u8, size: usize) {
         (&mut *game, Vec::from_raw_parts(ptr, size, size))
     };
     game.load_file(data);
+}
+#[no_mangle]
+pub extern "C" fn wasm_snapshot(game: *mut Game) -> *const u8 {
+    let game = unsafe { &mut *game };
+    let data = game.snapshot();
+    let ptr = data.as_ptr();
+    mem::forget(data);
+    ptr
 }
 #[no_mangle]
 pub extern "C" fn wasm_mouse_move(game: *mut Game, x: f32, y: f32) {

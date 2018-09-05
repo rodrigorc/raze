@@ -68,11 +68,20 @@ function onDocumentLoad() {
         });
 
     document.getElementById('files').addEventListener('change', handleFileSelect, false);
-
+    document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
 }
 
+var prev_time = 0;
 function renderFrame(time) {
-    Module.exports.wasm_draw_frame(Module.game);
+    var span = time - prev_time;
+    if (span < 20) {
+    } else if (span < 40) {
+        prev_time += 20;
+        Module.exports.wasm_draw_frame(Module.game);
+    } else {
+        prev_time = time;
+        Module.exports.wasm_draw_frame(Module.game);
+    }
     window.requestAnimationFrame(renderFrame);
 }
 
@@ -223,6 +232,17 @@ function handleFileSelect(evt) {
         Module.exports.wasm_load_file(Module.game, ptr, data.byteLength);
     }
     var data = reader.readAsArrayBuffer(f);
+}
+
+function handleSnapshot(evt) {
+    console.log("snapshot");
+    let ptr = Module.exports.wasm_snapshot(Module.game);
+    var data = new Uint8Array(Module.memory.buffer, ptr, 0x10000 + 29);
+    var blob = new Blob([data], {type: "application/octet-stream"});
+    var url = window.URL.createObjectURL(blob);
+    window.open(url);
+    //window.URL.revokeObjectURL(url);
+    //Module.exports.wasm_free_snapshot(ptr);
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);

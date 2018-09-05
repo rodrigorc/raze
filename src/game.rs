@@ -239,11 +239,11 @@ impl Game {
     pub fn draw_frame(&mut self) {
         //log!("Draw!");
 
-        let n = if self.io.tape.is_some() { 50 } else { 1 };
+        let n = if self.io.tape.is_some() { 100 } else { 1 };
 
         for _ in 0..n {
             self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
-            const NUM_OPS : i32 = 10_000;
+            const NUM_OPS : i32 = 5_000;
             for _ in 0..NUM_OPS {
                 /*if self.io.keys[0][0] {
                   self.z80.dump_regs();
@@ -287,6 +287,14 @@ impl Game {
             }
             Err(e) => alert!("{}", e),
         }
+    }
+    pub fn snapshot(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        self.memory.save(&mut data);
+        log!("snap 1 {} bytes", data.len());
+        self.z80.save(&mut data).unwrap();
+        log!("snap 2 {} bytes", data.len());
+        data
     }
 }
 

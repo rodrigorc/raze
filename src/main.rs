@@ -86,7 +86,7 @@ impl InOut for Spectrum {
             0xfe => {
                 match hi {
                     0xdf => {
-                        if 500 < self.x && self.x < 600 {
+                        if 5 < self.x && self.x < 600 {
                             0xfe //P
                         } else {
                             0xff
@@ -149,7 +149,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    const SCROPS : i32 = 10_000;
+    const SCROPS : i32 = 5_000;
     for count in 0 .. 2_000_000 {
         z80.dump_regs();
         z80.exec(&mut memory, &mut spectrum);
