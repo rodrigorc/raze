@@ -29,20 +29,13 @@ fn flag16(f: u16, bit: u16) -> bool {
     (f & bit) != 0
 }
 #[inline]
-fn set_flag8(f: &mut u8, bit: u8, set: bool) {
+fn set_flag8(f: u8, bit: u8, set: bool) -> u8 {
     if set {
-        *f |= bit;
+        f | bit
     } else {
-        *f &= !bit;
+        f & !bit
     }
-}
-#[inline]
-fn set_flag16(f: &mut u16, bit: u16, set: bool) {
-    if set {
-        *f |= bit;
-    } else {
-        *f &= !bit;
-    }
+
 }
 #[inline]
 fn parity(mut b: u8) -> bool {
@@ -105,7 +98,7 @@ pub struct Z80 {
     ix: R16,
     iy: R16,
     i: u8,
-    r_: u8, //bit 7 should not be used, use r7 instead
+    r_: u8, //bit 7 should not be used, use r7 instead, or better yet, r()
     r7: bool,
     iff1: bool,
     im: InterruptMode,
@@ -140,61 +133,6 @@ impl Z80 {
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16(),
                  self.i, self.r());
     }
-    #[cfg(feature="dump_ops")]
-    pub fn dump_add(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                self.af.set_lo(0);
-                let a2 = self.add_flags(a, r, false);
-                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.af.lo() & 0xd7);
-            }
-        }
-    }
-    #[cfg(feature="dump_ops")]
-    pub fn dump_adc(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                for f in 0..=0xff {
-                    self.af.set_lo(f);
-                    let a2 = self.add_flags(a, r, true);
-                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.af.lo() & 0xd7);
-                }
-            }
-        }
-    }
-    #[cfg(feature="dump_ops")]
-    pub fn dump_sub(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                self.af.set_lo(0);
-                let a2 = self.sub_flags(a, r, false);
-                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.af.lo() & 0xd7);
-            }
-        }
-    }
-    #[cfg(feature="dump_ops")]
-    pub fn dump_sbc(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                for f in 0..=0xff {
-                    self.af.set_lo(f);
-                    let a2 = self.sub_flags(a, r, true);
-                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.af.lo() & 0xd7);
-                }
-            }
-        }
-    }
-    #[cfg(feature="dump_ops")]
-    pub fn dump_daa(&mut self) {
-        for f in 0..=0xff {
-            for a in 0..=0xff {
-                self.af.set_hi(a);
-                self.af.set_lo(f);
-                self.daa();
-                println!("{:02x} {:02x} {:02x} {:02x}", a, f, self.af.hi(), self.af.lo() & 0xd7);
-            }
-        }
-    }
     pub fn save(&self, mut w: impl Write) -> io::Result<()> {
         let (next_op, iff1) = {
             match (self.next_op, self.iff1) {
@@ -205,7 +143,7 @@ impl Z80 {
         let data = [
             self.pc.lo(), self.pc.hi(),
             self.sp.lo(), self.sp.hi(),
-            self.af.lo(), self.af.hi(),
+            self.f(), self.a(),
             self.af_.lo(), self.af_.hi(),
             self.bc.lo(), self.bc.hi(),
             self.bc_.lo(), self.bc_.hi(),
@@ -228,7 +166,7 @@ impl Z80 {
         r.read_exact(&mut data)?;
         self.pc.set_lo(data[0]); self.pc.set_hi(data[1]);
         self.sp.set_lo(data[2]); self.sp.set_hi(data[3]);
-        self.af.set_lo(data[4]); self.af.set_hi(data[5]);
+        self.set_f(data[4]); self.set_a(data[5]);
         self.af_.set_lo(data[6]); self.af_.set_hi(data[7]);
         self.bc.set_lo(data[8]); self.bc.set_hi(data[9]);
         self.bc_.set_lo(data[10]); self.bc_.set_hi(data[11]);
@@ -259,6 +197,22 @@ impl Z80 {
     fn set_r(&mut self, r: u8) {
         self.r_ = r;
         self.r7 = flag8(r, 0x80);
+    }
+    #[inline]
+    fn a(&self) -> u8 {
+        self.af.hi()
+    }
+    #[inline]
+    fn set_a(&mut self, a: u8) {
+        self.af.set_hi(a);
+    }
+    #[inline]
+    fn f(&self) -> u8 {
+        self.af.lo()
+    }
+    #[inline]
+    fn set_f(&mut self, f: u8) {
+        self.af.set_lo(f);
     }
     #[inline]
     fn inc_r(&mut self) {
@@ -297,7 +251,7 @@ impl Z80 {
             4 => self.hlx().hi(),
             5 => self.hlx().lo(),
             6 => mem.peek(addr),
-            7 => self.af.hi(),
+            7 => self.a(),
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
@@ -310,7 +264,7 @@ impl Z80 {
             4 => self.hlx().set_hi(b),
             5 => self.hlx().set_lo(b),
             6 => mem.poke(addr, b),
-            7 => self.af.set_hi(b),
+            7 => self.set_a(b),
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
@@ -322,7 +276,7 @@ impl Z80 {
             3 => self.de.lo(),
             4 => self.hl.hi(),
             5 => self.hl.lo(),
-            7 => self.af.hi(),
+            7 => self.a(),
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
@@ -334,7 +288,7 @@ impl Z80 {
             3 => self.de.set_lo(b),
             4 => self.hl.set_hi(b),
             5 => self.hl.set_lo(b),
-            7 => self.af.set_hi(b),
+            7 => self.set_a(b),
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
@@ -360,116 +314,116 @@ impl Z80 {
     }
     fn sub_flags(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
         let mut r = a.wrapping_sub(b);
-        let mut f = self.af.lo();
+        let mut f = self.f();
         if with_carry && flag8(f, FLAG_C) {
             r = r.wrapping_sub(1);
         }
-        set_flag8(&mut f, FLAG_N, true);
-        set_flag8(&mut f, FLAG_C, carry8(r, b, a));
-        set_flag8(&mut f, FLAG_PV,
+        f = set_flag8(f, FLAG_N, true);
+        f = set_flag8(f, FLAG_C, carry8(r, b, a));
+        f = set_flag8(f, FLAG_PV,
                  flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, half_carry8(r, b, a));
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, half_carry8(r, b, a));
+        self.set_f(f);
         r
     }
     fn sub16_flags(&mut self, a: u16, b: u16) -> u16 {
         let r = a.wrapping_sub(b);
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_N, true);
-        set_flag8(&mut f, FLAG_C, carry16(r, b, a));
-        set_flag8(&mut f, FLAG_PV,
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N, true);
+        f = set_flag8(f, FLAG_C, carry16(r, b, a));
+        f = set_flag8(f, FLAG_PV,
                  flag16(a, 0x8000) != flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(r, 0x8000));
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag16(r, 0x8000));
-        set_flag8(&mut f, FLAG_H, half_carry16(r, b, a));
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag16(r, 0x8000));
+        f = set_flag8(f, FLAG_H, half_carry16(r, b, a));
+        self.set_f(f);
         r
     }
     fn add_flags(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
-        let mut f = self.af.lo();
+        let mut f = self.f();
         let mut r = a.wrapping_add(b);
         if with_carry && flag8(f, FLAG_C) {
             r = r.wrapping_add(1);
         }
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_C, carry8(a, b, r));
-        set_flag8(&mut f, FLAG_PV,
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_C, carry8(a, b, r));
+        f = set_flag8(f, FLAG_PV,
                  flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, half_carry8(a, b, r));
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, half_carry8(a, b, r));
+        self.set_f(f);
         r
     }
     fn add16_flags(&mut self, a: u16, b: u16) -> u16 {
         let r = a.wrapping_add(b);
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_C, carry16(a, b, r));
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_C, carry16(a, b, r));
         //No PV, Z, S flags!
-        set_flag8(&mut f, FLAG_H, half_carry16(a, b, r));
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_H, half_carry16(a, b, r));
+        self.set_f(f);
         r
     }
     fn inc_flags(&mut self, a: u8) -> u8 {
         let r = a.wrapping_add(1);
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_PV, r == 0x80);
-        set_flag8(&mut f, FLAG_Z,
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_PV, r == 0x80);
+        f = set_flag8(f, FLAG_Z,
                  r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, (r & 0x0f) == 0x00);
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, (r & 0x0f) == 0x00);
+        self.set_f(f);
         r
     }
     fn dec_flags(&mut self, a: u8) -> u8 {
         let r = a.wrapping_sub(1);
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_N, true);
-        set_flag8(&mut f, FLAG_PV, r == 0x7f);
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, (r & 0x0f) == 0x0f);
-        self.af.set_lo(f);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N, true);
+        f = set_flag8(f, FLAG_PV, r == 0x7f);
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, (r & 0x0f) == 0x0f);
+        self.set_f(f);
         r
     }
     fn and_flags(&mut self, a: u8, b: u8) -> u8 {
         let r = a & b;
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_C, false);
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_PV, parity(r));
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, true);
-        self.af.set_lo(f);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_C, false);
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_PV, parity(r));
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, true);
+        self.set_f(f);
         r
     }
     fn or_flags(&mut self, a: u8, b: u8) -> u8 {
         let r = a | b;
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_C, false);
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_PV, parity(r));
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, false);
-        self.af.set_lo(f);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_C, false);
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_PV, parity(r));
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, false);
+        self.set_f(f);
         r
     }
     fn xor_flags(&mut self, a: u8, b: u8) -> u8 {
         let r = a ^ b;
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_C, false);
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_PV, parity(r));
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, false);
-        self.af.set_lo(f);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_C, false);
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_PV, parity(r));
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, false);
+        self.set_f(f);
         r
     }
     fn ldi(&mut self, mem: &mut Memory) {
@@ -482,11 +436,11 @@ impl Z80 {
         self.de += 1;
         self.bc -= 1;
 
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_H, false);
-        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-        self.af.set_lo(f);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_H, false);
+        f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
+        self.set_f(f);
     }
     fn ldd(&mut self, mem: &mut Memory) {
         let hl = self.hl;
@@ -498,52 +452,52 @@ impl Z80 {
         self.de -= 1;
         self.bc -= 1;
 
-        let mut f = self.af.lo();
-        set_flag8(&mut f, FLAG_N, false);
-        set_flag8(&mut f, FLAG_H, false);
-        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-        self.af.set_lo(f);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_H, false);
+        f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
+        self.set_f(f);
 
     }
     fn cpi(&mut self, mem: &mut Memory) -> u8 {
         let hl = self.hl;
         let x = mem.peek(hl);
-        let a = self.af.hi();
-        let mut f = self.af.lo();
+        let a = self.a();
+        let mut f = self.f();
 
         self.hl += 1;
         self.bc -= 1;
 
         let r = a.wrapping_sub(x);
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
-        set_flag8(&mut f, FLAG_N, true);
-        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, half_carry8(r, x, a));
+        f = set_flag8(f, FLAG_N, true);
+        f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
+        self.set_f(f);
         r
     }
     fn cpd(&mut self, mem: &mut Memory) -> u8{
         let hl = self.hl;
         let x = mem.peek(hl);
-        let a = self.af.hi();
-        let mut f = self.af.lo();
+        let a = self.a();
+        let mut f = self.f();
 
         self.hl -= 1;
         self.bc -= 1;
 
         let r = a.wrapping_sub(x);
-        set_flag8(&mut f, FLAG_Z, r == 0);
-        set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-        set_flag8(&mut f, FLAG_H, half_carry8(r, x, a));
-        set_flag8(&mut f, FLAG_N, true);
-        set_flag8(&mut f, FLAG_PV, self.bc.as_u16() != 0);
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+        f = set_flag8(f, FLAG_H, half_carry8(r, x, a));
+        f = set_flag8(f, FLAG_N, true);
+        f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
+        self.set_f(f);
         r
     }
     fn daa(&mut self) {
-        let a = self.af.hi();
-        let mut f = self.af.lo();
+        let a = self.a();
+        let mut f = self.f();
         const O : u8 = 0;
         const N : u8 = FLAG_N;
         const C : u8 = FLAG_C;
@@ -591,13 +545,13 @@ impl Z80 {
                 _ => unreachable!()
             };
         let a = a.wrapping_add(plus_a);
-        set_flag8(&mut f, FLAG_C, new_c);
-        set_flag8(&mut f, FLAG_H, new_h);
-        set_flag8(&mut f, FLAG_PV, parity(a));
-        set_flag8(&mut f, FLAG_Z, a == 0);
-        set_flag8(&mut f, FLAG_S, flag8(a, 0x80));
-        self.af.set_hi(a);
-        self.af.set_lo(f);
+        f = set_flag8(f, FLAG_C, new_c);
+        f = set_flag8(f, FLAG_H, new_h);
+        f = set_flag8(f, FLAG_PV, parity(a));
+        f = set_flag8(f, FLAG_Z, a == 0);
+        f = set_flag8(f, FLAG_S, flag8(a, 0x80));
+        self.set_a(a);
+        self.set_f(f);
     }
     pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) -> u32 {
         let c = match self.next_op {
@@ -656,7 +610,7 @@ impl Z80 {
                 self.bc.set(d);
             }
             0x02 => { //LD (BC),A
-                let a = self.af.hi();
+                let a = self.a();
                 mem.poke(self.bc, a);
             }
             0x03 => { //INC BC
@@ -677,15 +631,15 @@ impl Z80 {
                 self.bc.set_hi(n);
             }
             0x07 => { //RLCA
-                let mut a = self.af.hi();
-                let mut f = self.af.lo();
+                let mut a = self.a();
+                let mut f = self.f();
                 let b7 = flag8(a, 0x80);
                 a = a.rotate_left(1);
-                set_flag8(&mut f, FLAG_C, b7);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                self.af.set_hi(a);
-                self.af.set_lo(f);
+                f = set_flag8(f, FLAG_C, b7);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_H, false);
+                self.set_a(a);
+                self.set_f(f);
             }
             0x08 => { //EX AF,AF
                 swap(&mut self.af, &mut self.af_);
@@ -698,7 +652,7 @@ impl Z80 {
             }
             0x0a => { //LD A,(BC)
                 let a = mem.peek(self.bc);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0x0b => { //DEC BC
                 self.bc -= 1;
@@ -718,15 +672,15 @@ impl Z80 {
                 self.bc.set_lo(n);
             }
             0x0f => { //RRCA
-                let mut a = self.af.hi();
-                let mut f = self.af.lo();
+                let mut a = self.a();
+                let mut f = self.f();
                 let b0 = flag8(a, 0x01);
                 a = a.rotate_right(1);
-                set_flag8(&mut f, FLAG_C, b0);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                self.af.set_hi(a);
-                self.af.set_lo(f);
+                f = set_flag8(f, FLAG_C, b0);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_H, false);
+                self.set_a(a);
+                self.set_f(f);
             }
             0x10 => { //DJNZ d
                 let d = self.fetch(mem);
@@ -742,7 +696,7 @@ impl Z80 {
                 self.de.set(nn);
             }
             0x12 => { //LD (DE),A
-                let a = self.af.hi();
+                let a = self.a();
                 mem.poke(self.de, a);
             }
             0x13 => { //INC DE
@@ -763,17 +717,17 @@ impl Z80 {
                 self.de.set_hi(n);
             }
             0x17 => { //RLA
-                let mut a = self.af.hi();
-                let mut f = self.af.lo();
+                let mut a = self.a();
+                let mut f = self.f();
                 let b7 = flag8(a, 0x80);
                 let c = flag8(f, FLAG_C);
                 a <<= 1;
-                set_flag8(&mut a, 1, c);
-                set_flag8(&mut f, FLAG_C, b7);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                self.af.set_hi(a);
-                self.af.set_lo(f);
+                a = set_flag8(a, 1, c);
+                f = set_flag8(f, FLAG_C, b7);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_H, false);
+                self.set_a(a);
+                self.set_f(f);
             }
             0x18 => { //JR d
                 let d = self.fetch(mem);
@@ -787,7 +741,7 @@ impl Z80 {
             }
             0x1a => { //LD A,(DE)
                 let a = mem.peek(self.de);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0x1b => { //DEC DE
                 self.de -= 1;
@@ -807,21 +761,21 @@ impl Z80 {
                 self.de.set_lo(n);
             }
             0x1f => { //RRA
-                let mut a = self.af.hi();
-                let mut f = self.af.lo();
+                let mut a = self.a();
+                let mut f = self.f();
                 let b0 = flag8(a, 0x01);
                 let c = flag8(f, FLAG_C);
                 a >>= 1;
-                set_flag8(&mut a, 0x80, c);
-                set_flag8(&mut f, FLAG_C, b0);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                self.af.set_hi(a);
-                self.af.set_lo(f);
+                a = set_flag8(a, 0x80, c);
+                f = set_flag8(f, FLAG_C, b0);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_H, false);
+                self.set_a(a);
+                self.set_f(f);
             }
             0x20 => { //JR NZ,d
                 let d = self.fetch(mem);
-                if !flag8(self.af.lo(), FLAG_Z) {
+                if !flag8(self.f(), FLAG_Z) {
                     self.pc += d as i8 as i16 as u16;
                 }
             }
@@ -855,7 +809,7 @@ impl Z80 {
             }
             0x28 => { //JR Z,d
                 let d = self.fetch(mem);
-                if flag8(self.af.lo(), FLAG_Z) {
+                if flag8(self.f(), FLAG_Z) {
                     self.pc += d as i8 as i16 as u16;
                 }
             }
@@ -887,17 +841,17 @@ impl Z80 {
                 self.hlx().set_lo(n);
             }
             0x2f => { //CPL
-                let mut a = self.af.hi();
-                let mut f = self.af.lo();
+                let mut a = self.a();
+                let mut f = self.f();
                 a ^= 0xff;
-                set_flag8(&mut f, FLAG_H, true);
-                set_flag8(&mut f, FLAG_N, true);
-                self.af.set_hi(a);
-                self.af.set_lo(f);
+                f = set_flag8(f, FLAG_H, true);
+                f = set_flag8(f, FLAG_N, true);
+                self.set_a(a);
+                self.set_f(f);
             }
             0x30 => { //JR NC,d
                 let d = self.fetch(mem);
-                if !flag8(self.af.lo(), FLAG_C) {
+                if !flag8(self.f(), FLAG_C) {
                     self.pc += d as i8 as i16 as u16;
                 }
             }
@@ -907,7 +861,7 @@ impl Z80 {
             }
             0x32 => { //LD (nn),A
                 let addr = self.fetch_u16(mem);
-                mem.poke(addr, self.af.hi());
+                mem.poke(addr, self.a());
             }
             0x33 => { //INC SP
                 self.sp += 1;
@@ -930,15 +884,15 @@ impl Z80 {
                 mem.poke(addr, n);
             }
             0x37 => { //SCF
-                let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_C, true);
-                self.af.set_lo(f);
+                let mut f = self.f();
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_H, false);
+                f = set_flag8(f, FLAG_C, true);
+                self.set_f(f);
             }
             0x38 => { //JR C,d
                 let d = self.fetch(mem);
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     self.pc += d as i8 as i16 as u16;
                 }
             }
@@ -951,32 +905,32 @@ impl Z80 {
             0x3a => { //LD A,(nn)
                 let addr = self.fetch_u16(mem);
                 let x = mem.peek(addr);
-                self.af.set_hi(x);
+                self.set_a(x);
             }
             0x3b => { //DEC SP
                 self.sp -= 1;
             }
             0x3c => { //INC A
-                let mut r = self.af.hi();
+                let mut r = self.a();
                 r = self.inc_flags(r);
-                self.af.set_hi(r);
+                self.set_a(r);
             }
             0x3d => { //DEC A
-                let mut r = self.af.hi();
+                let mut r = self.a();
                 r = self.dec_flags(r);
-                self.af.set_hi(r);
+                self.set_a(r);
             }
             0x3e => { //LD A,n
                 let n = self.fetch(mem);
-                self.af.set_hi(n);
+                self.set_a(n);
             }
             0x3f => { //CCF
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let c = flag8(f, FLAG_C);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_H, c);
-                set_flag8(&mut f, FLAG_C, !c);
-                self.af.set_lo(f);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_H, c);
+                f = set_flag8(f, FLAG_C, !c);
+                self.set_f(f);
             }
             0x76 => { //HALT
                 log!("HALT");
@@ -986,7 +940,7 @@ impl Z80 {
                 self.next_op = NextOp::Halt;
             }
             0xc0 => { //RET NZ 
-                if !flag8(self.af.lo(), FLAG_Z) {
+                if !flag8(self.f(), FLAG_Z) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -997,7 +951,7 @@ impl Z80 {
             }
             0xc2 => { //JP NZ,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_Z) {
+                if !flag8(self.f(), FLAG_Z) {
                     self.pc.set(addr);
                 }
             }
@@ -1007,7 +961,7 @@ impl Z80 {
             }
             0xc4 => { //CALL NZ,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_Z) {
+                if !flag8(self.f(), FLAG_Z) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1019,9 +973,9 @@ impl Z80 {
             }
             0xc6 => { //ADD n
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let a = self.add_flags(a, n, false);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xc7 => { //RST 00
                 let pc = self.pc;
@@ -1029,7 +983,7 @@ impl Z80 {
                 self.pc.set(0x00);
             }
             0xc8 => { //RET Z 
-                if flag8(self.af.lo(), FLAG_Z) {
+                if flag8(self.f(), FLAG_Z) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1040,13 +994,13 @@ impl Z80 {
             }
             0xca => { //JP Z,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_Z) {
+                if flag8(self.f(), FLAG_Z) {
                     self.pc.set(addr);
                 }
             }
             0xcc => { //CALL Z,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_Z) {
+                if flag8(self.f(), FLAG_Z) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1060,9 +1014,9 @@ impl Z80 {
             }
             0xce => { //ADC n
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let a = self.add_flags(a, n, true);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xcf => { //RST 08
                 let pc = self.pc;
@@ -1070,7 +1024,7 @@ impl Z80 {
                 self.pc.set(0x08);
             }
             0xd0 => { //RET NC 
-                if !flag8(self.af.lo(), FLAG_C) {
+                if !flag8(self.f(), FLAG_C) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1081,19 +1035,19 @@ impl Z80 {
             }
             0xd2 => { //JP NC,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_C) {
+                if !flag8(self.f(), FLAG_C) {
                     self.pc.set(addr);
                 }
             }
             0xd3 => { //OUT (n),A
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let n = ((a as u16) << 8) | n as u16;
                 io.do_out(n, a);
             }
             0xd4 => { //CALL NC,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_C) {
+                if !flag8(self.f(), FLAG_C) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1105,9 +1059,9 @@ impl Z80 {
             }
             0xd6 => { //SUB n
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let a = self.sub_flags(a, n, false);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xd7 => { //RST 10
                 let pc = self.pc;
@@ -1115,7 +1069,7 @@ impl Z80 {
                 self.pc.set(0x10);
             }
             0xd8 => { //RET C 
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1127,20 +1081,20 @@ impl Z80 {
             }
             0xda => { //JP C,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     self.pc.set(addr);
                 }
             }
             0xdb => { //IN A,(n)
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let port = ((a as u16) << 8) | (n as u16); 
                 let a = io.do_in(port);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xdc => { //CALL C,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1148,9 +1102,9 @@ impl Z80 {
             }
             0xde => { //SBC n
                 let mut n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let a = self.sub_flags(a, n, true);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xdf => { //RST 18
                 let pc = self.pc;
@@ -1158,7 +1112,7 @@ impl Z80 {
                 self.pc.set(0x18);
             }
             0xe0 => { //RET PO 
-                if !flag8(self.af.lo(), FLAG_PV) {
+                if !flag8(self.f(), FLAG_PV) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1169,7 +1123,7 @@ impl Z80 {
             }
             0xe2 => { //JP PO,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_PV) {
+                if !flag8(self.f(), FLAG_PV) {
                     self.pc.set(addr);
                 }
             }
@@ -1180,7 +1134,7 @@ impl Z80 {
             }
             0xe4 => { //CALL PO,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_PV) {
+                if !flag8(self.f(), FLAG_PV) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1192,9 +1146,9 @@ impl Z80 {
             }
             0xe6 => { //AND n
                 let n = self.fetch(mem);
-                let mut a = self.af.hi();
+                let mut a = self.a();
                 a = self.and_flags(a, n);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xe7 => { //RST 20
                 let pc = self.pc;
@@ -1202,7 +1156,7 @@ impl Z80 {
                 self.pc.set(0x20);
             }
             0xe8 => { //RET PE 
-                if flag8(self.af.lo(), FLAG_PV) {
+                if flag8(self.f(), FLAG_PV) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1212,7 +1166,7 @@ impl Z80 {
             }
             0xea => { //JP PE,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_PV) {
+                if flag8(self.f(), FLAG_PV) {
                     self.pc.set(addr);
                 }
             }
@@ -1221,7 +1175,7 @@ impl Z80 {
             }
             0xec => { //CALL PE,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_PV) {
+                if flag8(self.f(), FLAG_PV) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1229,9 +1183,9 @@ impl Z80 {
             }
             0xee => { //XOR n
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 let a = self.xor_flags(a, n);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xef => { //RST 28
                 let pc = self.pc;
@@ -1239,7 +1193,7 @@ impl Z80 {
                 self.pc.set(0x28);
             }
             0xf0 => { //RET P 
-                if !flag8(self.af.lo(), FLAG_S) {
+                if !flag8(self.f(), FLAG_S) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1250,7 +1204,7 @@ impl Z80 {
             }
             0xf2 => { //JP P,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_S) {
+                if !flag8(self.f(), FLAG_S) {
                     self.pc.set(addr);
                 }
             }
@@ -1259,7 +1213,7 @@ impl Z80 {
             }
             0xf4 => { //CALL P,nn
                 let addr = self.fetch_u16(mem);
-                if !flag8(self.af.lo(), FLAG_S) {
+                if !flag8(self.f(), FLAG_S) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1271,9 +1225,9 @@ impl Z80 {
             }
             0xf6 => { //OR n
                 let n = self.fetch(mem);
-                let mut a = self.af.hi();
+                let mut a = self.a();
                 a = self.or_flags(a, n);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0xf7 => { //RST 30
                 let pc = self.pc;
@@ -1281,7 +1235,7 @@ impl Z80 {
                 self.pc.set(0x30);
             }
             0xf8 => { //RET M 
-                if flag8(self.af.lo(), FLAG_S) {
+                if flag8(self.f(), FLAG_S) {
                     let pc = self.pop(mem);
                     self.pc.set(pc);
                 }
@@ -1291,7 +1245,7 @@ impl Z80 {
             }
             0xfa => { //JP M,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_S) {
+                if flag8(self.f(), FLAG_S) {
                     self.pc.set(addr);
                 }
             }
@@ -1300,7 +1254,7 @@ impl Z80 {
             }
             0xfc => { //CALL M,nn
                 let addr = self.fetch_u16(mem);
-                if flag8(self.af.lo(), FLAG_S) {
+                if flag8(self.f(), FLAG_S) {
                     let pc = self.pc;
                     self.push(mem, pc);
                     self.pc.set(addr);
@@ -1308,7 +1262,7 @@ impl Z80 {
             }
             0xfe => { //CP n
                 let n = self.fetch(mem);
-                let a = self.af.hi();
+                let a = self.a();
                 self.sub_flags(a, n, false);
             }
             0xff => { //RST 38
@@ -1338,56 +1292,56 @@ impl Z80 {
                         match c & 0b1111_1000 {
                             0x80 => { //ADD r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.add_flags(a, r, false);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0x88 => { //ADC r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.add_flags(a, r, true);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0x90 => { //SUB r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.sub_flags(a, r, false);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0x98 => { //SBC r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let mut r = self.reg_by_num(rs, mem, addr);
                                 let a = self.sub_flags(a, r, true);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0xa0 => { //AND r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.and_flags(a, r);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0xa8 => { //XOR r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.xor_flags(a, r);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0xb0 => { //OR r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 let a = self.or_flags(a, r);
-                                self.af.set_hi(a);
+                                self.set_a(a);
                             }
                             0xb8 => { //CP r
                                 let addr = self.hlx_addr(mem);
-                                let a = self.af.hi();
+                                let a = self.a();
                                 let r = self.reg_by_num(rs, mem, addr);
                                 self.sub_flags(a, r, false);
                             }
@@ -1413,140 +1367,140 @@ impl Z80 {
             0x40 => { //BIT n,r
                 let b = self.reg_by_num(r, mem, addr);
                 let r = b & (1 << n);
-                let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-                set_flag8(&mut f, FLAG_Z, r == 0);
-                set_flag8(&mut f, FLAG_PV, parity(r));
-                set_flag8(&mut f, FLAG_H, true);
-                set_flag8(&mut f, FLAG_N, false);
-                self.af.set_lo(f);
+                let mut f = self.f();
+                f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+                f = set_flag8(f, FLAG_Z, r == 0);
+                f = set_flag8(f, FLAG_PV, parity(r));
+                f = set_flag8(f, FLAG_H, true);
+                f = set_flag8(f, FLAG_N, false);
+                self.set_f(f);
             }
             0x80 => { //RES n,r
                 let mut b = self.reg_by_num(r, mem, addr);
-                set_flag8(&mut b, 1 << n, false);
+                b = set_flag8(b, 1 << n, false);
                 self.set_reg_by_num(r, mem, b, addr);
             }
             0xc0 => { //SET n,r
                 let mut b = self.reg_by_num(r, mem, addr);
-                set_flag8(&mut b, 1 << n, true);
+                b = set_flag8(b, 1 << n, true);
                 self.set_reg_by_num(r, mem, b, addr);
             }
             _ => match c & 0b1111_1000 {
                 0x00 => { //RLC r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b7 = flag8(b, 0x80);
                     b = b.rotate_left(1);
-                    set_flag8(&mut f, FLAG_C, b7);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag8(f, FLAG_C, b7);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x08 => { //RRC r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b0 = flag8(b, 0x01);
                     b = b.rotate_right(1);
-                    set_flag8(&mut f, FLAG_C, b0);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag8(f, FLAG_C, b0);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x10 => { //RL r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b7 = flag8(b, 0x80);
                     let c = flag8(f, FLAG_C);
                     b <<= 1;
-                    set_flag8(&mut b, 1, c);
-                    set_flag8(&mut f, FLAG_C, b7);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    b = set_flag8(b, 1, c);
+                    f = set_flag8(f, FLAG_C, b7);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x18 => { //RR r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b0 = flag8(b, 0x01);
                     let c = flag8(f, FLAG_C);
                     b >>= 1;
-                    set_flag8(&mut b, 0x80, c);
-                    set_flag8(&mut f, FLAG_C, b0);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    b = set_flag8(b, 0x80, c);
+                    f = set_flag8(f, FLAG_C, b0);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x20 => { //SLA r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b7 = flag8(b, 0x80);
                     b <<= 1;
-                    set_flag8(&mut f, FLAG_C, b7);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag8(f, FLAG_C, b7);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x28 => { //SRA r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b0 = flag8(b, 0x01);
                     b = ((b as i8) >> 1) as u8;
-                    set_flag8(&mut f, FLAG_C, b0);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag8(f, FLAG_C, b0);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x30 => { //SL1 r (undoc)
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b7 = flag8(b, 0x80);
                     b = (b << 1) | 1;
-                    set_flag8(&mut f, FLAG_C, b7);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag8(f, FLAG_C, b7);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 0x38 => { //SRL r
                     let mut b = self.reg_by_num(r, mem, addr);
-                    let mut f = self.af.lo();
+                    let mut f = self.f();
                     let b0 = flag8(b, 0x01);
                     b >>= 1;
-                    set_flag8(&mut f, FLAG_C, b0);
-                    set_flag8(&mut f, FLAG_N, false);
-                    set_flag8(&mut f, FLAG_H, false);
-                    set_flag8(&mut f, FLAG_PV, parity(b));
-                    set_flag8(&mut f, FLAG_Z, b == 0);
-                    set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag8(f, FLAG_C, b0);
+                    f = set_flag8(f, FLAG_N, false);
+                    f = set_flag8(f, FLAG_H, false);
+                    f = set_flag8(f, FLAG_PV, parity(b));
+                    f = set_flag8(f, FLAG_Z, b == 0);
+                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num(r, mem, b, addr);
-                    self.af.set_lo(f);
+                    self.set_f(f);
                 }
                 _ => {
                     log!("unimplemented opcode CB {:02x}", c);
@@ -1562,15 +1516,15 @@ impl Z80 {
         match c {
             0x40 => { //IN B,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                 //FLAG_H
                 self.bc.set_hi(b);
-                self.af.set_lo(f);
+                self.set_f(f);
             }
             0x41 => { //OUT (C),B
                 let bc = self.bc.as_u16();
@@ -1579,7 +1533,7 @@ impl Z80 {
             0x42 => { //SBC HL,BC
                 let mut hl = self.hl.as_u16();
                 let mut bc = self.bc.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     bc = bc.wrapping_add(1);
                 }
                 hl = self.sub16_flags(hl, bc);
@@ -1590,9 +1544,9 @@ impl Z80 {
                 mem.poke_u16(addr, self.bc.as_u16());
             }
             0x44 => { //NEG
-                let a = self.af.hi();
+                let a = self.a();
                 let a = self.sub_flags(0, a, false);
-                self.af.set_hi(a);
+                self.set_a(a);
             }
             0x45 => { //RETN
                 let pc = self.pop(mem);
@@ -1603,19 +1557,19 @@ impl Z80 {
                 self.im = InterruptMode::IM0;
             }
             0x47 => { //LD I,A
-                self.i = self.af.hi();
+                self.i = self.a();
             }
             0x48 => { //IN C,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                 //FLAG_H
                 self.bc.set_lo(b);
-                self.af.set_lo(f);
+                self.set_f(f);
             }
             0x49 => { //OUT (C),C
                 let bc = self.bc.as_u16();
@@ -1624,7 +1578,7 @@ impl Z80 {
             0x4a => { //ADC HL,BC
                 let mut hl = self.hl.as_u16();
                 let mut bc = self.bc.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     bc = bc.wrapping_add(1);
                 }
                 hl = self.add16_flags(hl, bc);
@@ -1639,20 +1593,20 @@ impl Z80 {
                 self.pc.set(pc);
             }
             0x4f => { //LD R,A
-                let a = self.af.hi();
+                let a = self.a();
                 self.set_r(a);
             }
             0x50 => { //IN D,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                 //FLAG_H
                 self.de.set_hi(b);
-                self.af.set_lo(f);
+                self.set_f(f);
             }
             0x51 => { //OUT (C),D
                 let bc = self.bc.as_u16();
@@ -1661,7 +1615,7 @@ impl Z80 {
             0x52 => { //SBC HL,DE
                 let mut hl = self.hl.as_u16();
                 let mut de = self.de.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     de = de.wrapping_add(1);
                 }
                 hl = self.sub16_flags(hl, de);
@@ -1676,26 +1630,26 @@ impl Z80 {
             }
             0x57 => { //LD A,I
                 let i = self.i;
-                let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, self.iff1);
-                set_flag8(&mut f, FLAG_Z, i == 0);
-                set_flag8(&mut f, FLAG_S, flag8(i, 0x80));
-                self.af.set_hi(i);
-                self.af.set_lo(f);
+                let mut f = self.f();
+                f = set_flag8(f, FLAG_H, false);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, self.iff1);
+                f = set_flag8(f, FLAG_Z, i == 0);
+                f = set_flag8(f, FLAG_S, flag8(i, 0x80));
+                self.set_a(i);
+                self.set_f(f);
             }
             0x58 => { //IN H,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                 //FLAG_H
                 self.de.set_lo(b);
-                self.af.set_lo(f);
+                self.set_f(f);
             }
             0x59 => { //OUT (C),H
                 let bc = self.bc.as_u16();
@@ -1704,7 +1658,7 @@ impl Z80 {
             0x5a => { //ADC HL,DE
                 let mut hl = self.hl.as_u16();
                 let mut de = self.de.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     de = de.wrapping_add(1);
                 }
                 hl = self.add16_flags(hl, de);
@@ -1719,26 +1673,26 @@ impl Z80 {
             }
             0x5f => { //LD A,R
                 let r = self.r();
-                let mut f = self.af.lo();
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, self.iff1);
-                set_flag8(&mut f, FLAG_Z, r == 0);
-                set_flag8(&mut f, FLAG_S, flag8(r, 0x80));
-                self.af.set_hi(r);
-                self.af.set_lo(f);
+                let mut f = self.f();
+                f = set_flag8(f, FLAG_H, false);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, self.iff1);
+                f = set_flag8(f, FLAG_Z, r == 0);
+                f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+                self.set_a(r);
+                self.set_f(f);
             }
             0x60 => { //IN H,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                 //FLAG_H
                 self.hl.set_hi(b);
-                self.af.set_lo(f);
+                self.set_f(f);
             }
             0x61 => { //OUT (C),H
                 let bc = self.bc.as_u16();
@@ -1747,7 +1701,7 @@ impl Z80 {
             0x62 => { //SBC HL,HL
                 let mut hl = self.hl.as_u16();
                 let mut rr = self.hl.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     rr = rr.wrapping_add(1);
                 }
                 hl = self.sub16_flags(hl, rr);
@@ -1759,30 +1713,30 @@ impl Z80 {
             }
             0x67 => { //RRD
                 let x = mem.peek(self.hl);
-                let a = self.af.hi();
-                let mut f = self.af.lo();
+                let a = self.a();
+                let mut f = self.f();
                 let new_a = (a & 0xf0) | (x & 0x0f);
                 let new_x = ((a & 0x0f) << 4) | ((x & 0xf0) >> 4);
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(new_a));
-                set_flag8(&mut f, FLAG_Z, new_a == 0);
-                set_flag8(&mut f, FLAG_S, flag8(new_a, 0x80));
-                self.af.set_hi(new_a);
-                self.af.set_lo(f);
+                f = set_flag8(f, FLAG_H, false);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(new_a));
+                f = set_flag8(f, FLAG_Z, new_a == 0);
+                f = set_flag8(f, FLAG_S, flag8(new_a, 0x80));
+                self.set_a(new_a);
+                self.set_f(f);
                 mem.poke(self.hl, new_x);
             }
             0x68 => { //IN L,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                 //FLAG_H
                 self.hl.set_lo(b);
-                self.af.set_lo(f);
+                self.set_f(f);
             }
             0x69 => { //OUT (C),L
                 let bc = self.bc.as_u16();
@@ -1791,7 +1745,7 @@ impl Z80 {
             0x6a => { //ADC HL,HL
                 let mut hl = self.hl.as_u16();
                 let mut hl2 = hl;
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     hl2 = hl2.wrapping_add(1);
                 }
                 hl = self.add16_flags(hl, hl2);
@@ -1803,32 +1757,32 @@ impl Z80 {
             }
             0x6f => { //RLD
                 let x = mem.peek(self.hl);
-                let a = self.af.hi();
-                let mut f = self.af.lo();
+                let a = self.a();
+                let mut f = self.f();
                 let new_a = (a & 0xf0) | ((x & 0xf0) >> 4);
                 let new_x = (a & 0x0f) | ((x & 0x0f) << 4);
-                set_flag8(&mut f, FLAG_H, false);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(new_a));
-                set_flag8(&mut f, FLAG_Z, new_a == 0);
-                set_flag8(&mut f, FLAG_S, flag8(new_a, 0x80));
-                self.af.set_hi(new_a);
-                self.af.set_lo(f);
+                f = set_flag8(f, FLAG_H, false);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(new_a));
+                f = set_flag8(f, FLAG_Z, new_a == 0);
+                f = set_flag8(f, FLAG_S, flag8(new_a, 0x80));
+                self.set_a(new_a);
+                self.set_f(f);
                 mem.poke(self.hl, new_x);
             }
             0x70 => { //IN F,(C)
                 let bc = self.bc.as_u16();
                 let b = io.do_in(bc);
-                self.af.set_lo(b);
+                self.set_f(b);
             }
             0x71 => { //OUT (C),F
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.af.lo());
+                io.do_out(bc, self.f());
             }
             0x72 => { //SBC HL,SP
                 let mut hl = self.hl.as_u16();
                 let mut sp : u16 = self.sp.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     sp = sp.wrapping_add(1);
                 }
                 hl = self.sub16_flags(hl, sp);
@@ -1840,25 +1794,25 @@ impl Z80 {
             }
             0x78 => { //IN A,(C)
                 let bc = self.bc.as_u16();
-                let mut f = self.af.lo();
+                let mut f = self.f();
                 let b = io.do_in(bc);
-                set_flag8(&mut f, FLAG_N, false);
-                set_flag8(&mut f, FLAG_PV, parity(b));
-                set_flag8(&mut f, FLAG_Z, b == 0);
-                set_flag8(&mut f, FLAG_S, flag8(b, 0x80));
-                set_flag8(&mut f, FLAG_H, false);
+                f = set_flag8(f, FLAG_N, false);
+                f = set_flag8(f, FLAG_PV, parity(b));
+                f = set_flag8(f, FLAG_Z, b == 0);
+                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag8(f, FLAG_H, false);
                 //FLAG_H
-                self.af.set_hi(b);
-                self.af.set_lo(f);
+                self.set_a(b);
+                self.set_f(f);
             }
             0x79 => { //OUT (C),A
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.af.hi());
+                io.do_out(bc, self.a());
             }
             0x7a => { //ADC HL,SP
                 let mut hl = self.hl.as_u16();
                 let mut sp = self.sp.as_u16();
-                if flag8(self.af.lo(), FLAG_C) {
+                if flag8(self.f(), FLAG_C) {
                     sp = sp.wrapping_add(1);
                 }
                 hl = self.add16_flags(hl, sp);
@@ -1910,3 +1864,58 @@ impl Z80 {
         }
     }
 }
+
+#[cfg(feature="dump_ops")]
+impl Z80 {
+    pub fn dump_add(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                self.set_f(0);
+                let a2 = self.add_flags(a, r, false);
+                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.f() & 0xd7);
+            }
+        }
+    }
+    pub fn dump_adc(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                for f in 0..=0xff {
+                    self.set_f(f);
+                    let a2 = self.add_flags(a, r, true);
+                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.f() & 0xd7);
+                }
+            }
+        }
+    }
+    pub fn dump_sub(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                self.set_f(0);
+                let a2 = self.sub_flags(a, r, false);
+                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.f() & 0xd7);
+            }
+        }
+    }
+    pub fn dump_sbc(&mut self) {
+        for a in 0..=0xff {
+            for r in 0..=0xff {
+                for f in 0..=0xff {
+                    self.set_f(f);
+                    let a2 = self.sub_flags(a, r, true);
+                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.f() & 0xd7);
+                }
+            }
+        }
+    }
+    pub fn dump_daa(&mut self) {
+        for f in 0..=0xff {
+            for a in 0..=0xff {
+                self.set_a(a);
+                self.set_f(f);
+                self.daa();
+                println!("{:02x} {:02x} {:02x} {:02x}", a, f, self.a(), self.f() & 0xd7);
+            }
+        }
+    }
+}
+

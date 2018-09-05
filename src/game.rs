@@ -243,7 +243,7 @@ impl Game {
 
         for _ in 0..n {
             self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
-            const NUM_OPS : i32 = 5_000;
+            const NUM_OPS : i32 = 10_000;
             for _ in 0..NUM_OPS {
                 /*if self.io.keys[0][0] {
                   self.z80.dump_regs();
