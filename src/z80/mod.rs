@@ -554,7 +554,7 @@ impl Z80 {
         self.set_f(f);
     }
     pub fn exec(&mut self, mem: &mut Memory, io: &mut dyn InOut) -> u32 {
-        let c = match self.next_op {
+        let mut c = match self.next_op {
             NextOp::Fetch => {
                 self.inc_r();
                 self.fetch(mem)
@@ -583,21 +583,21 @@ impl Z80 {
                 }
             }
         };
-        let c = match c {
-            0xdd => {
-                self.prefix = XYPrefix::IX;
-                self.inc_r();
-                self.fetch(mem)
-            }
-            0xfd => {
-                self.prefix = XYPrefix::IY;
-                self.inc_r();
-                self.fetch(mem)
-            }
-            _ => {
-                self.prefix = XYPrefix::None;
-                c
-            }
+        self.prefix = XYPrefix::None;
+        let c = loop {
+            c = match c {
+                0xdd => {
+                    self.prefix = XYPrefix::IX;
+                    self.inc_r();
+                    self.fetch(mem)
+                }
+                0xfd => {
+                    self.prefix = XYPrefix::IY;
+                    self.inc_r();
+                    self.fetch(mem)
+                }
+                _ => break c
+            };
         };
         match c {
             0xcb => { self.exec_cb(mem, io); }
