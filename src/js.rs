@@ -22,6 +22,7 @@ mod imports {
         pub fn rect(ctx: i32, x: f32, y: f32, w: f32, h: f32);
         pub fn lineWidth(ctx: i32, w: f32);
         pub fn putImageData(ctx: i32, w: i32, h: i32, data: *const u8, len: usize);
+        pub fn putSoundData(data: *const u8, len: usize);
     }
 }
 
@@ -105,6 +106,11 @@ impl Canvas {
     }
 }
 
+#[allow(non_snake_case)]
+pub fn putSoundData(data: &[u8]) {
+    unsafe { imports::putSoundData(data.as_ptr() as *const u8, data.len()) };
+}
+
 #[no_mangle]
 pub extern "C" fn wasm_main() -> *mut Game {
     let game = Game::new();
@@ -136,21 +142,6 @@ pub extern "C" fn wasm_snapshot(game: *mut Game) -> *const u8 {
     let ptr = data.as_ptr();
     mem::forget(data);
     ptr
-}
-#[no_mangle]
-pub extern "C" fn wasm_mouse_move(game: *mut Game, x: f32, y: f32) {
-    let game = unsafe { &mut *game };
-    game.mouse_move(x, y);
-}
-#[no_mangle]
-pub extern "C" fn wasm_mouse_up(game: *mut Game, x: f32, y: f32) {
-    let game = unsafe { &mut *game };
-    game.mouse_up(x, y);
-}
-#[no_mangle]
-pub extern "C" fn wasm_mouse_down(game: *mut Game, x: f32, y: f32) {
-    let game = unsafe { &mut *game };
-    game.mouse_down(x, y);
 }
 #[no_mangle]
 pub extern "C" fn wasm_key_up(game: *mut Game, key: i32) {

@@ -7,13 +7,16 @@ let getStr = function (ptr, len) {
     return utfDecoder.decode(slice);
 };
 
+var actx = new AudioContext();
+var audio_next = 0;
+
 function onDocumentLoad() {
     let bg_canvas = document.getElementById('background-layer');
     let canvas = document.getElementById('game-layer');
 
     let ctxs = [bg_canvas.getContext('2d'), canvas.getContext('2d')]
     ctxs[1].imageSmoothingEnabled = false;
-    //instantiateStreaming
+
     let imports = {
         env: {
             log: (ptr, len) => console.log(getStr(ptr, len)),
@@ -35,11 +38,24 @@ function onDocumentLoad() {
             lineWidth: (ctx, w) => ctxs[ctx].lineWidth = w,
             putImageData: (ctx, w, h, ptr, len) => {
                 let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
-                var img = new ImageData(data, w, h);
-                var c = ctxs[ctx];
+                let img = new ImageData(data, w, h);
+                let c = ctxs[ctx];
                 c.putImageData(img, 16, 12);
                 c.drawImage(canvas, 16, 12, 256, 192, 16, 12, 768, 576);
             },
+            putSoundData: (ptr, len) => {
+                let asrc = actx.createBufferSource();
+                let abuf = actx.createBuffer(1, len, len * 50); // 50ms
+                let data = abuf.getChannelData(0);
+                let slice = new Uint8Array(Module.memory.buffer, ptr, len);
+                for (let i = 0; i < len; ++i)
+                    data[i] = slice[i] ? 1 : -1;
+                asrc.buffer = abuf;
+                asrc.connect(actx.destination);
+
+                asrc.start(audio_next);
+                audio_next = Math.max(audio_next, actx.currentTime) + abuf.duration;
+            }
         }
     };
     let wasm = '/target/wasm32-unknown-unknown/release/raze.wasm';
@@ -59,49 +75,17 @@ function onDocumentLoad() {
                 memory: exports.memory,
             });
             Module.game = exports.wasm_main();
-            canvas.addEventListener('mousemove', ev => onMouseMove.call(canvas, ev))
-            canvas.addEventListener('mousedown', ev => onMouseDown.call(canvas, ev))
-            canvas.addEventListener('mouseup', ev => onMouseUp.call(canvas, ev))
             window.addEventListener('keydown', ev => onKeyDown(ev))
             window.addEventListener('keyup', ev => onKeyUp(ev))
-            window.requestAnimationFrame(renderFrame);
+            audio_next = actx.currentTime;
+            setInterval(function(){
+                if (audio_next - actx.currentTime < 0.05)
+                    Module.exports.wasm_draw_frame(Module.game);
+            }, 0);
         });
 
     document.getElementById('files').addEventListener('change', handleFileSelect, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
-}
-
-var prev_time = 0;
-function renderFrame(time) {
-    var span = time - prev_time;
-    if (span < 20) {
-    } else if (span < 40) {
-        prev_time += 20;
-        Module.exports.wasm_draw_frame(Module.game);
-    } else {
-        prev_time = time;
-        Module.exports.wasm_draw_frame(Module.game);
-    }
-    window.requestAnimationFrame(renderFrame);
-}
-
-function onMouseMove(ev) {
-    let r = this.getBoundingClientRect();
-    Module.exports.wasm_mouse_move(Module.game,
-        ev.pageX - r.left - document.documentElement.scrollLeft,
-        ev.pageY - r.top - document.documentElement.scrollTop);
-}
-function onMouseDown(ev) {
-    let r = this.getBoundingClientRect();
-    Module.exports.wasm_mouse_down(Module.game,
-        ev.pageX - r.left - document.documentElement.scrollLeft,
-        ev.pageY - r.top - document.documentElement.scrollTop);
-}
-function onMouseUp(ev) {
-    let r = this.getBoundingClientRect();
-    Module.exports.wasm_mouse_up(Module.game,
-        ev.pageX - r.left - document.documentElement.scrollLeft,
-        ev.pageY - r.top - document.documentElement.scrollTop);
 }
 
 function onKeyDown(ev) {

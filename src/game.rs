@@ -25,15 +25,13 @@ struct IO {
     frame_counter: u32,
     time: u32,
     tape: Option<(Tape, TapePos)>,
-    last_mic: bool,
-    last_mic_time: u32,
-    last_border: u8,
+    border: u8,
+    ear: u8,
 }
 
 impl IO {
     fn add_time(&mut self, tstates: u32) {
         self.time += tstates;
-        self.last_mic_time += tstates;
     }
 }
 
@@ -132,11 +130,6 @@ impl InOut for IO {
                 self.time = 0;
                 let mic = if let Some((mic, next)) = play_tape(delta, &tape, pos) {
                     self.tape = Some((tape, next));
-                    if self.last_mic != mic {
-                        //log!("MIC {} {}", self.last_mic_time, mic as u8);
-                        self.last_mic = mic;
-                        self.last_mic_time = 0;
-                    }
                     mic
                 } else {
                     false
@@ -145,27 +138,24 @@ impl InOut for IO {
                     r &= 0b1011_1111;
                 }
             }
+        } else if lo == 0xff {
+            r = (self.time >> 8) as u8;
         }
         //log!("IN {:04x}, {:02x}", port, r);
         r
     }
     fn do_out(&mut self, port: u16, value: u8) {
-        //log!("OUT {:04x}, {:02x}", port, value);
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         //ULA IO port
         if lo & 1 == 0 {
             let border = value & 7;
-            if self.last_border != border {
-                self.last_border = border;
-                //log!("BORDER {}", border);
-                Bg.fillStyle(["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"][border as usize]);
-                Bg.fillRect(0.0, 0.0, 800.0, 600.0);
+            if self.border != border {
+                self.border = border;
             }
-            let ear = value & 0x04 != 0;
-            let delta = self.time;
-            self.time = 0;
-            //log!("EAR {} {}", delta, ear as u8);
+            let ear = value & 0x10 != 0;
+            self.ear = if ear { 1 } else { 0 };
+            //log!("EAR {:02x} {:02x} {:02x} {}", hi, lo, value, ear);
             //log!("OUT {:04x}, {:02x}", port, value);
         }
     }
@@ -176,6 +166,7 @@ pub struct Game {
     z80: Z80,
     io: IO,
     image: Vec<Pixel>,
+    audio: Vec<u8>,
 }
 
 fn write_screen(inv: bool, data: &[u8], ps: &mut [Pixel]) {
@@ -227,12 +218,14 @@ impl Game {
     pub fn new() -> Box<Game> {
         log!("Go!");
         Bg.clearRect(0.0, 0.0, 800.0, 600.0);
+        Fg.clearRect(0.0, 0.0, 800.0, 600.0);
         let mut memory = Memory::new_from_bytes(include_bytes!("48k.rom"));
         let mut z80 = Z80::new();
         let game = Game{
             memory, z80,
-            io: IO { keys: Default::default(), frame_counter: 0, time: 0, tape: None, last_mic: false, last_mic_time: 0, last_border: 0xff },
+            io: IO { keys: Default::default(), frame_counter: 0, time: 0, tape: None, border: 0xff, ear: 0 },
             image: vec![Pixel(0,0,0,0xff); 256 * 192],
+            audio: vec![],
         };
         game.into()
     }
@@ -240,28 +233,41 @@ impl Game {
         //log!("Draw!");
 
         let n = if self.io.tape.is_some() { 100 } else { 1 };
+        const TIME_TO_INT : i32 = 69888;
+        const AUDIO_SAMPLE : i32 = 168;
 
+        self.audio.clear();
         for _ in 0..n {
             self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
-            const NUM_OPS : i32 = 10_000;
-            for _ in 0..NUM_OPS {
-                /*if self.io.keys[0][0] {
-                  self.z80.dump_regs();
-                  }*/
+            let mut time = 0;
+            let mut audio_time = 0;
+            while time < TIME_TO_INT {
                 let t = self.z80.exec(&mut self.memory, &mut self.io);
                 self.io.add_time(t);
+                time += t as i32;
+                if n == 1 {
+                    audio_time += t as i32;
+                    while audio_time > AUDIO_SAMPLE {
+                        audio_time -= AUDIO_SAMPLE;
+                        self.audio.push(self.io.ear);
+                    }
+                }
             }
             self.z80.interrupt(&mut self.memory);
         }
+        if n == 1 {
+            while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
+                self.audio.push(self.io.ear);
+            }
+            putSoundData(&self.audio);
+        }
         let screen = self.memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
         write_screen(self.io.frame_counter % 32 < 16, screen, &mut self.image);
+
+        const BORDER_COLORS : [&str; 8] = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
+        Bg.fillStyle(BORDER_COLORS[self.io.border as usize]);
+        Bg.fillRect(0.0, 0.0, 800.0, 600.0);
         Fg.putImageData(256, 192, &self.image);
-    }
-    pub fn mouse_move(&mut self, _x: f32, _y: f32) {
-    }
-    pub fn mouse_up(&mut self, _x: f32, _y: f32) {
-    }
-    pub fn mouse_down(&mut self, _x: f32, _y: f32) {
     }
     pub fn key_up(&mut self, mut key: usize) {
         while key != 0 {
