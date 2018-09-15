@@ -1,4 +1,4 @@
-use js::{*, Canvas::*};
+use js;
 use z80::{Z80, InOut};
 use memory::Memory;
 use tape::Tape;
@@ -217,8 +217,6 @@ fn write_screen(inv: bool, data: &[u8], ps: &mut [Pixel]) {
 impl Game {
     pub fn new() -> Box<Game> {
         log!("Go!");
-        Bg.clearRect(0.0, 0.0, 800.0, 600.0);
-        Fg.clearRect(0.0, 0.0, 800.0, 600.0);
         let mut memory = Memory::new_from_bytes(include_bytes!("48k.rom"));
         let mut z80 = Z80::new();
         let game = Game{
@@ -259,15 +257,13 @@ impl Game {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
                 self.audio.push(self.io.ear);
             }
-            putSoundData(&self.audio);
+            js::putSoundData(&self.audio);
         }
         let screen = self.memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
+        const BORDER_COLORS : [&str; 8] = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
         write_screen(self.io.frame_counter % 32 < 16, screen, &mut self.image);
 
-        const BORDER_COLORS : [&str; 8] = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
-        Bg.fillStyle(BORDER_COLORS[self.io.border as usize]);
-        Bg.fillRect(0.0, 0.0, 800.0, 600.0);
-        Fg.putImageData(256, 192, &self.image);
+        js::putImageData(self.io.border, 256, 192, &self.image);
     }
     pub fn key_up(&mut self, mut key: usize) {
         while key != 0 {

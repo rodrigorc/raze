@@ -9,39 +9,24 @@ let getStr = function (ptr, len) {
 
 var actx = new AudioContext();
 var audio_next = 0;
+var BORDER_COLORS = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
 
 function onDocumentLoad() {
-    let bg_canvas = document.getElementById('background-layer');
     let canvas = document.getElementById('game-layer');
-
-    let ctxs = [bg_canvas.getContext('2d'), canvas.getContext('2d')]
-    ctxs[1].imageSmoothingEnabled = false;
+    let ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
 
     let imports = {
         env: {
             log: (ptr, len) => console.log(getStr(ptr, len)),
             alert: (ptr, len) => alert(getStr(ptr, len)),
-            clearRect: (ctx, x,y,w,h) => ctxs[ctx].clearRect(x,y,w,h),
-            fillStyle: (ctx, ptr, len) => ctxs[ctx].fillStyle = getStr(ptr, len),
-            fillRect: (ctx, x,y,w,h) => ctxs[ctx].fillRect(x,y,w,h),
-            strokeStyle: (ctx, ptr, len) => ctxs[ctx].strokeStyle = getStr(ptr, len),
-            strokeRect: (ctx, x,y,w,h) => ctxs[ctx].strokeRect(x,y,w,h),
-            beginPath: (ctx) => ctxs[ctx].beginPath(),
-            closePath: (ctx) => ctxs[ctx].closePath(),
-            stroke: (ctx) => ctxs[ctx].stroke(),
-            fill: (ctx) => ctxs[ctx].fill(),
-            moveTo: (ctx, x,y) => ctxs[ctx].moveTo(x,y),
-            lineTo: (ctx, x,y) => ctxs[ctx].lineTo(x,y),
-            arc: (ctx, x,y,r,a1,a2,o) => ctxs[ctx].arc(x,y,r,a1,a2,o),
-            arcTo: (ctx, x1,y1,x2,y2,r) => ctxs[ctx].arcTo(x1,y1,x2,y2,r),
-            rect: (ctx, x,y,w,h) => ctxs[ctx].rect(x,y,w,h),
-            lineWidth: (ctx, w) => ctxs[ctx].lineWidth = w,
-            putImageData: (ctx, w, h, ptr, len) => {
+            putImageData: (border, w, h, ptr, len) => {
                 let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
                 let img = new ImageData(data, w, h);
-                let c = ctxs[ctx];
-                c.putImageData(img, 16, 12);
-                c.drawImage(canvas, 16, 12, 256, 192, 16, 12, 768, 576);
+                ctx.fillStyle = BORDER_COLORS[border];
+                ctx.fillRect(0.0, 0.0, 800.0, 600.0);
+                ctx.putImageData(img, 16, 12);
+                ctx.drawImage(canvas, 16, 12, 256, 192, 16, 12, 768, 576);
             },
             putSoundData: (ptr, len) => {
                 let asrc = actx.createBufferSource();

@@ -1,27 +1,13 @@
+#![allow(non_snake_case)]
+
 use game::Game;
 use std::mem;
 
-#[allow(non_snake_case)]
 mod imports {
     extern "C" {
         pub fn alert(ptr: *const u8, len: usize);
         pub fn log(ptr: *const u8, len: usize);
-        pub fn clearRect(ctx: i32, a: f32, b: f32, c: f32, d: f32);
-        pub fn fillStyle(ctx: i32, ptr: *const u8, len: usize);
-        pub fn fillRect(ctx: i32, a: f32, b: f32, c: f32, d: f32);
-        pub fn strokeStyle(ctx: i32, ptr: *const u8, len: usize);
-        pub fn strokeRect(ctx: i32, x: f32, y: f32, w: f32, h: f32);
-        pub fn beginPath(ctx: i32);
-        pub fn closePath(ctx: i32);
-        pub fn stroke(ctx: i32);
-        pub fn fill(ctx: i32);
-        pub fn moveTo(ctx: i32, x: f32 , y: f32);
-        pub fn lineTo(ctx: i32, x: f32, y: f32);
-        pub fn arc(ctx: i32, x: f32, y: f32, r: f32, a1: f32, a2: f32, o: f32);
-        pub fn arcTo(ctx: i32, x1: f32, y1: f32, x2: f32, y2: f32, r: f32);
-        pub fn rect(ctx: i32, x: f32, y: f32, w: f32, h: f32);
-        pub fn lineWidth(ctx: i32, w: f32);
-        pub fn putImageData(ctx: i32, w: i32, h: i32, data: *const u8, len: usize);
+        pub fn putImageData(border: u8, w: i32, h: i32, data: *const u8, len: usize);
         pub fn putSoundData(data: *const u8, len: usize);
     }
 }
@@ -47,66 +33,10 @@ macro_rules! alert {
     };
 }
 
-pub enum Canvas {
-    Bg,
-    Fg,
+pub fn putImageData<T>(border: u8, w: i32, h: i32, data: &[T]) {
+    unsafe { imports::putImageData(border, w, h, data.as_ptr() as *const u8, data.len() * mem::size_of::<T>()) };
 }
 
-#[allow(non_snake_case)]
-impl Canvas {
-    pub fn clearRect(self, a: f32, b: f32, c: f32, d: f32) {
-        unsafe { imports::clearRect(self as i32, a, b, c, d) };
-    }
-    pub fn fillStyle(self, s: impl AsRef<str>) {
-        let s = s.as_ref();
-        unsafe { imports::fillStyle(self as i32, s.as_ptr(), s.len()) };
-    }
-    pub fn fillRect(self, a: f32, b: f32, c: f32, d: f32) {
-        unsafe { imports::fillRect(self as i32, a, b, c, d) };
-    }
-    pub fn strokeStyle(self, s: impl AsRef<str>) {
-        let s = s.as_ref();
-        unsafe { imports::strokeStyle(self as i32, s.as_ptr(), s.len()) };
-    }
-    pub fn strokeRect(self, x: f32, y: f32, w: f32, h: f32) {
-        unsafe { imports::strokeRect(self as i32, x, y, w, h) };
-    }
-    pub fn beginPath(self) {
-        unsafe { imports::beginPath(self as i32) };
-    }
-    pub fn closePath(self) {
-        unsafe { imports::closePath(self as i32) };
-    }
-    pub fn stroke(self) {
-        unsafe { imports::stroke(self as i32) };
-    }
-    pub fn fill(self) {
-        unsafe { imports::fill(self as i32) };
-    }
-    pub fn moveTo(self, x: f32 , y: f32) {
-        unsafe { imports::moveTo(self as i32, x, y) };
-    }
-    pub fn lineTo(self, x: f32, y: f32) {
-        unsafe { imports::lineTo(self as i32, x, y) };
-    }
-    pub fn arc(self, x: f32, y: f32, r: f32, a1: f32, a2: f32, o: f32) {
-        unsafe { imports::arc(self as i32, x, y, r, a1, a2, o) };
-    }
-    pub fn arcTo(self, x1: f32, y1: f32, x2: f32, y2: f32, r: f32) {
-        unsafe { imports::arcTo(self as i32, x1, y1, x2, y2, r) };
-    }
-    pub fn rect(self, x: f32, y: f32, w: f32, h: f32) {
-        unsafe { imports::rect(self as i32, x, y, w, h) };
-    }
-    pub fn lineWidth(self, w: f32) {
-        unsafe { imports::lineWidth(self as i32, w) };
-    }
-    pub fn putImageData<T>(self, w: i32, h: i32, data: &[T]) {
-        unsafe { imports::putImageData(self as i32, w, h, data.as_ptr() as *const u8, data.len() * mem::size_of::<T>()) };
-    }
-}
-
-#[allow(non_snake_case)]
 pub fn putSoundData(data: &[u8]) {
     unsafe { imports::putSoundData(data.as_ptr() as *const u8, data.len()) };
 }

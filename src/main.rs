@@ -154,7 +154,7 @@ fn main() -> io::Result<()> {
         z80.dump_regs();
         z80.exec(&mut memory, &mut spectrum);
         if (count+1) % SCROPS == 0 {
-            if true {
+            if false {
                 let screen = memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
                 write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
             }
