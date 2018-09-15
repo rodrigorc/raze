@@ -269,11 +269,11 @@ impl Z80 {
         }
     }
     fn reg_by_num(&mut self, r: u8, mem: &Memory) -> (u8, u32) {
-        let (addr, t) = self.hlx_addr(mem);
+        let (addr, t) = if r == 6 { self.hlx_addr(mem) } else { (0,0) };
         (self.reg_by_num_addr(r, mem, addr), t)
     }
     fn set_reg_by_num(&mut self, r: u8, mem: &mut Memory, b: u8) -> u32 {
-        let (addr, t) = self.hlx_addr(mem);
+        let (addr, t) = if r == 6 { self.hlx_addr(mem) } else { (0,0) };
         self.set_reg_by_num_addr(r, mem, b, addr);
         t
     }
