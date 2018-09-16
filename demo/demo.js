@@ -60,8 +60,10 @@ function onDocumentLoad() {
                 memory: exports.memory,
             });
             Module.game = exports.wasm_main();
-            window.addEventListener('keydown', ev => onKeyDown(ev))
-            window.addEventListener('keyup', ev => onKeyUp(ev))
+            window.addEventListener('keydown', onKeyDown)
+            window.addEventListener('keyup', onKeyUp)
+            window.addEventListener('focus', onFocus)
+            window.addEventListener('blur', onBlur)
             audio_next = actx.currentTime;
             setInterval(function(){
                 if (audio_next - actx.currentTime < 0.05)
@@ -87,6 +89,12 @@ function onKeyUp(ev) {
         return;
     Module.exports.wasm_key_up(Module.game, key);
     ev.preventDefault();
+}
+function onFocus(ev) {
+    Module.exports.wasm_reset_input(Module.game);
+}
+function onBlur(ev) {
+    Module.exports.wasm_reset_input(Module.game);
 }
 
 function getKeyCode(ev) {

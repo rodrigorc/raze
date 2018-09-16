@@ -74,6 +74,11 @@ pub extern "C" fn wasm_snapshot(game: *mut Game) -> *const u8 {
     ptr
 }
 #[no_mangle]
+pub extern "C" fn wasm_reset_input(game: *mut Game) {
+    let game = unsafe { &mut *game };
+    game.reset_input();
+}
+#[no_mangle]
 pub extern "C" fn wasm_key_up(game: *mut Game, key: i32) {
     let game = unsafe { &mut *game };
     game.key_up(key as usize);

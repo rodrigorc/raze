@@ -327,6 +327,13 @@ impl Game {
             key >>= 8;
         }
     }
+    pub fn reset_input(&mut self) {
+        for r in self.io.keys.iter_mut() {
+            for k in r.iter_mut() {
+                *k = false;
+            }
+        }
+    }
     pub fn load_file(&mut self, data: Vec<u8>) {
         match Tape::new(data) {
             Ok(t) => {

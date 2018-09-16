@@ -1011,7 +1011,6 @@ impl Z80 {
                 4
             }
             0x76 => { //HALT
-                log!("HALT");
                 if !self.iff1 {
                     log!("DI/HALT deadlock!");
                 }
