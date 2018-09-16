@@ -22,6 +22,7 @@ struct TapePos {
 
 struct IO {
     keys: [[bool; 5]; 9], //8 semirows plus joystick
+    delay: u32,
     frame_counter: u32,
     time: u32,
     tape: Option<(Tape, TapePos)>,
@@ -32,6 +33,11 @@ struct IO {
 impl IO {
     fn add_time(&mut self, tstates: u32) {
         self.time += tstates;
+    }
+    pub fn take_delay(&mut self) -> u32 {
+        let r = self.delay;
+        self.delay = 0;
+        r
     }
 }
 
@@ -115,6 +121,7 @@ impl InOut for IO {
         let mut r = 0xff;
         //ULA IO port
         if lo & 1 == 0 {
+            self.delay = self.delay.wrapping_add(3);
             for i in 0..8 { //half row keyboard
                 if hi & (1 << i) == 0 {
                     for j in 0..5 { //keys
@@ -230,7 +237,7 @@ impl Game {
         let mut z80 = Z80::new();
         let game = Game{
             memory, z80,
-            io: IO { keys: Default::default(), frame_counter: 0, time: 0, tape: None, border: 0xff, ear: 0 },
+            io: IO { keys: Default::default(), delay: 0, frame_counter: 0, time: 0, tape: None, border: 0xff, ear: 0 },
             image: vec![Pixel(0,0,0,0xff); 256 * 192],
             audio: vec![],
         };
@@ -249,9 +256,15 @@ impl Game {
             let mut time = 0;
             let mut audio_time = 0;
             while time < TIME_TO_INT {
-                let t = self.z80.exec(&mut self.memory, &mut self.io);
-                self.io.add_time(t);
+                let mut t = self.z80.exec(&mut self.memory, &mut self.io);
+                let tm = self.memory.take_delay();
+                let tio = self.io.take_delay();
+                //contended memory
+                if time >= 14335 && time < 57344 {
+                    t += tm + tio;
+                }
                 time += t as i32;
+                self.io.add_time(t);
                 if n == 1 {
                     audio_time += t as i32;
                     while audio_time > AUDIO_SAMPLE {

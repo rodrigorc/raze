@@ -216,7 +216,7 @@ impl Z80 {
     fn inc_r(&mut self) {
         self.r_ = self.r_.wrapping_add(1);
     }
-    fn fetch(&mut self, mem: &Memory) -> u8 {
+    fn fetch(&mut self, mem: &mut Memory) -> u8 {
         let c = mem.peek(self.pc);
         self.pc += 1;
         c
@@ -240,7 +240,7 @@ impl Z80 {
         self.sp += 2;
         x
     }
-    fn reg_by_num_addr(&mut self, prefix: XYPrefix, r: u8, mem: &Memory, addr: u16) -> u8 {
+    fn reg_by_num_addr(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory, addr: u16) -> u8 {
         match r {
             0 => self.bc.hi(),
             1 => self.bc.lo(),
@@ -266,7 +266,7 @@ impl Z80 {
             _ => panic!("unknown reg_by_num {}", r),
         }
     }
-    fn reg_by_num(&mut self, prefix: XYPrefix, r: u8, mem: &Memory) -> (u8, u32) {
+    fn reg_by_num(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory) -> (u8, u32) {
         let (addr, t) = if r == 6 { self.hlx_addr(prefix, mem) } else { (0,0) };
         (self.reg_by_num_addr(prefix, r, mem, addr), t)
     }
@@ -275,7 +275,7 @@ impl Z80 {
         self.set_reg_by_num_addr(prefix, r, mem, b, addr);
         t
     }
-    fn reg_by_num_no_pre(&mut self, prefix: XYPrefix, r: u8, mem: &Memory) -> u8 {
+    fn reg_by_num_no_pre(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory) -> u8 {
         match r {
             0 => self.bc.hi(),
             1 => self.bc.lo(),
@@ -307,7 +307,7 @@ impl Z80 {
         }
     }
     //Returns the (address, extra_T_states)
-    fn hlx_addr(&mut self, prefix: XYPrefix, mem: &Memory) -> (u16, u32) {
+    fn hlx_addr(&mut self, prefix: XYPrefix, mem: &mut Memory) -> (u16, u32) {
         match prefix {
             XYPrefix::None => (self.hl.as_u16(), 0),
             XYPrefix::IX => {
