@@ -93,7 +93,7 @@ function getKeyCode(ev) {
     switch (ev.code) {
     case "ShiftLeft":
     case "ShiftRight":
-        return 0x80; //just like 0x00, but 0x00 is ignored by game code
+        return 0xf0; //just like 0x00, but 0x00 is ignored by game code
     case "KeyZ":
         return 0x01;
     case "KeyX":
@@ -174,15 +174,28 @@ function getKeyCode(ev) {
     case "KeyB":
         return 0x74;
     case "Backspace":
-        return 0x8040; //Shift+0
+        return 0xf040; //Shift+0
     case "ArrowLeft":
-        return 0x8034; //Shift+5
+        return 0xf034; //Shift+5
     case "ArrowRight":
-        return 0x8042; //Shift+8
+        return 0xf042; //Shift+8
     case "ArrowDown":
-        return 0x8044; //Shift+6
+        return 0xf044; //Shift+6
     case "ArrowUp":
-        return 0x8043; //Shift+7
+        return 0xf043; //Shift+7
+    //Joystick
+    case "Numpad0":
+    case "ControlLeft":
+    case "ControlRight":
+        return 0x84;
+    case "Numpad8":
+        return 0x83;
+    case "Numpad4":
+        return 0x81;
+    case "Numpad5":
+        return 0x82;
+    case "Numpad6":
+        return 0x80;
     default:
         return null;
     }

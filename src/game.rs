@@ -21,7 +21,7 @@ struct TapePos {
 }
 
 struct IO {
-    keys: [[bool; 5]; 8],
+    keys: [[bool; 5]; 9], //8 semirows plus joystick
     frame_counter: u32,
     time: u32,
     tape: Option<(Tape, TapePos)>,
@@ -138,8 +138,17 @@ impl InOut for IO {
                     r &= 0b1011_1111;
                 }
             }
-        } else if lo == 0xff {
-            r = (self.time >> 8) as u8;
+        } else if lo == 0xff { //reading stale data from the bus (last attr byte?)
+            r = (self.time >> 8) as u8; //TODO
+        } else if lo == 0x1f { //kempston joystick
+            let ref joy = self.keys[8];
+            r = 0;
+            for j in 0..5 {
+                if joy[j] {
+                    r |= 1 << j;
+                }
+            }
+            log!("IN {:04x}, {:02x}", port, r);
         }
         //log!("IN {:04x}, {:02x}", port, r);
         r
@@ -268,7 +277,10 @@ impl Game {
     pub fn key_up(&mut self, mut key: usize) {
         while key != 0 {
             let k = key & 0x07;
-            let r = (key >> 4) & 0x07;
+            let r = match (key >> 4) & 0x0f {
+                0x0f => 0,
+                r => r
+            };
             self.io.keys[r][k] = false;
             key >>= 8;
         }
@@ -276,7 +288,10 @@ impl Game {
     pub fn key_down(&mut self, mut key: usize) {
         while key != 0 {
             let k = key & 0x07;
-            let r = (key >> 4) & 0x07;
+            let r = match (key >> 4) & 0x0f {
+                0x0f => 0,
+                r => r
+            };
             self.io.keys[r][k] = true;
             key >>= 8;
         }
