@@ -27,7 +27,7 @@ impl Memory {
     pub fn peek(&mut self, addr: impl Into<u16>) -> u8 {
         let addr = addr.into();
         if addr >= 0x4000 && addr  < 0x8000 {
-            self.delay = self.delay.wrapping_add(3);
+            self.delay = self.delay.wrapping_add(1);
         }
         self.data[addr as usize]
     }
@@ -39,7 +39,7 @@ impl Memory {
             return;
         }
         if addr >= 0x4000 && addr  < 0x8000 {
-            self.delay = self.delay.wrapping_add(3);
+            self.delay = self.delay.wrapping_add(1);
         }
         self.data[addr as usize] = data;
     }

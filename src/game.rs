@@ -121,7 +121,10 @@ impl InOut for IO {
         let mut r = 0xff;
         //ULA IO port
         if lo & 1 == 0 {
-            self.delay = self.delay.wrapping_add(3);
+            self.delay = self.delay.wrapping_add(1);
+            if port >= 0x4000 && port < 0x8000 {
+                self.delay = self.delay.wrapping_add(1);
+            }
             for i in 0..8 { //half row keyboard
                 if hi & (1 << i) == 0 {
                     for j in 0..5 { //keys
@@ -145,17 +148,21 @@ impl InOut for IO {
                     r &= 0b1011_1111;
                 }
             }
-        } else if lo == 0xff { //reading stale data from the bus (last attr byte?)
-            r = (self.time >> 8) as u8; //TODO
-        } else if lo == 0x1f { //kempston joystick
-            let ref joy = self.keys[8];
-            r = 0;
-            for j in 0..5 {
-                if joy[j] {
-                    r |= 1 << j;
+        } else {
+            if port >= 0x4000 && port < 0x8000 {
+                self.delay = self.delay.wrapping_add(4);
+            }
+            if lo == 0xff { //reading stale data from the bus (last attr byte?)
+                r = (self.time >> 8) as u8; //TODO
+            } else if lo == 0x1f { //kempston joystick
+                let ref joy = self.keys[8];
+                r = 0;
+                for j in 0..5 {
+                    if joy[j] {
+                        r |= 1 << j;
+                    }
                 }
             }
-            log!("IN {:04x}, {:02x}", port, r);
         }
         //log!("IN {:04x}, {:02x}", port, r);
         r
@@ -165,6 +172,10 @@ impl InOut for IO {
         let hi = (port >> 8) as u8;
         //ULA IO port
         if lo & 1 == 0 {
+            self.delay = self.delay.wrapping_add(1);
+            if port >= 0x4000 && port < 0x8000 {
+                self.delay = self.delay.wrapping_add(1);
+            }
             let border = value & 7;
             if self.border != border {
                 self.border = border;
@@ -173,6 +184,10 @@ impl InOut for IO {
             self.ear = if ear { 1 } else { 0 };
             //log!("EAR {:02x} {:02x} {:02x} {}", hi, lo, value, ear);
             //log!("OUT {:04x}, {:02x}", port, value);
+        } else {
+            if port >= 0x4000 && port < 0x8000 {
+                self.delay = self.delay.wrapping_add(4);
+            }
         }
     }
 }
@@ -257,11 +272,14 @@ impl Game {
             let mut audio_time = 0;
             while time < TIME_TO_INT {
                 let mut t = self.z80.exec(&mut self.memory, &mut self.io);
-                let tm = self.memory.take_delay();
-                let tio = self.io.take_delay();
+                let delay = self.memory.take_delay() + self.io.take_delay();
                 //contended memory
-                if time >= 14335 && time < 57344 {
-                    t += tm + tio;
+                if time >= 14336 && time < 57344 {
+                    //each row is 224 T, 128 are the real pixels where contention occurs
+                    let offs = time % 224;
+                    if offs < 128 {
+                        t += (delay * 21) / 8;
+                    }
                 }
                 time += t as i32;
                 self.io.add_time(t);
