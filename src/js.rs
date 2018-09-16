@@ -6,7 +6,7 @@ use std::mem;
 mod imports {
     extern "C" {
         pub fn alert(ptr: *const u8, len: usize);
-        pub fn log(ptr: *const u8, len: usize);
+        pub fn consolelog(ptr: *const u8, len: usize);
         pub fn putImageData(border: u8, w: i32, h: i32, data: *const u8, len: usize);
         pub fn putSoundData(data: *const u8, len: usize);
     }
@@ -19,7 +19,7 @@ pub fn alert(s: impl AsRef<str>) {
 pub fn log(s: impl AsRef<str>)
 {
     let s = s.as_ref();
-    unsafe { imports::log(s.as_ptr(), s.len()) };
+    unsafe { imports::consolelog(s.as_ptr(), s.len()) };
 }
 
 macro_rules! log {

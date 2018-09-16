@@ -18,7 +18,7 @@ function onDocumentLoad() {
 
     let imports = {
         env: {
-            log: (ptr, len) => console.log(getStr(ptr, len)),
+            consolelog: (ptr, len) => console.log(getStr(ptr, len)),
             alert: (ptr, len) => alert(getStr(ptr, len)),
             putImageData: (border, w, h, ptr, len) => {
                 let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
