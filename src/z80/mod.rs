@@ -13,8 +13,10 @@ pub trait InOut {
 
 const FLAG_S  : u8 = 0b1000_0000;
 const FLAG_Z  : u8 = 0b0100_0000;
+#[allow(unused)]
 const FLAG_F5 : u8 = 0b0010_0000;
 const FLAG_H  : u8 = 0b0001_0000;
+#[allow(unused)]
 const FLAG_F3 : u8 = 0b0000_1000;
 const FLAG_PV : u8 = 0b0000_0100;
 const FLAG_N  : u8 = 0b0000_0010;
@@ -38,7 +40,7 @@ fn set_flag8(f: u8, bit: u8, set: bool) -> u8 {
 
 }
 #[inline]
-fn parity(mut b: u8) -> bool {
+fn parity(b: u8) -> bool {
     (b.count_ones()) % 2 == 0
 }
 
@@ -124,6 +126,7 @@ impl Z80 {
             next_op: NextOp::Fetch,
         }
     }
+    #[allow(unused)]
     pub fn dump_regs(&self) {
         log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}",
                  self.pc.as_u16(),
@@ -159,6 +162,7 @@ impl Z80 {
         w.write_all(&data)?;
         Ok(())
     }
+    #[allow(unused)]
     pub fn load(&mut self, mut r: impl Read) -> io::Result<()> {
         let mut data = [0; 2 * 13 + 3];
         r.read_exact(&mut data)?;
@@ -181,7 +185,7 @@ impl Z80 {
         self.next_op = match data[28] { 0=> NextOp::Fetch, 1 => NextOp::Fetch, 2 => NextOp::Halt, _ => panic!("invalid NextOp") };
         Ok(())
     }
-    pub fn interrupt(&mut self, mem: &mut Memory) {
+    pub fn interrupt(&mut self, _mem: &mut Memory) {
         if !self.iff1 {
             return;
         }
@@ -250,7 +254,7 @@ impl Z80 {
             5 => self.hlx(prefix).lo(),
             6 => mem.peek(addr),
             7 => self.a(),
-            _ => panic!("unknown reg_by_num {}", r),
+            _ => unreachable!("unknown reg_by_num {}", r),
         }
     }
     fn set_reg_by_num_addr(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory, b: u8, addr: u16) {
@@ -263,7 +267,7 @@ impl Z80 {
             5 => self.hlx(prefix).set_lo(b),
             6 => mem.poke(addr, b),
             7 => self.set_a(b),
-            _ => panic!("unknown reg_by_num {}", r),
+            _ => unreachable!("unknown reg_by_num {}", r),
         }
     }
     fn reg_by_num(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory) -> (u8, u32) {
@@ -275,7 +279,7 @@ impl Z80 {
         self.set_reg_by_num_addr(prefix, r, mem, b, addr);
         t
     }
-    fn reg_by_num_no_pre(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory) -> u8 {
+    fn reg_by_num_no_pre(&mut self, r: u8) -> u8 {
         match r {
             0 => self.bc.hi(),
             1 => self.bc.lo(),
@@ -283,11 +287,12 @@ impl Z80 {
             3 => self.de.lo(),
             4 => self.hl.hi(),
             5 => self.hl.lo(),
+            //6 is impossible
             7 => self.a(),
-            _ => panic!("unknown reg_by_num {}", r),
+            _ => unreachable!("unknown reg_by_num {}", r),
         }
     }
-    fn set_reg_by_num_no_pre(&mut self, prefix: XYPrefix, r: u8, mem: &mut Memory, b: u8) {
+    fn set_reg_by_num_no_pre(&mut self, r: u8, b: u8) {
         match r {
             0 => self.bc.set_hi(b),
             1 => self.bc.set_lo(b),
@@ -295,8 +300,9 @@ impl Z80 {
             3 => self.de.set_lo(b),
             4 => self.hl.set_hi(b),
             5 => self.hl.set_lo(b),
+            //6 is impossible
             7 => self.set_a(b),
-            _ => panic!("unknown reg_by_num {}", r),
+            _ => unreachable!("unknown reg_by_num {}", r),
         }
     }
     fn hlx(&mut self, prefix: XYPrefix) -> &mut R16 {
@@ -1447,10 +1453,10 @@ impl Z80 {
                     0x40 => { //LD r,r
                         if rs == 6 {
                             let (r, t) = self.reg_by_num(prefix, rs, mem);
-                            self.set_reg_by_num_no_pre(prefix, rd, mem, r);
+                            self.set_reg_by_num_no_pre(rd, r);
                             4 + t
                         } else if rd == 6 {
-                            let r = self.reg_by_num_no_pre(prefix, rs, mem);
+                            let r = self.reg_by_num_no_pre(rs);
                             let t = self.set_reg_by_num(prefix, rd, mem, r);
                             4 + t
                         } else {
@@ -1526,7 +1532,7 @@ impl Z80 {
             }
         }
     }
-    fn exec_cb(&mut self, prefix: XYPrefix, mem: &mut Memory, io: &mut dyn InOut) -> u32 {
+    fn exec_cb(&mut self, prefix: XYPrefix, mem: &mut Memory, _io: &mut dyn InOut) -> u32 {
         let (addr, t) = self.hlx_addr(prefix, mem);
         let c = self.fetch(mem);
         if prefix == XYPrefix::None {

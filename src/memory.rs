@@ -1,7 +1,6 @@
 use std::io::{self, Read, Write};
 use std::fs::File;
 use std::path::Path;
-use std::cell::Cell;
 
 pub struct Memory {
     data: Vec<u8>,
@@ -9,10 +8,12 @@ pub struct Memory {
 }
 
 impl Memory {
+    #[allow(unused)]
     pub fn new()-> Self {
         let data = vec![0; 0x10000];
         Memory { data, delay: 0 }
     }
+    #[allow(unused)]
     pub fn new_rom(rom: impl AsRef<Path>) -> io::Result<Self> {
         let mut data = vec![0; 0x10000];
         let mut f_rom = File::open(&rom)?;
@@ -68,6 +69,7 @@ impl Memory {
         w.write_all(&self.data)?;
         Ok(())
     }
+    #[allow(unused)]
     pub fn load(&mut self, mut r: impl Read) -> io::Result<()> {
         r.read_exact(&mut self.data)?;
         Ok(())

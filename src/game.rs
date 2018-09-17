@@ -85,7 +85,7 @@ impl InOut for IO {
     }
     fn do_out(&mut self, port: u16, value: u8) {
         let lo = port as u8;
-        let hi = (port >> 8) as u8;
+        let _hi = (port >> 8) as u8;
         //ULA IO port
         if lo & 1 == 0 {
             self.delay = self.delay.wrapping_add(1);
@@ -164,8 +164,8 @@ fn write_screen(inv: bool, data: &[u8], ps: &mut [Pixel]) {
 impl Game {
     pub fn new() -> Box<Game> {
         log!("Go!");
-        let mut memory = Memory::new_from_bytes(include_bytes!("48k.rom"));
-        let mut z80 = Z80::new();
+        let memory = Memory::new_from_bytes(include_bytes!("48k.rom"));
+        let z80 = Z80::new();
         let game = Game{
             memory, z80,
             io: IO { keys: Default::default(), delay: 0, frame_counter: 0, time: 0, tape: None, border: 0xff, ear: 0 },
@@ -216,7 +216,6 @@ impl Game {
             js::putSoundData(&self.audio);
         }
         let screen = self.memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
-        const BORDER_COLORS : [&str; 8] = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
         write_screen(self.io.frame_counter % 32 < 16, screen, &mut self.image);
 
         js::putImageData(self.io.border, 256, 192, &self.image);
@@ -261,7 +260,7 @@ impl Game {
     }
     pub fn snapshot(&self) -> Vec<u8> {
         let mut data = Vec::new();
-        self.memory.save(&mut data);
+        self.memory.save(&mut data).unwrap();
         log!("snap 1 {} bytes", data.len());
         self.z80.save(&mut data).unwrap();
         log!("snap 2 {} bytes", data.len());
