@@ -9,6 +9,10 @@ crate-type=["cdylib"]
 [dependencies]
 png = { version = "*", optional = true }
 
+[profile.release]
+lto = true
+panic = 'abort'
+
 [features]
 dump_ops = []
 
