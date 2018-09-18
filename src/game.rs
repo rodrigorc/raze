@@ -175,10 +175,10 @@ impl Game {
         };
         game.into()
     }
-    pub fn draw_frame(&mut self) {
+    pub fn draw_frame(&mut self, turbo: bool) {
         //log!("Draw!");
 
-        let n = if self.io.tape.is_some() { 100 } else { 1 };
+        let n = if turbo { 100 } else { 1 };
         const TIME_TO_INT : i32 = 69888;
         const AUDIO_SAMPLE : i32 = 168;
 
@@ -200,7 +200,7 @@ impl Game {
                 }
                 time += t as i32;
                 self.io.add_time(t);
-                if n == 1 {
+                if !turbo {
                     audio_time += t as i32;
                     while audio_time > AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
@@ -210,7 +210,7 @@ impl Game {
             }
             self.z80.interrupt(&mut self.memory);
         }
-        if n == 1 {
+        if !turbo {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
                 self.audio.push(self.io.ear);
             }

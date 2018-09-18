@@ -10,6 +10,7 @@ let getStr = function (ptr, len) {
 var actx = new AudioContext();
 var audio_next = 0;
 var BORDER_COLORS = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
+var turbo = false;
 
 function onDocumentLoad() {
     let canvas = document.getElementById('game-layer');
@@ -66,8 +67,10 @@ function onDocumentLoad() {
             window.addEventListener('blur', onBlur)
             audio_next = actx.currentTime;
             setInterval(function(){
-                if (audio_next - actx.currentTime < 0.05)
-                    Module.exports.wasm_draw_frame(Module.game);
+                if (turbo) {
+                    Module.exports.wasm_draw_frame(Module.game, true);
+                } else if (audio_next - actx.currentTime < 0.05)
+                    Module.exports.wasm_draw_frame(Module.game, false);
             }, 0);
         });
 
@@ -75,6 +78,7 @@ function onDocumentLoad() {
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
     document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
+    document.getElementById('turbo').addEventListener('click', handleTurbo, false);
 }
 
 function onKeyDown(ev) {
@@ -281,6 +285,10 @@ function handleFullscreen(evt) {
     var fs = canvas.requestFullscreen || canvas.mozRequestFullScreen || canvas.webkitRequestFullScreen || canvas.msRequestFullscreen;
     if (fs)
         fs.call(canvas);
+}
+
+function handleTurbo(evt) {
+    turbo = this.checked;
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);

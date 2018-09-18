@@ -54,9 +54,9 @@ pub extern "C" fn wasm_alloc(size: usize) -> *mut u8 {
     ptr
 }
 #[no_mangle]
-pub extern "C" fn wasm_draw_frame(game: *mut Game) {
+pub extern "C" fn wasm_draw_frame(game: *mut Game, turbo: bool) {
     let game = unsafe { &mut *game };
-    game.draw_frame();
+    game.draw_frame(turbo);
 }
 #[no_mangle]
 pub extern "C" fn wasm_load_tape(game: *mut Game, ptr: *mut u8, size: usize) {
