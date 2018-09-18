@@ -2,6 +2,7 @@ use js;
 use z80::{Z80, InOut};
 use memory::Memory;
 use tape::{Tape, TapePos};
+use std::io::Cursor;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -249,7 +250,7 @@ impl Game {
             }
         }
     }
-    pub fn load_file(&mut self, data: Vec<u8>) {
+    pub fn load_tape(&mut self, data: Vec<u8>) {
         match Tape::new(data) {
             Ok(tape) => {
                 self.io.time = 0;
@@ -261,10 +262,14 @@ impl Game {
     pub fn snapshot(&self) -> Vec<u8> {
         let mut data = Vec::new();
         self.memory.save(&mut data).unwrap();
-        log!("snap 1 {} bytes", data.len());
         self.z80.save(&mut data).unwrap();
-        log!("snap 2 {} bytes", data.len());
         data
+    }
+    pub fn load_snapshot(&mut self, data: Vec<u8>) {
+        let mut load = Cursor::new(data);
+        self.memory = Memory::new();
+        self.memory.load(&mut load).unwrap();
+        self.z80.load(&mut load).unwrap();
     }
 }
 

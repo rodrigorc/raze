@@ -71,8 +71,9 @@ function onDocumentLoad() {
             }, 0);
         });
 
-    document.getElementById('files').addEventListener('change', handleFileSelect, false);
+    document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
+    document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
 }
 
@@ -210,7 +211,7 @@ function getKeyCode(ev) {
     }
 }
 
-function handleFileSelect(evt) {
+function handleTapeSelect(evt) {
     var f = evt.target.files[0];
     console.log("reading " + f.name);
     var reader = new FileReader();
@@ -220,20 +221,59 @@ function handleFileSelect(evt) {
         var ptr = Module.exports.wasm_alloc(data.byteLength);
         var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
         d.set(new Uint8Array(data));
-        Module.exports.wasm_load_file(Module.game, ptr, data.byteLength);
+        Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
     }
-    var data = reader.readAsArrayBuffer(f);
+    reader.readAsArrayBuffer(f);
+}
+
+function handleLoadTape(evt) {
+    var x = document.createElement("input");
+    x.type = "file";
+    x.accept = ".tap";
+    x.addEventListener('change', handleTapeSelect, false);
+    x.click();
+}
+
+function handleSnapshotSelect(evt) {
+    var f = evt.target.files[0];
+    console.log("reading " + f.name);
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        let data = this.result;
+        console.log("data " + data.byteLength);
+        var ptr = Module.exports.wasm_alloc(data.byteLength);
+        var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
+        d.set(new Uint8Array(data));
+        Module.exports.wasm_load_snapshot(Module.game, ptr, data.byteLength);
+    }
+    reader.readAsArrayBuffer(f);
+}
+
+function handleLoadSnapshot(evt) {
+    var x = document.createElement("input");
+    x.type = "file";
+    x.accept = ".spec";
+    x.addEventListener('change', handleSnapshotSelect, false);
+    x.click();
 }
 
 function handleSnapshot(evt) {
     console.log("snapshot");
+    const SNAPSHOT_SIZE = 0x10000 + 29;
     let ptr = Module.exports.wasm_snapshot(Module.game);
-    var data = new Uint8Array(Module.memory.buffer, ptr, 0x10000 + 29);
+    var data = new Uint8Array(Module.memory.buffer, ptr, SNAPSHOT_SIZE);
     var blob = new Blob([data], {type: "application/octet-stream"});
     var url = window.URL.createObjectURL(blob);
-    window.open(url);
-    //window.URL.revokeObjectURL(url);
-    //Module.exports.wasm_free_snapshot(ptr);
+
+    var a = document.createElement("a");
+    a.style = "display: none";
+    a.href = url;
+    a.download = "snapshot.spec";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    Module.exports.wasm_free_snapshot(ptr, SNAPSHOT_SIZE);
 }
 function handleFullscreen(evt) {
     console.log("fullscreen");
