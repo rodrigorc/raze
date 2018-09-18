@@ -73,6 +73,7 @@ function onDocumentLoad() {
 
     document.getElementById('files').addEventListener('change', handleFileSelect, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
+    document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
 }
 
 function onKeyDown(ev) {
@@ -233,6 +234,13 @@ function handleSnapshot(evt) {
     window.open(url);
     //window.URL.revokeObjectURL(url);
     //Module.exports.wasm_free_snapshot(ptr);
+}
+function handleFullscreen(evt) {
+    console.log("fullscreen");
+    var canvas = document.getElementById('game-layer');
+    var fs = canvas.requestFullscreen || canvas.mozRequestFullScreen || canvas.webkitRequestFullScreen || canvas.msRequestFullscreen;
+    if (fs)
+        fs.call(canvas);
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);
