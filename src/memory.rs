@@ -32,6 +32,9 @@ impl Memory {
         }
         self.data[addr as usize]
     }
+    pub fn peek_no_delay(&self, addr: u16) -> u8 {
+        self.data[addr as usize]
+    }
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let addr = addr.into();
         if addr < 0x4000 {

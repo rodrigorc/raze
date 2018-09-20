@@ -7,8 +7,8 @@ use memory::Memory;
 use self::r16::R16;
 
 pub trait InOut {
-    fn do_in(&mut self, port: u16) -> u8;
-    fn do_out(&mut self, port: u16, value: u8);
+    fn do_in(&mut self, port: u16, mem: &Memory, cpu: &Z80) -> u8;
+    fn do_out(&mut self, port: u16, value: u8, mem: &Memory, cpu: &Z80);
 }
 
 const FLAG_S  : u8 = 0b1000_0000;
@@ -1155,7 +1155,7 @@ impl Z80 {
                 let n = self.fetch(mem);
                 let a = self.a();
                 let n = ((a as u16) << 8) | n as u16;
-                io.do_out(n, a);
+                io.do_out(n, a, mem, self);
                 11
             }
             0xd4 => { //CALL NC,nn
@@ -1213,7 +1213,7 @@ impl Z80 {
                 let n = self.fetch(mem);
                 let a = self.a();
                 let port = ((a as u16) << 8) | (n as u16); 
-                let a = io.do_in(port);
+                let a = io.do_in(port, mem, self);
                 self.set_a(a);
                 11
             }
@@ -1695,7 +1695,7 @@ impl Z80 {
             0x40 => { //IN B,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -1707,7 +1707,7 @@ impl Z80 {
             }
             0x41 => { //OUT (C),B
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.bc.hi());
+                io.do_out(bc, self.bc.hi(), mem, self);
                 12
             }
             0x42 => { //SBC HL,BC
@@ -1747,7 +1747,7 @@ impl Z80 {
             0x48 => { //IN C,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -1759,7 +1759,7 @@ impl Z80 {
             }
             0x49 => { //OUT (C),C
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.bc.lo());
+                io.do_out(bc, self.bc.lo(), mem, self);
                 12
             }
             0x4a => { //ADC HL,BC
@@ -1790,7 +1790,7 @@ impl Z80 {
             0x50 => { //IN D,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -1802,7 +1802,7 @@ impl Z80 {
             }
             0x51 => { //OUT (C),D
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.de.hi());
+                io.do_out(bc, self.de.hi(), mem, self);
                 12
             }
             0x52 => { //SBC HL,DE
@@ -1839,7 +1839,7 @@ impl Z80 {
             0x58 => { //IN E,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -1851,7 +1851,7 @@ impl Z80 {
             }
             0x59 => { //OUT (C),E
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.de.lo());
+                io.do_out(bc, self.de.lo(), mem, self);
                 12
             }
             0x5a => { //ADC HL,DE
@@ -1889,7 +1889,7 @@ impl Z80 {
             0x60 => { //IN H,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -1901,7 +1901,7 @@ impl Z80 {
             }
             0x61 => { //OUT (C),H
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.hl.hi());
+                io.do_out(bc, self.hl.hi(), mem, self);
                 12
             }
             0x62 => { //SBC HL,HL
@@ -1938,7 +1938,7 @@ impl Z80 {
             0x68 => { //IN L,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -1950,7 +1950,7 @@ impl Z80 {
             }
             0x69 => { //OUT (C),L
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.hl.lo());
+                io.do_out(bc, self.hl.lo(), mem, self);
                 12
             }
             0x6a => { //ADC HL,HL
@@ -1986,13 +1986,13 @@ impl Z80 {
             }
             0x70 => { //IN F,(C)
                 let bc = self.bc.as_u16();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 self.set_f(b);
                 12
             }
             0x71 => { //OUT (C),F
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.f());
+                io.do_out(bc, self.f(), mem, self);
                 12
             }
             0x72 => { //SBC HL,SP
@@ -2013,7 +2013,7 @@ impl Z80 {
             0x78 => { //IN A,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
-                let b = io.do_in(bc);
+                let b = io.do_in(bc, mem, self);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_PV, parity(b));
@@ -2026,7 +2026,7 @@ impl Z80 {
             }
             0x79 => { //OUT (C),A
                 let bc = self.bc.as_u16();
-                io.do_out(bc, self.a());
+                io.do_out(bc, self.a(), mem, self);
                 12
             }
             0x7a => { //ADC HL,SP

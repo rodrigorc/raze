@@ -7,7 +7,7 @@ mod imports {
     extern "C" {
         pub fn alert(ptr: *const u8, len: usize);
         pub fn consolelog(ptr: *const u8, len: usize);
-        pub fn putImageData(border: u8, w: i32, h: i32, data: *const u8, len: usize);
+        pub fn putImageData(w: i32, h: i32, data: *const u8, len: usize);
         pub fn putSoundData(data: *const u8, len: usize);
     }
 }
@@ -33,8 +33,8 @@ macro_rules! alert {
     };
 }
 
-pub fn putImageData<T>(border: u8, w: i32, h: i32, data: &[T]) {
-    unsafe { imports::putImageData(border, w, h, data.as_ptr() as *const u8, data.len() * mem::size_of::<T>()) };
+pub fn putImageData<T>(w: i32, h: i32, data: &[T]) {
+    unsafe { imports::putImageData(w, h, data.as_ptr() as *const u8, data.len() * mem::size_of::<T>()) };
 }
 
 pub fn putSoundData(data: &[u8]) {

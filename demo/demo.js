@@ -9,7 +9,6 @@ let getStr = function (ptr, len) {
 
 var actx = new AudioContext();
 var audio_next = 0;
-var BORDER_COLORS = ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"];
 var turbo = false;
 
 function onDocumentLoad() {
@@ -21,13 +20,11 @@ function onDocumentLoad() {
         env: {
             consolelog: (ptr, len) => console.log(getStr(ptr, len)),
             alert: (ptr, len) => alert(getStr(ptr, len)),
-            putImageData: (border, w, h, ptr, len) => {
+            putImageData: (w, h, ptr, len) => {
                 let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
                 let img = new ImageData(data, w, h);
-                ctx.fillStyle = BORDER_COLORS[border];
-                ctx.fillRect(0.0, 0.0, 800.0, 600.0);
-                ctx.putImageData(img, 16, 12);
-                ctx.drawImage(canvas, 16, 12, 256, 192, 16, 12, 768, 576);
+                ctx.putImageData(img, 0, 0);
+                ctx.drawImage(canvas, 0, 0, w, h, 0, 0, 3*w, 3*h);
             },
             putSoundData: (ptr, len) => {
                 let asrc = actx.createBufferSource();
