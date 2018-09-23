@@ -37,7 +37,7 @@ impl IO {
 }
 
 impl InOut for IO {
-    fn do_in(&mut self, port: u16, mem: &Memory, _cpu: &Z80) -> u8 {
+    fn do_in(&mut self, port: u16, mem: &mut Memory, _cpu: &Z80) -> u8 {
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         let mut r = 0xff;
@@ -77,36 +77,51 @@ impl InOut for IO {
             if port >= 0x4000 && port < 0x8000 {
                 self.delay = self.delay.wrapping_add(4);
             }
-            if lo == 0xff {
-                //reads stale data from the bus (last attr byte?)
-                let row = self.time / 224;
-                let ofs = self.time % 224;
-                r = if row >= 64 && row < 256 && ofs < 128 {
-                    let row = row - 64;
-                    let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
-                    let addr = (0x4000 + 192 * 32) + 32 * row + ofs;
-                    mem.peek_no_delay(addr as u16)
-                } else { //borders or retraces
-                    0xff
-                }
-            } else if lo == 0x1f { //kempston joystick
-                let ref joy = self.keys[8];
-                r = 0;
-                for j in 0..5 {
-                    if joy[j] {
-                        r |= 1 << j;
+            match lo {
+                0xfd => { //Programmable Sound Generator
+                    match hi {
+                        0xff => {
+                            r = 0;
+                            //log!("PSG IN {:04x}, {:02x}", port, r);
+                        }
+                        _ => {
+                            log!("FD IN {:04x}, {:02x}", port, r);
+                        }
                     }
+                }
+                0xff => { //reads stale data from the bus (last attr byte?)
+                    let row = self.time / 224;
+                    let ofs = self.time % 224;
+                    r = if row >= 64 && row < 256 && ofs < 128 {
+                        let row = row - 64;
+                        let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
+                        let addr = (0x4000 + 192 * 32) + 32 * row + ofs;
+                        mem.peek_no_delay(addr as u16)
+                    } else { //borders or retraces
+                        0xff
+                    }
+                }
+                0x1f => { //kempston joystick
+                    let ref joy = self.keys[8];
+                    r = 0;
+                    for j in 0..5 {
+                        if joy[j] {
+                            r |= 1 << j;
+                        }
+                    }
+                }
+                _ => {
+                    //log!("IN {:04x}, {:02x}", port, r);
                 }
             }
         }
-        //log!("IN {:04x}, {:02x}", port, r);
         r
     }
-    fn do_out(&mut self, port: u16, value: u8, _mem: &Memory, _cpu: &Z80) {
+    fn do_out(&mut self, port: u16, value: u8, mem: &mut Memory, _cpu: &Z80) {
         let lo = port as u8;
-        let _hi = (port >> 8) as u8;
-        //ULA IO port
+        let hi = (port >> 8) as u8;
         if lo & 1 == 0 {
+            //ULA IO port
             self.delay = self.delay.wrapping_add(1);
             if port >= 0x4000 && port < 0x8000 {
                 self.delay = self.delay.wrapping_add(1);
@@ -117,8 +132,30 @@ impl InOut for IO {
             //log!("EAR {:02x} {:02x} {:02x} {}", hi, lo, value, ear);
             //log!("OUT {:04x}, {:02x}", port, value);
         } else {
+            //log!("OUT {:04x}, {:02x}", port, value);
             if port >= 0x4000 && port < 0x8000 {
                 self.delay = self.delay.wrapping_add(4);
+            }
+            match lo {
+                0xfd => { //128 stuff
+                    match hi {
+                        0x7f => { //Memory banks
+                            //log!("MEM {:04x}, {:02x}", port, value);
+                            mem.switch_banks(value);
+                        }
+                        0x1f => { //+2 Memory banks (TODO)
+                            log!("MEM+2 {:04x}, {:02x}", port, value);
+                        }
+                        0xff | 0xbf => { //PSG
+                            //log!("PSG OUT {:04x}, {:02x}", port, value);
+                        }
+                        _ => {
+                            log!("FD OUT {:04x}, {:02x}", port, value);
+                        }
+                    }
+                }
+                _ => {
+                }
             }
         }
     }
@@ -198,14 +235,18 @@ fn write_screen(border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
 }
 
 impl Game {
-    pub fn new() -> Box<Game> {
+    pub fn new(is128k: bool) -> Box<Game> {
         log!("Go!");
-        let memory = Memory::new_from_bytes(include_bytes!("48k.rom"));
+        let memory = if is128k {
+            Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")))
+        } else {
+            Memory::new_from_bytes(include_bytes!("48k.rom"), None)
+        };
         let z80 = Z80::new();
         let game = Game{
             memory, z80,
             io: IO { keys: Default::default(), delay: 0, frame_counter: 0, time: 0, tape: None, border: PIXELS[0][0], ear: false },
-            image: vec![Pixel(0,0,0,0xff); (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
+            image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
             audio: vec![],
         };
         game.into()
@@ -247,13 +288,12 @@ impl Game {
                     screen_time += t as i32;
                     while screen_time > 224 {
                         screen_time -= 224;
-                        
                         match screen_row {
                             60..=63 | 256..=259 => {
                                 write_border_row(screen_row - 60, self.io.border, &mut self.image);
                             }
                             64..=255 => {
-                                let screen = self.memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
+                                let screen = self.memory.video_memory();
                                 write_screen_row(screen_row - 64, self.io.border, inverted, screen, &mut self.image);
                             }
                             _ => {}
@@ -267,7 +307,7 @@ impl Game {
             self.z80.interrupt(&mut self.memory);
         }
         if turbo {
-            let screen = self.memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
+            let screen = self.memory.video_memory();
             write_screen(self.io.border, inverted, screen, &mut self.image);
         } else {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
@@ -323,8 +363,7 @@ impl Game {
     }
     pub fn load_snapshot(&mut self, data: Vec<u8>) {
         let mut load = Cursor::new(data);
-        self.memory = Memory::new();
-        self.memory.load(&mut load).unwrap();
+        self.memory = Memory::load(&mut load).unwrap();
         self.z80.load(&mut load).unwrap();
     }
 }

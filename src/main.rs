@@ -79,7 +79,7 @@ struct Spectrum {
 }
 
 impl InOut for Spectrum {
-    fn do_in(&mut self, port: u16) -> u8 {
+    fn do_in(&mut self, port: u16, mem: &mut Memory, _cpu: &Z80) -> u8 {
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         let r = match lo {
@@ -122,7 +122,7 @@ impl InOut for Spectrum {
         self.x += 1;
         r
     }
-    fn do_out(&mut self, port: u16, value: u8) {
+    fn do_out(&mut self, port: u16, value: u8, mem: &mut Memory, _cpu: &Z80) {
         //println!("OUT {:04x}, {:02x}", port, value);
     }
 }
@@ -137,7 +137,7 @@ fn main() -> io::Result<()> {
     let load = args.next();
     match load {
         None => {
-            memory = Memory::new_rom("48k.rom")?;
+            memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
         }
         Some(load) => {
             memory = Memory::new();
@@ -155,7 +155,7 @@ fn main() -> io::Result<()> {
         z80.exec(&mut memory, &mut spectrum);
         if (count+1) % SCROPS == 0 {
             if false {
-                let screen = memory.slice(0x4000, 0x4000 + 32 * 192 + 32 * 24);
+                let screen = memory.video_memory();
                 write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
             }
             z80.interrupt(&mut memory);

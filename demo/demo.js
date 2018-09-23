@@ -57,7 +57,7 @@ function onDocumentLoad() {
                 exports: exports,
                 memory: exports.memory,
             });
-            Module.game = exports.wasm_main();
+            Module.game = exports.wasm_main(true);
             window.addEventListener('keydown', onKeyDown)
             window.addEventListener('keyup', onKeyUp)
             window.addEventListener('focus', onFocus)
@@ -66,6 +66,8 @@ function onDocumentLoad() {
             onFocus();
         });
 
+    document.getElementById('reset_48k').addEventListener('click', handleReset48k, false);
+    document.getElementById('reset_128k').addEventListener('click', handleReset128k, false);
     document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
     document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
@@ -234,6 +236,16 @@ function handleTapeSelect(evt) {
         Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
     }
     reader.readAsArrayBuffer(f);
+}
+
+function handleReset48k(evt) {
+    Module.exports.wasm_drop(Module.game);
+    Module.game = Module.exports.wasm_main(false);
+}
+
+function handleReset128k(evt) {
+    Module.exports.wasm_drop(Module.game);
+    Module.game = Module.exports.wasm_main(true);
 }
 
 function handleLoadTape(evt) {

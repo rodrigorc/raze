@@ -10,28 +10,24 @@
     margin: 0 auto;
     border: 2px solid black
 }
-#stage canvas {
-    position: absolute;
-}
-#game-layer {
-    z-index: 2;
-}
-#background-layer {
-    z-index: 1;
-    background: grey;
+#controls {
 }
 </style>
 </head>
 <body>
 
 
+<div id="row">
 <div id="stage">
   <canvas id="game-layer" width="798" height="600"></canvas>
 </div>
+<div id="controls">
+  <button id="reset_128k">Reset 128k</button><button id="reset_48k">Reset 48k</button><p>
+  <button id="load_tape">Load Tape</button><input id="turbo" name="turbo" type="checkbox">Turbo</input></br>
+  <button id="snapshot">Save Snapshot</button><button id="load_snapshot">Load Snapshot</button><br>
+  <button id="fullscreen">Fullscreen</button>
+</div>
+</div>
 
-<button id="load_tape">Load Tape</button><input id="turbo" name="turbo" type="checkbox">Turbo</input></br>
-<button id="snapshot">Save Snapshot</button><button id="load_snapshot">Load Snapshot</button><br>
-<button id="fullscreen">Fullscreen</button>
- 
 <script src="demo.js"></script>
 </body>

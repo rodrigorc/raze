@@ -42,9 +42,13 @@ pub fn putSoundData(data: &[u8]) {
 }
 
 #[no_mangle]
-pub extern "C" fn wasm_main() -> *mut Game {
-    let game = Game::new();
+pub extern "C" fn wasm_main(is128k: bool) -> *mut Game {
+    let game = Game::new(is128k);
     Box::into_raw(game)
+}
+#[no_mangle]
+pub extern "C" fn wasm_drop(game: *mut Game) {
+    let _game = unsafe { Box::from_raw(game) };
 }
 #[no_mangle]
 pub extern "C" fn wasm_alloc(size: usize) -> *mut u8 {

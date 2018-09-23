@@ -7,8 +7,8 @@ use memory::Memory;
 use self::r16::R16;
 
 pub trait InOut {
-    fn do_in(&mut self, port: u16, mem: &Memory, cpu: &Z80) -> u8;
-    fn do_out(&mut self, port: u16, value: u8, mem: &Memory, cpu: &Z80);
+    fn do_in(&mut self, port: u16, mem: &mut Memory, cpu: &Z80) -> u8;
+    fn do_out(&mut self, port: u16, value: u8, mem: &mut Memory, cpu: &Z80);
 }
 
 const FLAG_S  : u8 = 0b1000_0000;
