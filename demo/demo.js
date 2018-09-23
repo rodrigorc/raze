@@ -63,12 +63,7 @@ function onDocumentLoad() {
             window.addEventListener('focus', onFocus)
             window.addEventListener('blur', onBlur)
             audio_next = actx.currentTime;
-            setInterval(function(){
-                if (turbo) {
-                    Module.exports.wasm_draw_frame(Module.game, true);
-                } else if (audio_next - actx.currentTime < 0.05)
-                    Module.exports.wasm_draw_frame(Module.game, false);
-            }, 0);
+            onFocus();
         });
 
     document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
@@ -93,11 +88,25 @@ function onKeyUp(ev) {
     Module.exports.wasm_key_up(Module.game, key);
     ev.preventDefault();
 }
+
+var interval = null;
 function onFocus(ev) {
     Module.exports.wasm_reset_input(Module.game);
+    if (interval === null) {
+        interval = setInterval(function(){
+            if (turbo) {
+                Module.exports.wasm_draw_frame(Module.game, true);
+            } else if (audio_next - actx.currentTime < 0.05)
+                Module.exports.wasm_draw_frame(Module.game, false);
+        }, 0);
+    }
 }
 function onBlur(ev) {
     Module.exports.wasm_reset_input(Module.game);
+    if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+    }
 }
 
 function getKeyCode(ev) {
