@@ -39,11 +39,11 @@ impl IO {
         self.delay = 0;
         r
     }
-    pub fn audio_sample(&mut self) -> u8 {
+    pub fn audio_sample(&mut self, t: i32) -> u8 {
         let v = if self.ear { 0x7fu8 } else { 0x00 };
         match &mut self.psg {
             None => v,
-            Some(psg) => v.saturating_add(psg.next_sample(AUDIO_SAMPLE))
+            Some(psg) => v.saturating_add(psg.next_sample(t))
         }
     }
 }
@@ -290,6 +290,8 @@ impl Game {
         let n = if turbo { 100 } else { 1 };
 
         self.audio.clear();
+        let mut audio_accum : u32 = 0;
+        let mut audio_count : u32 = 0;
         let mut inverted = false;
         for _ in 0..n {
             self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
@@ -312,10 +314,19 @@ impl Game {
                 self.io.time += t as i32;
                 if !turbo {
                     audio_time += t as i32;
-                    while audio_time >= AUDIO_SAMPLE {
+                    audio_accum += self.io.audio_sample(t as i32) as u32;
+                    audio_count += 1;
+                    if audio_time >= AUDIO_SAMPLE {
+                        audio_time -= AUDIO_SAMPLE;
+                        self.audio.push((audio_accum / audio_count) as u8);
+                        audio_accum = 0;
+                        audio_count = 0;
+                    }
+
+                    /*while audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
                         self.audio.push(self.io.audio_sample());
-                    }
+                    }*/
                     screen_time += t as i32;
                     while screen_time > 224 {
                         screen_time -= 224;
@@ -342,7 +353,7 @@ impl Game {
             write_screen(self.io.border, inverted, screen, &mut self.image);
         } else {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
-                self.audio.push(self.io.audio_sample());
+                self.audio.push(self.io.audio_sample(0));
             }
             js::putSoundData(&self.audio);
         }
