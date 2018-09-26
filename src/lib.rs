@@ -2,5 +2,6 @@
 pub mod js;
 mod game;
 mod memory;
+mod psg;
 mod z80;
 mod tape;

@@ -28,11 +28,11 @@ function onDocumentLoad() {
             },
             putSoundData: (ptr, len) => {
                 let asrc = actx.createBufferSource();
-                let abuf = actx.createBuffer(1, len, len * 50); // 50ms
+                let abuf = actx.createBuffer(1, len, Module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE
                 let data = abuf.getChannelData(0);
                 let slice = new Uint8Array(Module.memory.buffer, ptr, len);
                 for (let i = 0; i < len; ++i)
-                    data[i] = slice[i] ? 1 : -1;
+                    data[i] = slice[i] / 255; // ? 1 : -1;
                 asrc.buffer = abuf;
                 asrc.connect(actx.destination);
 
@@ -57,7 +57,8 @@ function onDocumentLoad() {
                 exports: exports,
                 memory: exports.memory,
             });
-            Module.game = exports.wasm_main(true);
+            Module.is128k = true;
+            Module.game = exports.wasm_main(Module.is128k);
             window.addEventListener('keydown', onKeyDown)
             window.addEventListener('keyup', onKeyUp)
             window.addEventListener('focus', onFocus)
@@ -240,12 +241,14 @@ function handleTapeSelect(evt) {
 
 function handleReset48k(evt) {
     Module.exports.wasm_drop(Module.game);
-    Module.game = Module.exports.wasm_main(false);
+    Module.is128k = false;
+    Module.game = Module.exports.wasm_main(Module.is128k);
 }
 
 function handleReset128k(evt) {
     Module.exports.wasm_drop(Module.game);
-    Module.game = Module.exports.wasm_main(true);
+    Module.is128k = true;
+    Module.game = Module.exports.wasm_main(Module.is128k);
 }
 
 function handleLoadTape(evt) {

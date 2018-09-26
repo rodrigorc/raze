@@ -2,7 +2,11 @@ use js;
 use z80::{Z80, InOut};
 use memory::Memory;
 use tape::{Tape, TapePos};
+use psg::PSG;
 use std::io::Cursor;
+
+const TIME_TO_INT : i32 = 69888;
+const AUDIO_SAMPLE : i32 = 168;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -26,6 +30,7 @@ struct IO {
     tape: Option<(Tape, i32, TapePos)>,
     border: Pixel,
     ear: bool,
+    psg: Option<PSG>,
 }
 
 impl IO {
@@ -33,6 +38,13 @@ impl IO {
         let r = self.delay;
         self.delay = 0;
         r
+    }
+    pub fn audio_sample(&mut self) -> u8 {
+        let v = if self.ear { 0x7fu8 } else { 0x00 };
+        match &mut self.psg {
+            None => v,
+            Some(psg) => v.saturating_add(psg.next_sample(AUDIO_SAMPLE))
+        }
     }
 }
 
@@ -79,13 +91,14 @@ impl InOut for IO {
             }
             match lo {
                 0xfd => { //Programmable Sound Generator
-                    match hi {
-                        0xff => {
-                            r = 0;
-                            //log!("PSG IN {:04x}, {:02x}", port, r);
-                        }
-                        _ => {
-                            log!("FD IN {:04x}, {:02x}", port, r);
+                    if let Some(psg) = &self.psg {
+                        match hi {
+                            0xff => {
+                                r = psg.read_reg();
+                            }
+                            _ => {
+                                log!("FD IN {:04x}, {:02x}", port, r);
+                            }
                         }
                     }
                 }
@@ -146,8 +159,15 @@ impl InOut for IO {
                         0x1f => { //+2 Memory banks (TODO)
                             log!("MEM+2 {:04x}, {:02x}", port, value);
                         }
-                        0xff | 0xbf => { //PSG
-                            //log!("PSG OUT {:04x}, {:02x}", port, value);
+                        0xff => {
+                            if let Some(psg) = &mut self.psg {
+                                psg.select_reg(value);
+                            }
+                        }
+                        0xbf => {
+                            if let Some(psg) = &mut self.psg {
+                                psg.write_reg(value);
+                            }
                         }
                         _ => {
                             log!("FD OUT {:04x}, {:02x}", port, value);
@@ -237,15 +257,28 @@ fn write_screen(border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
 impl Game {
     pub fn new(is128k: bool) -> Box<Game> {
         log!("Go!");
-        let memory = if is128k {
-            Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")))
+        let memory;
+        let psg;
+        if is128k {
+            memory = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
+            psg = Some(PSG::new());
         } else {
-            Memory::new_from_bytes(include_bytes!("48k.rom"), None)
+            memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None);
+            psg = None;
         };
         let z80 = Z80::new();
         let game = Game{
             memory, z80,
-            io: IO { keys: Default::default(), delay: 0, frame_counter: 0, time: 0, tape: None, border: PIXELS[0][0], ear: false },
+            io: IO {
+                keys: Default::default(),
+                delay: 0,
+                frame_counter: 0,
+                time: 0,
+                tape: None,
+                border: PIXELS[0][0],
+                ear: false,
+                psg,
+            },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
             audio: vec![],
         };
@@ -255,8 +288,6 @@ impl Game {
         //log!("Draw!");
 
         let n = if turbo { 100 } else { 1 };
-        const TIME_TO_INT : i32 = 69888;
-        const AUDIO_SAMPLE : i32 = 168;
 
         self.audio.clear();
         let mut inverted = false;
@@ -283,7 +314,7 @@ impl Game {
                     audio_time += t as i32;
                     while audio_time > AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
-                        self.audio.push(self.io.ear as u8);
+                        self.audio.push(self.io.audio_sample());
                     }
                     screen_time += t as i32;
                     while screen_time > 224 {
@@ -311,7 +342,7 @@ impl Game {
             write_screen(self.io.border, inverted, screen, &mut self.image);
         } else {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
-                self.audio.push(self.io.ear as u8);
+                self.audio.push(self.io.audio_sample());
             }
             js::putSoundData(&self.audio);
         }
