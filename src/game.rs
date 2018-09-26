@@ -312,7 +312,7 @@ impl Game {
                 self.io.time += t as i32;
                 if !turbo {
                     audio_time += t as i32;
-                    while audio_time > AUDIO_SAMPLE {
+                    while audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
                         self.audio.push(self.io.audio_sample());
                     }
