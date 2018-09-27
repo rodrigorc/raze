@@ -188,17 +188,17 @@ impl PSG {
         //log!("PSG write {:02x} <- {:02x}", self.reg_sel, x);
         match self.reg_sel {
             0x00 | 0x01 => {
-                let freq = Self::freq(self.reg[0x00], self.reg[0x01]);
+                let freq = Self::freq_12(self.reg[0x00], self.reg[0x01]);
                 self.freq_a.set_freq(freq);
                 //log!("Tone A: {}", freq);
             }
             0x02 | 0x03 => {
-                let freq = Self::freq(self.reg[0x02], self.reg[0x03]);
+                let freq = Self::freq_12(self.reg[0x02], self.reg[0x03]);
                 self.freq_b.set_freq(freq);
                 //log!("Tone B: {}", freq);
             }
             0x04 | 0x05 => {
-                let freq = Self::freq(self.reg[0x04], self.reg[0x05]);
+                let freq = Self::freq_12(self.reg[0x04], self.reg[0x05]);
                 self.freq_c.set_freq(freq);
                 //log!("Tone C: {}", freq);
             }
@@ -208,7 +208,7 @@ impl PSG {
                 //log!("Noise A: {}", noise);
             }
             0x0b | 0x0c | 0x0d=> {
-                let freq = self.reg[0x0b] as u16 | ((self.reg[0x0c] as u16) << 8);
+                let freq = Self::freq_16(self.reg[0x0b], self.reg[0x0c]);
                 let shape = self.reg[0x0d];
                 self.envelope.set_freq_shape(freq, shape);
                 //log!("Envel: {} {}", freq, shape);
@@ -263,8 +263,12 @@ impl PSG {
         const LEVELS: [u8; 16] = [1/M, 2/M, 3/M, 4/M, 6/M, 8/M, 11/M, 16/M, 23/M, 32/M, 45/M, 64/M, 90/M, 127/M, 180/M, 255/M];
         LEVELS[v as usize] / 3
     }
-    fn freq(a: u8, b: u8) -> u16 {
+    fn freq_12(a: u8, b: u8) -> u16 {
         let n = a as u16 | (((b & 0x0f) as u16) << 8);
+        if n == 0 { 1 } else { n }
+    }
+    fn freq_16(a: u8, b: u8) -> u16 {
+        let n = a as u16 | ((b as u16) << 8);
         if n == 0 { 1 } else { n }
     }
     fn channel(tone_enabled: bool, noise_enabled: bool, freq: &mut FreqGen, noise: bool, t: i32) -> bool {
