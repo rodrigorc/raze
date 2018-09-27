@@ -107,6 +107,8 @@ pub struct Z80 {
     next_op: NextOp,
 }
 
+enum Direction { Inc, Dec }
+
 impl Z80 {
     pub fn new() -> Z80 {
         Z80 {
@@ -440,14 +442,22 @@ impl Z80 {
         self.set_f(f);
         r
     }
-    fn ldi(&mut self, mem: &mut Memory) {
+    fn ldi_ldd(&mut self, dir: Direction, mem: &mut Memory) {
         let hl = self.hl;
         let de = self.de;
         let x = mem.peek(hl);
         mem.poke(de, x);
 
-        self.hl += 1;
-        self.de += 1;
+        match dir {
+            Direction::Inc => {
+                self.hl += 1;
+                self.de += 1;
+            }
+            Direction::Dec => {
+                self.hl -= 1;
+                self.de -= 1;
+            }
+        };
         self.bc -= 1;
 
         let mut f = self.f();
@@ -456,30 +466,16 @@ impl Z80 {
         f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
         self.set_f(f);
     }
-    fn ldd(&mut self, mem: &mut Memory) {
-        let hl = self.hl;
-        let de = self.de;
-        let x = mem.peek(hl);
-        mem.poke(de, x);
-
-        self.hl -= 1;
-        self.de -= 1;
-        self.bc -= 1;
-
-        let mut f = self.f();
-        f = set_flag8(f, FLAG_N, false);
-        f = set_flag8(f, FLAG_H, false);
-        f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
-        self.set_f(f);
-
-    }
-    fn cpi(&mut self, mem: &mut Memory) -> u8 {
+    fn cpi_cpd(&mut self, dir: Direction, mem: &mut Memory) -> u8 {
         let hl = self.hl;
         let x = mem.peek(hl);
         let a = self.a();
         let mut f = self.f();
 
-        self.hl += 1;
+        match dir {
+            Direction::Inc => self.hl += 1,
+            Direction::Dec => self.hl -= 1,
+        };
         self.bc -= 1;
 
         let r = a.wrapping_sub(x);
@@ -491,23 +487,35 @@ impl Z80 {
         self.set_f(f);
         r
     }
-    fn cpd(&mut self, mem: &mut Memory) -> u8{
-        let hl = self.hl;
-        let x = mem.peek(hl);
-        let a = self.a();
+    fn ini_ind(&mut self, dir: Direction, mem: &mut Memory, io: &mut dyn InOut) -> u8 {
+        let x = io.do_in(self.bc.as_u16(), mem, self);
+        mem.poke(self.hl, x);
+        match dir {
+            Direction::Inc => self.hl += 1,
+            Direction::Dec => self.hl -= 1,
+        };
+        let b = self.bc.hi().wrapping_sub(1);
+        self.bc.set_hi(b);
         let mut f = self.f();
-
-        self.hl -= 1;
-        self.bc -= 1;
-
-        let r = a.wrapping_sub(x);
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
-        f = set_flag8(f, FLAG_H, half_carry8(r, x, a));
-        f = set_flag8(f, FLAG_N, true);
-        f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
+        f = set_flag8(f, FLAG_N | FLAG_S, flag8(b, 0x80));
+        f = set_flag8(f, FLAG_Z, b == 0);
         self.set_f(f);
-        r
+        b
+    }
+    fn outi_outd(&mut self, dir: Direction, mem: &mut Memory, io: &mut dyn InOut) -> u8 {
+        let x = mem.peek(self.hl);
+        io.do_out(self.bc.as_u16(), x, mem, self);
+        match dir {
+            Direction::Inc => self.hl += 1,
+            Direction::Dec => self.hl -= 1,
+        };
+        let b = self.bc.hi().wrapping_sub(1);
+        self.bc.set_hi(b);
+        let mut f = self.f();
+        f = set_flag8(f, FLAG_N | FLAG_S, flag8(b, 0x80));
+        f = set_flag8(f, FLAG_Z, b == 0);
+        self.set_f(f);
+        b
     }
     fn daa(&mut self) {
         let a = self.a();
@@ -2045,23 +2053,39 @@ impl Z80 {
                 20
             }
             0xa0 => { //LDI
-                self.ldi(mem);
+                self.ldi_ldd(Direction::Inc, mem);
                 16
             }
             0xa1 => { //CPI
-                self.cpi(mem);
+                self.cpi_cpd(Direction::Inc, mem);
+                16
+            }
+            0xa2 => { //INI
+                self.ini_ind(Direction::Inc, mem, io);
+                16
+            }
+            0xa3 => { //OUTI
+                self.outi_outd(Direction::Inc, mem, io);
                 16
             }
             0xa8 => { //LDD
-                self.ldd(mem);
+                self.ldi_ldd(Direction::Dec, mem);
                 16
             }
             0xa9 => { //CPD
-                self.cpd(mem);
+                self.cpi_cpd(Direction::Dec, mem);
+                16
+            }
+            0xaa => { //IND
+                self.ini_ind(Direction::Dec, mem, io);
+                16
+            }
+            0xab => { //OUTD
+                self.outi_outd(Direction::Dec, mem, io);
                 16
             }
             0xb0 => { //LDIR
-                self.ldi(mem);
+                self.ldi_ldd(Direction::Inc, mem);
                 if self.bc.as_u16() != 0 {
                     self.pc -= 2;
                     21
@@ -2070,7 +2094,7 @@ impl Z80 {
                 }
             }
             0xb1 => { //CPIR
-                let r = self.cpi(mem);
+                let r = self.cpi_cpd(Direction::Inc, mem);
                 if self.bc.as_u16() != 0 && r != 0 {
                     self.pc -= 2;
                     21
@@ -2078,8 +2102,26 @@ impl Z80 {
                     16
                 }
             }
+            0xb2 => { //INIR
+                let b = self.ini_ind(Direction::Inc, mem, io);
+                if b != 0 {
+                    self.pc -= 2;
+                    21
+                } else {
+                    16
+                }
+            }
+            0xb3 => { //OTIR
+                let b = self.outi_outd(Direction::Inc, mem, io);
+                if b != 0 {
+                    self.pc -= 2;
+                    21
+                } else {
+                    16
+                }
+            }
             0xb8 => { //LDDR
-                self.ldd(mem);
+                self.ldi_ldd(Direction::Dec, mem);
                 if self.bc.as_u16() != 0 {
                     self.pc -= 2;
                     21
@@ -2088,8 +2130,26 @@ impl Z80 {
                 }
             }
             0xb9 => { //CPDR
-                let r = self.cpd(mem);
+                let r = self.cpi_cpd(Direction::Dec, mem);
                 if self.bc.as_u16() != 0 && r != 0 {
+                    self.pc -= 2;
+                    21
+                } else {
+                    16
+                }
+            }
+            0xba => { //INDR
+                let b = self.ini_ind(Direction::Dec, mem, io);
+                if b != 0 {
+                    self.pc -= 2;
+                    21
+                } else {
+                    16
+                }
+            }
+            0xbb => { //OTDR
+                let b = self.outi_outd(Direction::Dec, mem, io);
+                if b != 0 {
                     self.pc -= 2;
                     21
                 } else {
