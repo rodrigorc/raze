@@ -1,5 +1,5 @@
 use js;
-use z80::{Z80, InOut};
+use z80::{Z80, Bus};
 use memory::Memory;
 use tape::{Tape, TapePos};
 use psg::PSG;
@@ -23,7 +23,8 @@ const BX1: usize = 5;
 const BY0: usize = 4;
 const BY1: usize = 4;
 
-struct IO {
+struct ULA {
+    memory: Memory,
     keys: [[bool; 5]; 9], //8 semirows plus joystick
     delay: u32,
     frame_counter: u32, time: i32,
@@ -33,7 +34,7 @@ struct IO {
     psg: Option<PSG>,
 }
 
-impl IO {
+impl ULA {
     pub fn take_delay(&mut self) -> u32 {
         let r = self.delay;
         self.delay = 0;
@@ -48,8 +49,15 @@ impl IO {
     }
 }
 
-impl InOut for IO {
-    fn do_in(&mut self, port: u16, mem: &mut Memory, _cpu: &Z80) -> u8 {
+impl Bus for ULA {
+    fn peek(&mut self, addr: impl Into<u16>) -> u8 {
+        self.memory.peek(addr)
+    }
+    fn poke(&mut self, addr: impl Into<u16>, value: u8) {
+        self.memory.poke(addr, value);
+    }
+    fn do_in(&mut self, port: impl Into<u16>) -> u8 {
+        let port = port.into();
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         let mut r = 0xff;
@@ -109,7 +117,7 @@ impl InOut for IO {
                         let row = row - 64;
                         let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
                         let addr = (0x4000 + 192 * 32) + 32 * row + ofs;
-                        mem.peek_no_delay(addr as u16)
+                        self.memory.peek_no_delay(addr as u16)
                     } else { //borders or retraces
                         0xff
                     }
@@ -130,7 +138,8 @@ impl InOut for IO {
         }
         r
     }
-    fn do_out(&mut self, port: u16, value: u8, mem: &mut Memory, _cpu: &Z80) {
+    fn do_out(&mut self, port: impl Into<u16>, value: u8) {
+        let port = port.into();
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         if lo & 1 == 0 {
@@ -154,7 +163,7 @@ impl InOut for IO {
                     match hi {
                         0x7f => { //Memory banks
                             //log!("MEM {:04x}, {:02x}", port, value);
-                            mem.switch_banks(value);
+                            self.memory.switch_banks(value);
                         }
                         0x1f => { //+2 Memory banks (TODO)
                             log!("MEM+2 {:04x}, {:02x}", port, value);
@@ -182,9 +191,8 @@ impl InOut for IO {
 }
 
 pub struct Game {
-    memory: Memory,
     z80: Z80,
-    io: IO,
+    ula: ULA,
     image: Vec<Pixel>,
     audio: Vec<u8>,
 }
@@ -267,9 +275,10 @@ impl Game {
             psg = None;
         };
         let z80 = Z80::new();
-        let game = Game{
-            memory, z80,
-            io: IO {
+        let game = Game {
+            z80,
+            ula: ULA {
+                memory: memory,
                 keys: Default::default(),
                 delay: 0,
                 frame_counter: 0,
@@ -294,27 +303,27 @@ impl Game {
         let mut audio_count : u32 = 0;
         let mut inverted = false;
         for _ in 0..n {
-            self.io.frame_counter = self.io.frame_counter.wrapping_add(1);
-            inverted = self.io.frame_counter % 32 < 16;
-            self.io.time = 0;
+            self.ula.frame_counter = self.ula.frame_counter.wrapping_add(1);
+            inverted = self.ula.frame_counter % 32 < 16;
+            self.ula.time = 0;
             let mut audio_time = 0;
             let mut screen_time = 0;
             let mut screen_row = 0;
-            while self.io.time < TIME_TO_INT {
-                let mut t = self.z80.exec(&mut self.memory, &mut self.io);
-                let delay = self.memory.take_delay() + self.io.take_delay();
+            while self.ula.time < TIME_TO_INT {
+                let mut t = self.z80.exec(&mut self.ula);
+                let delay = self.ula.memory.take_delay() + self.ula.take_delay();
                 //contended memory
-                if self.io.time >= 224*64 && self.io.time < 224*256 {
+                if self.ula.time >= 224*64 && self.ula.time < 224*256 {
                     //each row is 224 T, 128 are the real pixels where contention occurs
-                    let offs = self.io.time % 224;
+                    let offs = self.ula.time % 224;
                     if offs < 128 {
                         t += (delay * 21) / 8;
                     }
                 }
-                self.io.time += t as i32;
+                self.ula.time += t as i32;
                 if !turbo {
                     audio_time += t as i32;
-                    audio_accum += self.io.audio_sample(t as i32) as u32;
+                    audio_accum += self.ula.audio_sample(t as i32) as u32;
                     audio_count += 1;
                     if audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
@@ -325,18 +334,18 @@ impl Game {
 
                     /*while audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
-                        self.audio.push(self.io.audio_sample());
+                        self.audio.push(self.ula.audio_sample());
                     }*/
                     screen_time += t as i32;
                     while screen_time > 224 {
                         screen_time -= 224;
                         match screen_row {
                             60..=63 | 256..=259 => {
-                                write_border_row(screen_row - 60, self.io.border, &mut self.image);
+                                write_border_row(screen_row - 60, self.ula.border, &mut self.image);
                             }
                             64..=255 => {
-                                let screen = self.memory.video_memory();
-                                write_screen_row(screen_row - 64, self.io.border, inverted, screen, &mut self.image);
+                                let screen = self.ula.memory.video_memory();
+                                write_screen_row(screen_row - 64, self.ula.border, inverted, screen, &mut self.image);
                             }
                             _ => {}
                         }
@@ -346,14 +355,14 @@ impl Game {
                     }
                 }
             }
-            self.z80.interrupt(&mut self.memory);
+            self.z80.interrupt(&mut self.ula);
         }
         if turbo {
-            let screen = self.memory.video_memory();
-            write_screen(self.io.border, inverted, screen, &mut self.image);
+            let screen = self.ula.memory.video_memory();
+            write_screen(self.ula.border, inverted, screen, &mut self.image);
         } else {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
-                self.audio.push(self.io.audio_sample(0));
+                self.audio.push(self.ula.audio_sample(0));
             }
             js::putSoundData(&self.audio);
         }
@@ -366,7 +375,7 @@ impl Game {
                 0x0f => 0,
                 r => r
             };
-            self.io.keys[r][k] = false;
+            self.ula.keys[r][k] = false;
             key >>= 8;
         }
     }
@@ -377,12 +386,12 @@ impl Game {
                 0x0f => 0,
                 r => r
             };
-            self.io.keys[r][k] = true;
+            self.ula.keys[r][k] = true;
             key >>= 8;
         }
     }
     pub fn reset_input(&mut self) {
-        for r in self.io.keys.iter_mut() {
+        for r in self.ula.keys.iter_mut() {
             for k in r.iter_mut() {
                 *k = false;
             }
@@ -391,21 +400,21 @@ impl Game {
     pub fn load_tape(&mut self, data: Vec<u8>) {
         match Tape::new(data) {
             Ok(tape) => {
-                self.io.time = 0;
-                self.io.tape = Some((tape, self.io.time, TapePos::new()));
+                self.ula.time = 0;
+                self.ula.tape = Some((tape, self.ula.time, TapePos::new()));
             }
             Err(e) => alert!("{}", e),
         }
     }
     pub fn snapshot(&self) -> Vec<u8> {
         let mut data = Vec::new();
-        self.memory.save(&mut data).unwrap();
+        self.ula.memory.save(&mut data).unwrap();
         self.z80.save(&mut data).unwrap();
         data
     }
     pub fn load_snapshot(&mut self, data: Vec<u8>) {
         let mut load = Cursor::new(data);
-        self.memory = Memory::load(&mut load).unwrap();
+        self.ula.memory = Memory::load(&mut load).unwrap();
         self.z80.load(&mut load).unwrap();
     }
 }

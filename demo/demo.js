@@ -279,7 +279,7 @@ function handleTapeSelect(evt) {
         var ptr = Module.exports.wasm_alloc(data.byteLength);
         var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
         d.set(new Uint8Array(data));
-        Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
+        let tape = Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
     }
     reader.readAsArrayBuffer(f);
 }

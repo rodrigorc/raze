@@ -75,23 +75,10 @@ impl Memory {
         }
         self.data[bank][offs] = data;
     }
-    pub fn peek_u16(&mut self, addr: impl Into<u16>) -> u16 {
-        let addr = addr.into();
-        let lo = self.peek(addr) as u16;
-        let addr = addr.wrapping_add(1);
-        let hi = self.peek(addr) as u16;
-        (hi << 8) | lo
-    }
     pub fn take_delay(&mut self) -> u32 {
         let r = self.delay;
         self.delay = 0;
         r
-    }
-    pub fn poke_u16(&mut self, addr: impl Into<u16>, data: u16) {
-        let addr = addr.into();
-        self.poke(addr, data as u8);
-        let addr = addr.wrapping_add(1);
-        self.poke(addr, (data >> 8) as u8);
     }
     pub fn video_memory(&self) -> &[u8] {
         &self.data[self.vram][0..32 * 192 + 32 * 24]
