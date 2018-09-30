@@ -10,21 +10,54 @@ let getStr = function (ptr, len) {
 var actx = new AudioContext();
 var audio_next = 0;
 var turbo = false;
+var realCanvas = null;
 
 function onDocumentLoad() {
+
+    let urlParams = new URLSearchParams(window.location.search);
+    let webgl = urlParams.get('webgl');
+    webgl = webgl === null || webgl != "false";
+
+    let ctx = null, gl = null;
+
+    let canvas3d = document.getElementById('game-layer-3d');
     let canvas = document.getElementById('game-layer');
-    let ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
+
+    if (webgl) {
+        gl = canvas3d.getContext('webgl');
+    }
+
+    if (gl && initMyGL(gl)) {
+        console.log("using webgl rendering");
+        realCanvas = canvas3d;
+    } else {
+        if (webgl)
+            console.log("webgl initialization failed, falling back to canvas");
+        else
+            console.log("webgl initialization skipped, falling back to canvas");
+        gl = null;
+        canvas3d.style.display = 'none';
+        canvas.style.display = '';
+
+        ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        realCanvas = canvas;
+    }
 
     let imports = {
         env: {
             consolelog: (ptr, len) => console.log(getStr(ptr, len)),
             alert: (ptr, len) => alert(getStr(ptr, len)),
             putImageData: (w, h, ptr, len) => {
-                let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
-                let img = new ImageData(data, w, h);
-                ctx.putImageData(img, 0, 0);
-                ctx.drawImage(canvas, 0, 0, w, h, 0, 0, 3*w, 3*h);
+                if (gl) {
+                    let data = new Uint8Array(Module.memory.buffer, ptr, len);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                } else {
+                    let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
+                    let img = new ImageData(data, w, h);
+                    ctx.putImageData(img, 0, 0);
+                }
             },
             putSoundData: (ptr, len) => {
                 let asrc = actx.createBufferSource();
@@ -302,7 +335,7 @@ function handleSnapshot(evt) {
 }
 function handleFullscreen(evt) {
     console.log("fullscreen");
-    var canvas = document.getElementById('game-layer');
+    var canvas = realCanvas;
     var fs = canvas.requestFullscreen || canvas.mozRequestFullScreen || canvas.webkitRequestFullScreen || canvas.msRequestFullscreen;
     if (fs)
         fs.call(canvas);
@@ -313,3 +346,124 @@ function handleTurbo(evt) {
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);
+
+function compileShader(gl, type, source) {
+    const shader = gl.createShader(type);
+
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.log('Shader compiler error: ' + gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+    }
+    return shader;
+}
+function linkShader(gl, vs, fs) {
+    const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vs);
+    const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fs);
+    if (!vertexShader || !fragmentShader) {
+        return null;
+    }
+
+    const shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+        console.log('Shader linker error: ' + gl.getProgramInfoLog(shaderProgram));
+        return null;
+    }
+    return shaderProgram;
+}
+
+function initMyGL(gl) {
+    if (!gl) {
+        return false;
+    }
+    //Shaders
+    const vs = `
+    attribute vec2 aPos;
+    attribute vec2 aTex;
+    varying highp vec2 vTex;
+
+    void main() {
+      gl_Position = vec4(aPos, 0, 1);
+      vTex = aTex;
+    }
+    `;
+
+    const fs = `
+    uniform sampler2D uSampler;
+    varying highp vec2 vTex;
+
+    void main() {
+        gl_FragColor = texture2D(uSampler, vTex);
+    }
+    `;
+    const program = linkShader(gl, vs, fs);
+    if (!program)
+        return false;
+
+    //Buffers
+    const bufferV = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferV);
+
+    const positionsV = [
+        1.0,  1.0,
+        -1.0,  1.0,
+        1.0, -1.0,
+        -1.0, -1.0,
+    ];
+    gl.bufferData(gl.ARRAY_BUFFER,
+        new Float32Array(positionsV),
+        gl.STATIC_DRAW);
+
+    const bufferT = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferT);
+
+    const positionsT = [
+        1.0,  0.0,
+        0.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
+    ];
+    gl.bufferData(gl.ARRAY_BUFFER,
+        new Float32Array(positionsT),
+        gl.STATIC_DRAW);
+    
+    //let buffers = { vertex: bufferV, texture: bufferT };
+
+    gl.clearColor(0.0,0.0,0.0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferV);
+    let aPos = gl.getAttribLocation(program, 'aPos');
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(aPos);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferT);
+    let aTex = gl.getAttribLocation(program, 'aTex');
+    gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(aTex);
+    
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    const pixel = new Uint8Array([255, 0, 255, 255]); //dummy image
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    let uSampler = gl.getUniformLocation(program, 'uSampler');
+    gl.uniform1i(uSampler, 0);
+    const error = gl.getError();
+    if (error != 0) {
+        console.log("GL error: ", error);
+        return false;
+    }
+    return true;
+}

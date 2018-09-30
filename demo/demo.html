@@ -8,8 +8,16 @@
     height: 600px;
     position: relative;
     margin: 0 auto;
+}
+#stage canvas {
+    width: 798px;
+    height: 600px;
     border: 2px solid black;
     cursor: none;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }
 #controls {
 }
@@ -20,7 +28,8 @@
 
 <div id="row">
 <div id="stage">
-  <canvas id="game-layer" width="798" height="600"></canvas>
+  <canvas id="game-layer-3d" width="798" height="600"></canvas>
+  <canvas id="game-layer" width="266" height="200" style="display:none"></canvas>
 </div>
 <div id="controls">
   <button id="reset_128k">Reset 128k</button><button id="reset_48k">Reset 48k</button><p>
