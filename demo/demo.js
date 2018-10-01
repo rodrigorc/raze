@@ -2,7 +2,7 @@
 let Module = {};
 
 let utfDecoder = new TextDecoder('utf-8');
-let getStr = function (ptr, len) {
+function getStr(ptr, len) {
     let slice = new Uint8Array(Module.memory.buffer, ptr, len);
     return utfDecoder.decode(slice);
 };
@@ -71,7 +71,10 @@ function onDocumentLoad() {
 
                 asrc.start(audio_next);
                 audio_next = Math.max(audio_next, actx.currentTime) + abuf.duration;
-            }
+            },
+            onTapeBlock: (index) => {
+                onTapeBlock(index);
+            },
         }
     };
     let wasm = '/target/wasm32-unknown-unknown/release/raze.wasm';
@@ -103,6 +106,7 @@ function onDocumentLoad() {
     document.getElementById('reset_48k').addEventListener('click', handleReset48k, false);
     document.getElementById('reset_128k').addEventListener('click', handleReset128k, false);
     document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
+    document.getElementById('stop_tape').addEventListener('click', handleStopTape, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
     document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
     document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
@@ -269,6 +273,25 @@ function getKeyCode(ev) {
     }
 }
 
+function resetTape() {
+    var xTape = document.getElementById("tape");
+    while (xTape.firstChild)
+        xTape.removeChild(xTape.firstChild);
+    return xTape;
+}
+
+function onTapeBlock(index) {
+    console.log("Block", index);
+    var xTape = document.getElementById("tape");
+    for (var i = 0; i < xTape.children.length; ++i) {
+        var btn = xTape.children[i];
+        if (btn['data-index'] == index)
+            btn.classList.add('selected');
+        else
+            btn.classList.remove('selected');
+    }
+}
+
 function handleTapeSelect(evt) {
     var f = evt.target.files[0];
     console.log("reading " + f.name);
@@ -279,18 +302,45 @@ function handleTapeSelect(evt) {
         var ptr = Module.exports.wasm_alloc(data.byteLength);
         var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
         d.set(new Uint8Array(data));
-        let tape = Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
+        let tape_len = Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
+        var xTape = resetTape();
+
+        for (let i = 0; i < tape_len; ++i) {
+            let tape_ptr = Module.exports.wasm_tape_name(Module.game, i);
+            let tape_ptr_len = Module.exports.wasm_tape_name_len(Module.game, i);
+            let selectable = Module.exports.wasm_tape_selectable(Module.game, i);
+            let tape_name = getStr(tape_ptr, tape_ptr_len);
+            console.log("Tape ", i, tape_name);
+            if (selectable) {
+                let btn = document.createElement("button");
+                btn.textContent = tape_name;
+                xTape.appendChild(btn);
+                btn.addEventListener('click', handleTapeBlock, false);
+                btn['data-index'] = i;
+            }
+        }
+        xTape.firstChild.classList.add('selected');
     }
     reader.readAsArrayBuffer(f);
 }
 
+function handleTapeBlock(evt) {
+    var btn = evt.target;
+    var index = btn['data-index'];
+    //evt.target.classList.add('playing');
+    console.log("Block ", index);
+    Module.exports.wasm_tape_seek(Module.game, index);
+}
+
 function handleReset48k(evt) {
+    resetTape();
     Module.exports.wasm_drop(Module.game);
     Module.is128k = false;
     Module.game = Module.exports.wasm_main(Module.is128k);
 }
 
 function handleReset128k(evt) {
+    resetTape();
     Module.exports.wasm_drop(Module.game);
     Module.is128k = true;
     Module.game = Module.exports.wasm_main(Module.is128k);
@@ -302,6 +352,10 @@ function handleLoadTape(evt) {
     x.accept = ".tap";
     x.addEventListener('change', handleTapeSelect, false);
     x.click();
+}
+
+function handleStopTape(evt) {
+    Module.exports.wasm_tape_stop(Module.game);
 }
 
 var lastSnapshot = null;

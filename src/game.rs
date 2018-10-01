@@ -27,8 +27,9 @@ struct ULA {
     memory: Memory,
     keys: [[bool; 5]; 9], //8 semirows plus joystick
     delay: u32,
-    frame_counter: u32, time: i32,
-    tape: Option<(Tape, i32, TapePos)>,
+    frame_counter: u32,
+    time: i32,
+    tape: Option<(Tape, Option<TapePos>)>,
     border: Pixel,
     ear: bool,
     psg: Option<PSG>,
@@ -39,6 +40,28 @@ impl ULA {
         let r = self.delay;
         self.delay = 0;
         r
+    }
+    pub fn add_time(&mut self, t: u32) {
+        self.time += t as i32;
+        self.tape = match self.tape.take() {
+            Some((tape, Some(pos))) => {
+                let index_pre = pos.block(&tape);
+                let index_post;
+                let next = tape.play(t, pos);
+                if let Some(p) = &next {
+                    self.ear = p.mic();
+                    index_post = p.block(&tape);
+                } else {
+                    self.ear = false;
+                    index_post = 0xffffffff;
+                }
+                if index_pre != index_post {
+                    js::onTapeBlock(index_post);
+                }
+                Some((tape, next))
+            }
+            tape => tape
+        };
     }
     pub fn audio_sample(&mut self, t: i32) -> u8 {
         let v = if self.ear { 0x7fu8 } else { 0x00 };
@@ -77,19 +100,8 @@ impl Bus for ULA {
                 }
             }
 
-            if let Some((tape, last_time, pos)) = self.tape.take() {
-                let delta = self.time - last_time;
-                let delta = if delta > 0 { delta as u32 } else { 0 };
-                let mic = match tape.play(delta, pos) {
-                    Some(next) => {
-                        let mic = next.mic();
-                        self.tape = Some((tape, self.time, next));
-                        self.ear = mic;
-                        mic
-                    }
-                    None => false
-                };
-                if mic {
+            if let Some((_, Some(pos))) = &self.tape {
+                if pos.mic() {
                     r &= 0b1011_1111;
                 }
             }
@@ -105,7 +117,7 @@ impl Bus for ULA {
                                 r = psg.read_reg();
                             }
                             _ => {
-                                log!("FD IN {:04x}, {:02x}", port, r);
+                                //log!("FD IN {:04x}, {:02x}", port, r);
                             }
                         }
                     }
@@ -179,7 +191,7 @@ impl Bus for ULA {
                             }
                         }
                         _ => {
-                            log!("FD OUT {:04x}, {:02x}", port, value);
+                            //log!("FD OUT {:04x}, {:02x}", port, value);
                         }
                     }
                 }
@@ -299,16 +311,14 @@ impl Game {
         let n = if turbo { 100 } else { 1 };
 
         self.audio.clear();
-        let mut audio_accum : u32 = 0;
-        let mut audio_count : u32 = 0;
-        let mut inverted = false;
         for _ in 0..n {
             self.ula.frame_counter = self.ula.frame_counter.wrapping_add(1);
-            inverted = self.ula.frame_counter % 32 < 16;
-            self.ula.time = 0;
-            let mut audio_time = 0;
+            let inverted = self.ula.frame_counter % 32 < 16;
+            let mut audio_time = 0; //TODO: use ula.time instead
             let mut screen_time = 0;
             let mut screen_row = 0;
+            let mut audio_accum : u32 = 0;
+            let mut audio_count : u32 = 0;
             while self.ula.time < TIME_TO_INT {
                 let mut t = self.z80.exec(&mut self.ula);
                 let delay = self.ula.memory.take_delay() + self.ula.take_delay();
@@ -317,25 +327,24 @@ impl Game {
                     //each row is 224 T, 128 are the real pixels where contention occurs
                     let offs = self.ula.time % 224;
                     if offs < 128 {
+                        //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
+                        //average, it seems to be good enough
                         t += (delay * 21) / 8;
                     }
                 }
-                self.ula.time += t as i32;
+                self.ula.add_time(t);
+                
                 if !turbo {
                     audio_time += t as i32;
                     audio_accum += self.ula.audio_sample(t as i32) as u32;
                     audio_count += 1;
                     if audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
-                        self.audio.push((audio_accum / audio_count) as u8);
+                        let sample = audio_accum / audio_count;
+                        self.audio.push(if sample > 0xff { 0xff } else { sample as u8 });
                         audio_accum = 0;
                         audio_count = 0;
                     }
-
-                    /*while audio_time >= AUDIO_SAMPLE {
-                        audio_time -= AUDIO_SAMPLE;
-                        self.audio.push(self.ula.audio_sample());
-                    }*/
                     screen_time += t as i32;
                     while screen_time > 224 {
                         screen_time -= 224;
@@ -356,10 +365,12 @@ impl Game {
                 }
             }
             self.z80.interrupt(&mut self.ula);
+            //we drag the excess T to the next loop
+            self.ula.time -= TIME_TO_INT;
         }
         if turbo {
             let screen = self.ula.memory.video_memory();
-            write_screen(self.ula.border, inverted, screen, &mut self.image);
+            write_screen(self.ula.border, false, screen, &mut self.image);
         } else {
             while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
                 self.audio.push(self.ula.audio_sample(0));
@@ -397,13 +408,55 @@ impl Game {
             }
         }
     }
-    pub fn load_tape(&mut self, data: Vec<u8>) {
+    pub fn tape_load(&mut self, data: Vec<u8>) -> usize {
         match Tape::new(data) {
             Ok(tape) => {
-                self.ula.time = 0;
-                self.ula.tape = Some((tape, self.ula.time, TapePos::new()));
+                let res = tape.len();
+                if res > 0 {
+                    self.ula.tape = Some((tape, Some(TapePos::new_at_block(0))));
+                } else {
+                    self.ula.tape = None;
+                }
+                res
             }
-            Err(e) => alert!("{}", e),
+            Err(e) => {
+                alert!("{}", e);
+                0
+            }
+        }
+    }
+    pub fn tape_name(&self, index: usize) -> &str {
+        match &self.ula.tape {
+            Some((tape, _)) => {
+                tape.block_name(index)
+            }
+            None => {
+                ""
+            }
+        }
+    }
+    pub fn tape_selectable(&self, index: usize) -> bool {
+        match &self.ula.tape {
+            Some((tape, _)) => tape.block_selectable(index),
+            None => false
+        }
+    }
+    pub fn tape_seek(&mut self, index: usize) {
+        self.ula.tape = match self.ula.tape.take() {
+            Some((tape, _)) => {
+                js::onTapeBlock(index);
+                Some((tape, Some(TapePos::new_at_block(index))))
+            }
+            None => None
+        }
+    }
+    pub fn tape_stop(&mut self) {
+        self.ula.tape = match self.ula.tape.take() {
+            Some((tape, _)) => {
+                self.ula.ear = false;
+                Some((tape, None))
+            }
+            None => None
         }
     }
     pub fn snapshot(&self) -> Vec<u8> {

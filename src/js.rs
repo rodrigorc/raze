@@ -9,6 +9,7 @@ mod imports {
         pub fn consolelog(ptr: *const u8, len: usize);
         pub fn putImageData(w: i32, h: i32, data: *const u8, len: usize);
         pub fn putSoundData(data: *const u8, len: usize);
+        pub fn onTapeBlock(index: usize);
     }
 }
 
@@ -41,6 +42,11 @@ pub fn putSoundData(data: &[u8]) {
     unsafe { imports::putSoundData(data.as_ptr() as *const u8, data.len()) };
 }
 
+pub fn onTapeBlock(index: usize) {
+    unsafe { imports::onTapeBlock(index) };
+}
+
+
 #[no_mangle]
 pub extern "C" fn wasm_main(is128k: bool) -> *mut Game {
     let game = Game::new(is128k);
@@ -63,11 +69,36 @@ pub extern "C" fn wasm_draw_frame(game: *mut Game, turbo: bool) {
     game.draw_frame(turbo);
 }
 #[no_mangle]
-pub extern "C" fn wasm_load_tape(game: *mut Game, ptr: *mut u8, size: usize) {
+pub extern "C" fn wasm_load_tape(game: *mut Game, ptr: *mut u8, size: usize) -> usize {
     let (game, data) = unsafe {
         (&mut *game, Vec::from_raw_parts(ptr, size, size))
     };
-    game.load_tape(data);
+    game.tape_load(data)
+}
+#[no_mangle]
+pub extern "C" fn wasm_tape_name(game: *mut Game, index: usize) -> *const u8 {
+    let game = unsafe { &mut *game };
+    game.tape_name(index).as_ptr()
+}
+#[no_mangle]
+pub extern "C" fn wasm_tape_name_len(game: *mut Game, index: usize) -> usize {
+    let game = unsafe { &mut *game };
+    game.tape_name(index).len()
+}
+#[no_mangle]
+pub extern "C" fn wasm_tape_selectable(game: *mut Game, index: usize) -> bool {
+    let game = unsafe { &mut *game };
+    game.tape_selectable(index)
+}
+#[no_mangle]
+pub extern "C" fn wasm_tape_seek(game: *mut Game, index: usize) {
+    let game = unsafe { &mut *game };
+    game.tape_seek(index);
+}
+#[no_mangle]
+pub extern "C" fn wasm_tape_stop(game: *mut Game) {
+    let game = unsafe { &mut *game };
+    game.tape_stop();
 }
 #[no_mangle]
 pub extern "C" fn wasm_load_snapshot(game: *mut Game, ptr: *mut u8, size: usize) {
