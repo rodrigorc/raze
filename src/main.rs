@@ -22,7 +22,7 @@ mod memory;
 mod z80;
 
 use memory::Memory;
-use z80::{Z80, InOut};
+use z80::{Z80, Bus};
 
 fn write_screen(path: impl AsRef<Path>, data: &[u8]) -> io::Result<()> {
     let file = File::create(path)?;
@@ -75,11 +75,13 @@ fn write_screen(path: impl AsRef<Path>, data: &[u8]) -> io::Result<()> {
 }
 
 struct Spectrum {
-    x: i32
+    x: i32,
+    memory: Memory,
 }
 
-impl InOut for Spectrum {
-    fn do_in(&mut self, port: u16, mem: &mut Memory, _cpu: &Z80) -> u8 {
+impl Bus for Spectrum {
+    fn do_in(&mut self, port: impl Into<u16>) -> u8 {
+        let port = port.into();
         let lo = port as u8;
         let hi = (port >> 8) as u8;
         let r = match lo {
@@ -122,8 +124,14 @@ impl InOut for Spectrum {
         self.x += 1;
         r
     }
-    fn do_out(&mut self, port: u16, value: u8, mem: &mut Memory, _cpu: &Z80) {
+    fn do_out(&mut self, _port: impl Into<u16>, _value: u8) {
         //println!("OUT {:04x}, {:02x}", port, value);
+    }
+    fn peek(&mut self, addr: impl Into<u16>) -> u8 {
+        self.memory.peek(addr)
+    }
+    fn poke(&mut self, addr: impl Into<u16>, value: u8) {
+        self.memory.poke(addr, value);
     }
 }
 
@@ -131,7 +139,6 @@ fn main() -> io::Result<()> {
     let mut args = env::args_os();
     let _program = args.next().ok_or(ErrorKind::InvalidData)?;
     let mut z80 = Z80::new();
-    let mut spectrum = Spectrum { x: 0};
     let mut memory;
 
     let load = args.next();
@@ -140,31 +147,31 @@ fn main() -> io::Result<()> {
             memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
         }
         Some(load) => {
-            memory = Memory::new();
             let load = File::open(load)?;
             let mut load = BufReader::new(load);
-            memory.load(&mut load)?;
+            memory = Memory::load(&mut load)?;
             z80.load(&mut load)?;
             //spectrum.load(&mut load)?;
         }
     }
+    let mut spectrum = Spectrum { x: 0, memory };
 
     const SCROPS : i32 = 5_000;
     for count in 0 .. 2_000_000 {
         z80.dump_regs();
-        z80.exec(&mut memory, &mut spectrum);
+        z80.exec(&mut spectrum);
         if (count+1) % SCROPS == 0 {
             if false {
-                let screen = memory.video_memory();
+                let screen = spectrum.memory.video_memory();
                 write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
             }
-            z80.interrupt(&mut memory);
+            z80.interrupt(&mut spectrum);
         }
     }
 
     let save = File::create("save.spec")?;
     let mut save = BufWriter::new(save);
-    memory.save(&mut save)?;
+    spectrum.memory.save(&mut save)?;
     z80.save(&mut save)?;
     //spectrum.save(&mut save)?;
 
