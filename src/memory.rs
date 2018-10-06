@@ -1,7 +1,21 @@
 use std::io::{self, Read, Write};
 
+struct Bank {
+    data: Vec<u8>,
+    ro: bool,
+    contended: bool,
+}
+impl Bank {
+    fn rom(data: Vec<u8>) -> Bank {
+        Bank { data, ro: true, contended: false }
+    }
+    fn ram(contended: bool) -> Bank {
+        Bank { data: vec![0; 0x4000], ro: false, contended }
+    }
+}
+
 pub struct Memory {
-    data: Vec<Vec<u8>>,
+    data: Vec<Bank>,
     banks: [usize; 4],
     vram: usize,
     locked: bool,
@@ -14,9 +28,10 @@ impl Memory {
         match rom1 {
             None => {
                 //48k
-                let mut data = vec![brom0];
-                for _ in 0..3 {
-                    data.push(vec![0; 0x4000]);
+                let mut data = Vec::new();
+                data.push(Bank::rom(brom0));
+                for i in 1..4 {
+                    data.push(Bank::ram(i == 1));
                 }
                 Memory {
                     data,
@@ -30,11 +45,11 @@ impl Memory {
                 //128k
                 let brom1 = rom1.to_vec();
                 let mut data = vec![];
-                for _ in 0..8 {
-                    data.push(vec![0; 0x4000]);
+                for i in 0..8 {
+                    data.push(Bank::ram(i & 1 == 1));
                 }
-                data.push(brom0); //8: is the 128k rom
-                data.push(brom1); //9: is the 128k-48k compatible rom
+                data.push(Bank::rom(brom0)); //8: is the 128k rom
+                data.push(Bank::rom(brom1)); //9: is the 128k-48k compatible rom
                 Memory {
                     data,
                     banks: [8, 5, 2, 0],
@@ -45,35 +60,35 @@ impl Memory {
             }
         }
     }
-    //returns (readonly, bank, offset)
+    //returns (bankid, offset)
     #[inline]
-    fn split_addr(&self, addr: impl Into<u16>) -> (bool, usize, usize) {
+    fn split_addr(&self, addr: impl Into<u16>) -> (usize, usize) {
         let addr = addr.into();
         let ibank = (addr >> 14) as usize;
         let offs = (addr & 0x3fff) as usize;
-        (ibank == 0, self.banks[ibank] as usize, offs)
+        (self.banks[ibank] as usize, offs)
     }
     pub fn peek(&mut self, addr: impl Into<u16>) -> u8 {
-        let (_ro, bank, offs) = self.split_addr(addr);
-        if bank == 1 {
+        let (bank, offs) = self.split_addr(addr);
+        if self.data[bank].contended {
             self.delay = self.delay.wrapping_add(1);
         }
-        self.data[bank][offs]
+        self.data[bank].data[offs]
     }
     pub fn peek_no_delay(&self, addr: u16) -> u8 {
-        let (_ro, bank, offs) = self.split_addr(addr);
-        self.data[bank][offs]
+        let (bank, offs) = self.split_addr(addr);
+        self.data[bank].data[offs]
     }
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
-        let (ro, bank, offs) = self.split_addr(addr);
-        if ro {
+        let (bank, offs) = self.split_addr(addr);
+        if self.data[bank].ro {
             //log!("writing to rom {:4x} <- {:2x}", offs, data);
             return;
         }
-        if bank == 1 {
+        if self.data[bank].contended {
             self.delay = self.delay.wrapping_add(1);
         }
-        self.data[bank][offs] = data;
+        self.data[bank].data[offs] = data;
     }
     pub fn take_delay(&mut self) -> u32 {
         let r = self.delay;
@@ -81,22 +96,25 @@ impl Memory {
         r
     }
     pub fn video_memory(&self) -> &[u8] {
-        &self.data[self.vram][0..32 * 192 + 32 * 24]
+        &self.data[self.vram].data[0..32 * 192 + 32 * 24]
     }
     //TODO load/save banks
     pub fn save(&self, mut w: impl Write) -> io::Result<()> {
         for i in &self.banks {
-            let ref bs = self.data[*i];
+            let ref bs = self.data[*i].data;
             w.write_all(bs)?;
         }
         Ok(())
     }
     pub fn load(mut r: impl Read) -> io::Result<Self> {
         let mut data = vec![];
-        for _ in 0..4 {
-            let mut bs = vec![0; 0x4000];
-            r.read_exact(&mut bs)?;
-            data.push(bs);
+        for i in 0..4 {
+            let mut bank = Bank::ram(i == 1);
+            if i == 0 {
+                bank.ro = true;
+            }
+            r.read_exact(&mut bank.data)?;
+            data.push(bank);
         }
         Ok(Memory {
             data,
