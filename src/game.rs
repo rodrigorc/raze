@@ -134,7 +134,7 @@ impl Bus for ULA {
                         0xff
                     }
                 }
-                0x1f => { //kempston joystick
+                x if x & 0x20 == 0 => { //kempston joystick (0x1f | 0xdf ...)
                     let ref joy = self.keys[8];
                     r = 0;
                     for j in 0..5 {
