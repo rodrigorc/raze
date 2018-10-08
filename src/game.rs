@@ -196,6 +196,7 @@ impl Bus for ULA {
                     }
                 }
                 _ => {
+                    //log!("OUT {:04x}, {:02x}", port, value);
                 }
             }
         }
@@ -409,7 +410,7 @@ impl Game {
         }
     }
     pub fn tape_load(&mut self, data: Vec<u8>) -> usize {
-        match Tape::new(data) {
+        match Tape::new(&mut Cursor::new(data)) {
             Ok(tape) => {
                 let res = tape.len();
                 if res > 0 {

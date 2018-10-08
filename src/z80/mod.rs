@@ -1886,7 +1886,6 @@ impl Z80 {
                 hl = self.add16_flags(hl, de);
                 self.hl.set(hl);
                 15
-
             }
             0x5b => { //LD DE,(nn)
                 let addr = self.fetch_u16(bus);

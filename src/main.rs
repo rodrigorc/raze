@@ -20,6 +20,7 @@ mod logger {
 
 mod memory;
 mod z80;
+mod tape;
 
 use memory::Memory;
 use z80::{Z80, Bus};
@@ -147,10 +148,13 @@ fn main() -> io::Result<()> {
             memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
         }
         Some(load) => {
-            let load = File::open(load)?;
-            let mut load = BufReader::new(load);
-            memory = Memory::load(&mut load)?;
-            z80.load(&mut load)?;
+            //let load = File::open(load)?;
+            //let mut load = BufReader::new(load);
+            let data = std::fs::read(&load)?;
+            tape::Tape::new(&mut io::Cursor::new(data))?;
+            return Ok(());
+            //memory = Memory::load(&mut load)?;
+            //z80.load(&mut load)?;
             //spectrum.load(&mut load)?;
         }
     }
