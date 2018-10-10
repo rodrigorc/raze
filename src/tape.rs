@@ -1,20 +1,20 @@
 use std::io::{prelude::*, self, Cursor};
 use std::borrow::Cow;
-use std::cell::RefCell;
 
+#[derive(Clone)]
 struct Tone {
     num: u32,
     len1: u32,
     len2: u32,
 }
 
+#[derive(Clone)]
 struct Block {
     name: Option<String>,
     selectable: bool,
     tones: Vec<Tone>,
     len_zero: u32,
     len_one: u32,
-    #[allow(dead_code)]
     bits_last: u8,
     pause: u32,
     data: Vec<u8>,
@@ -177,52 +177,104 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
     let minor = sig[9];
     log!("tzx version: {}.{}", major, minor);
 
-    let mut blocks = Vec::new();
-
     #[derive(Clone)]
     enum GroupParse {
-        None,
         First(String),
         Middle(String),
         SingleBlockName(String),
     };
-    impl GroupParse {
+    struct Parser {
+        blocks: Vec<Block>,
+        loop_start: Option<(usize, u16)>,
+        group_name: Option<GroupParse>,
+    }
+    impl Parser {
+        fn add_block(&mut self, mut block: Block) {
+            self.group_name = match self.group_name.take() {
+                Some(GroupParse::First(n)) => {
+                    block.name = Some(n.clone());
+                    block.selectable = true;
+                    Some(GroupParse::Middle(n))
+                }
+                Some(GroupParse::Middle(n)) => {
+                    block.name = Some(n.clone());
+                    block.selectable = false;
+                    Some(GroupParse::Middle(n))
+                }
+                Some(GroupParse::SingleBlockName(n)) => {
+                    block.name = Some(n);
+                    block.selectable = true;
+                    None
+                }
+                None => None,
+            };
+            self.blocks.push(block);
+        }
+        fn group_start(&mut self, text: String) {
+            if self.in_group() {
+                log!("nested group not allowed");
+            } else {
+                self.group_name = Some(GroupParse::First(text));
+            }
+        }
+        fn group_end(&mut self) {
+            if self.in_group() {
+                self.group_name = None;
+            } else {
+                log!("group end without start");
+            }
+        }
         fn in_group(&self) -> bool {
-            match self {
-                GroupParse::None | GroupParse::SingleBlockName(_) => {
+            match &self.group_name {
+                None | Some(GroupParse::SingleBlockName(_)) => {
                     false
                 }
-                GroupParse::First(_) | GroupParse::Middle(_) => {
+                Some(GroupParse::First(_)) | Some(GroupParse::Middle(_)) => {
                     true
+                }
+            }
+        }
+        fn text_description(&mut self, text: String) {
+            if self.in_group() {
+                log!("text description inside a group");
+            } else {
+                self.group_name = Some(GroupParse::SingleBlockName(text));
+            }
+        }
+        fn loop_start(&mut self, reps: u16) {
+            if self.loop_start.is_some() {
+                log!("nested loop");
+            } else {
+                self.loop_start = Some((self.blocks.len(), reps));
+            }
+        }
+        fn loop_end(&mut self) {
+            match self.loop_start.take() {
+                Some((start, repetitions)) => {
+                    let end = self.blocks.len();
+                    for _ in 0..repetitions {
+                        for i in start .. end {
+                            let mut new_block = self.blocks[i].clone();
+                            new_block.name = None;
+                            new_block.selectable = false;
+                            self.add_block(new_block);
+                        }
+                    }
+                }
+                None => {
+                    log!("loop end without start");
                 }
             }
         }
     }
 
-    let group_name = RefCell::new(GroupParse::None);
+    let mut parser = Parser {
+        blocks: Vec::new(),
+        loop_start: None,
+        group_name: None,
+    };
+
     loop {
-        let mut add_block = |mut block: Block| {
-            let next = match group_name.replace(GroupParse::None) {
-                GroupParse::First(n) => {
-                    block.name = Some(n.clone());
-                    block.selectable = true;
-                    GroupParse::Middle(n)
-                }
-                GroupParse::Middle(n) => {
-                    block.name = Some(n.clone());
-                    block.selectable = false;
-                    GroupParse::Middle(n)
-                }
-                GroupParse::SingleBlockName(n) => {
-                    block.name = Some(n.clone());
-                    block.selectable = true;
-                    GroupParse::None
-                }
-                GroupParse::None => GroupParse::None
-            };
-            group_name.replace(next);
-            blocks.push(block);
-        };
         let kind = match read_u8(r) {
             Ok(b) => b,
             Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
@@ -236,7 +288,7 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 log!("standard block P:{} D:{}", pause as f32 / 3500000.0, data.len());
                 let mut block = Block::standard_data_block(data);
                 block.pause = pause;
-                add_block(block);
+                parser.add_block(block);
             }
             0x11 => { //turbo speed data block
                 let len_pilot = read_u16(r)? as u32;
@@ -257,16 +309,16 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                          len_zero, len_one,
                          bits_last,
                          pause as f32 / 3500000.0, num);
-                let mut block = Block::turbo_data_block(len_pilot, num_pilots, len_sync1, len_sync2,
+                let block = Block::turbo_data_block(len_pilot, num_pilots, len_sync1, len_sync2,
                                                         len_zero, len_one, bits_last, pause, data);
-                add_block(block);
+                parser.add_block(block);
             }
             0x12 => { //pure tone
                 let len_tone = read_u16(r)? as u32;
                 let num_tones = read_u16(r)? as u32;
                 log!("pure tone {} {}", len_tone, num_tones);
-                let mut block = Block::pure_tone_block(len_tone, num_tones);
-                add_block(block);
+                let block = Block::pure_tone_block(len_tone, num_tones);
+                parser.add_block(block);
             }
             0x13 => { //pulse sequence
                 let num = read_u8(r)?;
@@ -276,11 +328,11 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 }
                 log!("pulse sequence {:?}", pulses);
                 for p in pulses.chunks(2) {
-                    if p.len() == 2 && p[0] == p[1] {
-                        let mut block = Block::single_tone_block(p[0] as u32, p[0] as u32);
-                        add_block(block);
+                    if p.len() == 2 {
+                        let block = Block::single_tone_block(p[0] as u32, p[1] as u32);
+                        parser.add_block(block);
                     } else {
-                        log!("assymetric pulse unimplemented");
+                        log!("odd pulse sequence unimplemented");
                     }
                 }
             }
@@ -294,8 +346,8 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 let num = num0 | (num1 << 16);
                 let data = read_vec(r, num)?;
                 log!("pure data block 0:{} 1:{} L:{} P:{} D:{}", len_zero, len_one, bits_last, pause, num);
-                let mut block = Block::pure_data_block(len_zero, len_one, bits_last, pause, data);
-                add_block(block);
+                let block = Block::pure_data_block(len_zero, len_one, bits_last, pause, data);
+                parser.add_block(block);
             }
             //0x15 => {} //direct recording
             //0x16 | 0x17 => {} //C64?
@@ -307,35 +359,29 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                     log!("stop tape");
                 } else {
                     log!("pause {}", pause);
-                    let mut block = Block::pause_block(pause);
-                    add_block(block);
+                    let block = Block::pause_block(pause);
+                    parser.add_block(block);
                 }
             }
             0x21 => { //group start
                 let len = read_u8(r)?;
                 let text = read_string(r, len as usize)?;
                 log!("group start: {}", text);
-                if group_name.borrow().in_group() {
-                    log!("nested group not allowed");
-                } else {
-                    group_name.replace(GroupParse::First(text));
-                }
+                parser.group_start(text);
             }
             0x22 => { //group end
                 log!("group end");
-                if group_name.borrow().in_group() {
-                    group_name.replace(GroupParse::None);
-                } else {
-                    log!("group end without start");
-                }
+                parser.group_end();
             }
             //0x23 => {} //jump to block
             0x24 => { //loop start
                 let repetitions = read_u16(r)?;
                 log!("loop start {}", repetitions);
+                parser.loop_start(repetitions);
             }
             0x25 => { //loop end
                 log!("loop end");
+                parser.loop_end();
             }
             //0x26 => {} //call sequence
             //0x27 => {} //return from sequence
@@ -352,11 +398,7 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 let len = read_u8(r)?;
                 let text = read_string(r, len as usize)?;
                 log!("text description: {}", text);
-                if group_name.borrow().in_group() {
-                    log!("text description inside a group");
-                } else {
-                    group_name.replace(GroupParse::SingleBlockName(text));
-                }
+                parser.text_description(text);
             }
             //0x31 => {} //message block
             0x32 => { //archive info
@@ -383,7 +425,7 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
         }
     }
 
-    Ok(blocks)
+    Ok(parser.blocks)
 }
 
 impl Tape {
