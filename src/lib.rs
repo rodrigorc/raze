@@ -1,3 +1,6 @@
+#[cfg(feature="zip")]
+extern crate zip;
+
 #[macro_use]
 pub mod js;
 mod game;

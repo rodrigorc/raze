@@ -1,1 +1,1 @@
-cargo run --target x86_64-unknown-linux-gnu --features="png" --bin console -- "$@"
+cargo run --target x86_64-unknown-linux-gnu --no-default-features --features="png" --bin console -- "$@"

@@ -6,16 +6,6 @@ authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
 [lib]
 crate-type=["cdylib"]
 
-[dependencies]
-png = { version = "*", optional = true }
-
-[profile.release]
-lto = true
-panic = 'abort'
-
-[features]
-dump_ops = []
-
 [[bin]]
 name = "console"
 path = "src/main.rs"
@@ -25,3 +15,18 @@ required-features = ["png"]
 name = "dump_op"
 path = "src/dump_op.rs"
 required-features = ["dump_ops"]
+
+[profile.release]
+lto = true
+panic = "abort"
+
+[dependencies]
+png = { version = "*", optional = true }
+zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
+
+[features]
+default = ["zip"]
+dump_ops = []
+
+[patch.crates-io]
+libc = { git = "https://github.com/rodrigorc/rust-libc.git", branch = "wasm32-support" }

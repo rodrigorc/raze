@@ -349,7 +349,7 @@ function handleReset128k(evt) {
 function handleLoadTape(evt) {
     var x = document.createElement("input");
     x.type = "file";
-    x.accept = [".tap", ".tzx"];
+    x.accept = [".tap", ".tzx", ".zip"];
     x.addEventListener('change', handleTapeSelect, false);
     x.click();
 }

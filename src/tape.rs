@@ -1,5 +1,7 @@
 use std::io::{prelude::*, self, Cursor};
 use std::borrow::Cow;
+#[cfg(feature="zip")]
+use zip;
 
 #[derive(Clone)]
 struct Tone {
@@ -150,6 +152,36 @@ fn latin1_to_string(s: &[u8]) -> String {
 fn read_string(r: &mut impl Read, n: usize) -> io::Result<String> {
     let bs = read_vec(r, n)?;
     Ok(latin1_to_string(&bs))
+}
+
+#[cfg(feature="zip")]
+fn new_zip<R: Read + Seek>(r: &mut R) -> io::Result<Vec<Block>> {
+    let mut zip = zip::ZipArchive::new(r)?;
+
+    for i in 0 .. zip.len() {
+        let mut ze = zip.by_index(i)?;
+        let name = ze.sanitized_name();
+        let ext = name.extension().
+            and_then(|e| e.to_str()).
+            map(|e| e.to_string()).
+            map(|e| e.to_ascii_lowercase());
+        match ext.as_ref().map(|s| s.as_str()) {
+            Some("tap") => {
+                log!("unzipping TAP {}", name.to_string_lossy());
+                return new_tap(&mut ze);
+            }
+            Some("tzx") => {
+                log!("unzipping TZX {}", name.to_string_lossy());
+                return new_tzx(&mut ze);
+            }
+            _ => {}
+        };
+    }
+    Err(io::ErrorKind::InvalidData.into())
+}
+#[cfg(not(feature="zip"))]
+fn new_zip<R: Read + Seek>(_r: &mut R) -> io::Result<Vec<Block>> {
+    Err(io::ErrorKind::NotFound.into())
 }
 
 fn new_tap(r: &mut impl Read) -> io::Result<Vec<Block>> {
@@ -431,10 +463,16 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
 impl Tape {
     pub fn new<R: Read + Seek>(tap: &mut R) -> io::Result<Tape> {
         let start_pos = tap.seek(io::SeekFrom::Current(0))?;
-        let mut blocks = new_tzx(tap).or_else(|_| {
+
+        let mut blocks = new_zip(tap)
+        .or_else(|_| {
+            tap.seek(io::SeekFrom::Start(start_pos))?;
+            new_tzx(tap)
+        }).or_else(|_| {
             tap.seek(io::SeekFrom::Start(start_pos))?;
             new_tap(tap)
         })?;
+
         //try to guess the names of the unnamed blocks
         let mut prefixed = false;
         for block in blocks.iter_mut() {
