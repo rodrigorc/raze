@@ -122,6 +122,7 @@ pub struct Z80 {
     next_op: NextOp,
 }
 
+#[derive(Clone, Copy)]
 enum Direction { Inc, Dec }
 
 impl Z80 {

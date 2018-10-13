@@ -20,11 +20,7 @@ impl FreqGen {
         while self.phase > self.divisor {
             self.phase -= self.divisor;
         }
-        if self.phase < self.divisor / 2 {
-            true
-        } else {
-            false
-        }
+        self.phase < self.divisor / 2
     }
 }
 
@@ -54,7 +50,7 @@ impl NoiseGen {
             self.phase -= self.divisor;
             let bit0 = (self.shift & 1) != 0;
             let bit3 = (self.shift & 8) != 0;
-            self.level = self.level ^ bit0;
+            self.level ^= bit0;
             if bit0 ^ bit3 {
                 self.shift ^= 0x10000;
             }
@@ -174,9 +170,8 @@ impl PSG {
         }
     }
     pub fn select_reg(&mut self, reg: u8) {
-        match reg {
-            0..=0x0f => self.reg_sel = reg,
-            _ => (),
+        if let 0..=0x0f = reg {
+            self.reg_sel = reg;
         }
     }
     pub fn read_reg(&self) -> u8 {
@@ -279,12 +274,10 @@ impl PSG {
             } else {
                 tone
             }
+        } else if noise_enabled {
+            noise
         } else {
-            if noise_enabled {
-                noise
-            } else {
-                true
-            }
+            true
         }
     }
 }

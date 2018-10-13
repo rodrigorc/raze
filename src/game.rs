@@ -53,7 +53,7 @@ impl ULA {
                     index_post = p.block(&tape);
                 } else {
                     self.ear = false;
-                    index_post = 0xffffffff;
+                    index_post = 0xffff_ffff;
                 }
                 if index_pre != index_post {
                     js::onTapeBlock(index_post);
@@ -135,10 +135,10 @@ impl Bus for ULA {
                     }
                 }
                 x if x & 0x20 == 0 => { //kempston joystick (0x1f | 0xdf ...)
-                    let ref joy = self.keys[8];
+                    let joy = &self.keys[8];
                     r = 0;
-                    for j in 0..5 {
-                        if joy[j] {
+                    for (j, jj) in joy.iter().enumerate() {
+                        if *jj {
                             r |= 1 << j;
                         }
                     }
@@ -212,8 +212,8 @@ pub struct Game {
 
 fn write_border_row(y: usize, border: Pixel, ps: &mut [Pixel]) {
     let prow = &mut ps[(BX0 + 256 + BX1) * y .. (BX0 + 256 + BX1) * (y+1)];
-    for x in 0..BX0 + 256 + BX1 {
-        prow[x] = border;
+    for x in prow.iter_mut() {
+        *x = border;
     }
 }
 
@@ -221,8 +221,7 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
     let y = y as usize;
     let orow = match y {
         0..=63 => {
-            let y = (y % 8) * 256 + (y / 8) * 32;
-            y
+            (y % 8) * 256 + (y / 8) * 32
         }
         64..=127 => {
             let y = y - 64;
@@ -238,8 +237,8 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
     };
     let ym = y + BY0;
     let prow = &mut ps[(BX0 + 256 + BX1) * ym .. (BX0 + 256 + BX1) * (ym + 1)];
-    for x in 0..BX0 {
-        prow[x] = border;
+    for x in prow.iter_mut().take(BX0) {
+        *x = border;
     }
     for x in 0..BX1 {
         prow[BX0 + 256 + x] = border;
@@ -291,7 +290,7 @@ impl Game {
         let game = Game {
             z80,
             ula: ULA {
-                memory: memory,
+                memory,
                 keys: Default::default(),
                 delay: 0,
                 frame_counter: 0,

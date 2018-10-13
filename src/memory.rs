@@ -101,7 +101,7 @@ impl Memory {
     //TODO load/save banks
     pub fn save(&self, mut w: impl Write) -> io::Result<()> {
         for i in &self.banks {
-            let ref bs = self.data[*i].data;
+            let bs = &self.data[*i].data;
             w.write_all(bs)?;
         }
         Ok(())

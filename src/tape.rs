@@ -25,7 +25,7 @@ struct Block {
 impl Block {
     fn standard_data_block(data: Vec<u8>) -> Block {
         let num_pilots = if *data.first().unwrap_or(&0) < 0x80 { 8063 } else { 3223 };
-        Self::turbo_data_block(2168, num_pilots, 667, 735, 855, 1710, 8, 3500000, data)
+        Self::turbo_data_block(2168, num_pilots, 667, 735, 855, 1710, 8, 3_500_000, data)
     }
     fn turbo_data_block(len_pilot: u32, num_pilots: u32, len_sync1: u32, len_sync2: u32,
                         len_zero: u32, len_one: u32, bits_last: u8, pause: u32, data: Vec<u8>) -> Block {
@@ -317,7 +317,7 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 let pause = read_u16(r)? as u32 * 3500; // ms -> T
                 let block_len = read_u16(r)?;
                 let data = read_vec(r, block_len as usize)?;
-                log!("standard block P:{} D:{}", pause as f32 / 3500000.0, data.len());
+                log!("standard block P:{} D:{}", pause as f32 / 3_500_000.0, data.len());
                 let mut block = Block::standard_data_block(data);
                 block.pause = pause;
                 parser.add_block(block);
@@ -340,7 +340,7 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                          len_sync1, len_sync2,
                          len_zero, len_one,
                          bits_last,
-                         pause as f32 / 3500000.0, num);
+                         pause as f32 / 3_500_000.0, num);
                 let block = Block::turbo_data_block(len_pilot, num_pilots, len_sync1, len_sync2,
                                                         len_zero, len_one, bits_last, pause, data);
                 parser.add_block(block);
@@ -621,7 +621,7 @@ impl TapePos {
     pub fn block(&self, tape: &Tape) -> usize {
         let mut res = self.block;
         if res >= tape.blocks.len() {
-            return 0xffffffff;
+            return 0xffff_ffff;
         }
         while !tape.blocks[res].selectable && res > 0 {
             res -= 1;

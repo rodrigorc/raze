@@ -53,8 +53,8 @@ pub extern "C" fn wasm_main(is128k: bool) -> *mut Game {
     Box::into_raw(game)
 }
 #[no_mangle]
-pub extern "C" fn wasm_drop(game: *mut Game) {
-    let _game = unsafe { Box::from_raw(game) };
+pub unsafe extern "C" fn wasm_drop(game: *mut Game) {
+    let _game = Box::from_raw(game);
 }
 #[no_mangle]
 pub extern "C" fn wasm_alloc(size: usize) -> *mut u8 {
@@ -64,74 +64,72 @@ pub extern "C" fn wasm_alloc(size: usize) -> *mut u8 {
     ptr
 }
 #[no_mangle]
-pub extern "C" fn wasm_draw_frame(game: *mut Game, turbo: bool) {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_draw_frame(game: *mut Game, turbo: bool) {
+    let game = &mut *game;
     game.draw_frame(turbo);
 }
 #[no_mangle]
-pub extern "C" fn wasm_load_tape(game: *mut Game, ptr: *mut u8, size: usize) -> usize {
-    let (game, data) = unsafe {
-        (&mut *game, Vec::from_raw_parts(ptr, size, size))
-    };
+pub unsafe extern "C" fn wasm_load_tape(game: *mut Game, ptr: *mut u8, size: usize) -> usize {
+    let game = &mut *game;
+    let data = Vec::from_raw_parts(ptr, size, size);
     game.tape_load(data)
 }
 #[no_mangle]
-pub extern "C" fn wasm_tape_name(game: *mut Game, index: usize) -> *const u8 {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_tape_name(game: *mut Game, index: usize) -> *const u8 {
+    let game = &mut *game;
     game.tape_name(index).as_ptr()
 }
 #[no_mangle]
-pub extern "C" fn wasm_tape_name_len(game: *mut Game, index: usize) -> usize {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_tape_name_len(game: *mut Game, index: usize) -> usize {
+    let game = &mut *game;
     game.tape_name(index).len()
 }
 #[no_mangle]
-pub extern "C" fn wasm_tape_selectable(game: *mut Game, index: usize) -> bool {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_tape_selectable(game: *mut Game, index: usize) -> bool {
+    let game = &mut *game;
     game.tape_selectable(index)
 }
 #[no_mangle]
-pub extern "C" fn wasm_tape_seek(game: *mut Game, index: usize) {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_tape_seek(game: *mut Game, index: usize) {
+    let game = &mut *game;
     game.tape_seek(index);
 }
 #[no_mangle]
-pub extern "C" fn wasm_tape_stop(game: *mut Game) {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_tape_stop(game: *mut Game) {
+    let game = &mut *game;
     game.tape_stop();
 }
 #[no_mangle]
-pub extern "C" fn wasm_load_snapshot(game: *mut Game, ptr: *mut u8, size: usize) {
-    let (game, data) = unsafe {
-        (&mut *game, Vec::from_raw_parts(ptr, size, size))
-    };
+pub unsafe extern "C" fn wasm_load_snapshot(game: *mut Game, ptr: *mut u8, size: usize) {
+    let game = &mut *game;
+    let data = Vec::from_raw_parts(ptr, size, size);
     game.load_snapshot(data);
 }
 #[no_mangle]
-pub extern "C" fn wasm_snapshot(game: *mut Game) -> *const u8 {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_snapshot(game: *mut Game) -> *const u8 {
+    let game = &mut *game;
     let data = game.snapshot();
     let ptr = data.as_ptr();
     mem::forget(data);
     ptr
 }
 #[no_mangle]
-pub extern "C" fn wasm_free_snapshot(ptr: *mut u8, size: usize) {
-    let _data = unsafe { Vec::from_raw_parts(ptr, size, size) };
+pub unsafe extern "C" fn wasm_free_snapshot(ptr: *mut u8, size: usize) {
+    let _data = Vec::from_raw_parts(ptr, size, size);
 }
 #[no_mangle]
-pub extern "C" fn wasm_reset_input(game: *mut Game) {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_reset_input(game: *mut Game) {
+    let game = &mut *game;
     game.reset_input();
 }
 #[no_mangle]
-pub extern "C" fn wasm_key_up(game: *mut Game, key: i32) {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_key_up(game: *mut Game, key: i32) {
+    let game = &mut *game;
     game.key_up(key as usize);
 }
 #[no_mangle]
-pub extern "C" fn wasm_key_down(game: *mut Game, key: i32) {
-    let game = unsafe { &mut *game };
+pub unsafe extern "C" fn wasm_key_down(game: *mut Game, key: i32) {
+    let game = &mut *game;
     game.key_down(key as usize);
 }
 
