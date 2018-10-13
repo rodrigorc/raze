@@ -461,16 +461,16 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
 }
 
 impl Tape {
-    pub fn new<R: Read + Seek>(tap: &mut R) -> io::Result<Tape> {
+    pub fn new<R: Read + Seek>(mut tap: R) -> io::Result<Tape> {
         let start_pos = tap.seek(io::SeekFrom::Current(0))?;
 
-        let mut blocks = new_zip(tap)
+        let mut blocks = new_zip(tap.by_ref())
         .or_else(|_| {
             tap.seek(io::SeekFrom::Start(start_pos))?;
-            new_tzx(tap)
+            new_tzx(tap.by_ref())
         }).or_else(|_| {
             tap.seek(io::SeekFrom::Start(start_pos))?;
-            new_tap(tap)
+            new_tap(tap.by_ref())
         })?;
 
         //try to guess the names of the unnamed blocks
