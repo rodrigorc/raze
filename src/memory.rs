@@ -60,35 +60,44 @@ impl Memory {
             }
         }
     }
+    //All these functions use unchecked access to the arrays because the bit size of the arguments
+    //make it impossible to overflow. Not checking bounds improves about 10% of CPU time.
+
     //returns (bankid, offset)
     #[inline]
     fn split_addr(&self, addr: impl Into<u16>) -> (usize, usize) {
         let addr = addr.into();
         let ibank = (addr >> 14) as usize;
         let offs = (addr & 0x3fff) as usize;
-        (self.banks[ibank] as usize, offs)
+        (unsafe { *self.banks.get_unchecked(ibank) } as usize, offs)
     }
+    #[inline]
     pub fn peek(&mut self, addr: impl Into<u16>) -> u8 {
         let (bank, offs) = self.split_addr(addr);
-        if self.data[bank].contended {
-            self.delay = self.delay.wrapping_add(1);
+        let bank = unsafe { self.data.get_unchecked(bank) };
+        if bank.contended {
+            self.delay += 1;
         }
-        self.data[bank].data[offs]
+        unsafe { *bank.data.get_unchecked(offs) }
     }
+    #[inline]
     pub fn peek_no_delay(&self, addr: u16) -> u8 {
         let (bank, offs) = self.split_addr(addr);
-        self.data[bank].data[offs]
+        let bank = unsafe { self.data.get_unchecked(bank) };
+        unsafe { *bank.data.get_unchecked(offs) }
     }
+    #[inline]
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let (bank, offs) = self.split_addr(addr);
-        if self.data[bank].ro {
+        let bank = unsafe { self.data.get_unchecked_mut(bank) };
+        if bank.ro {
             //log!("writing to rom {:4x} <- {:2x}", offs, data);
             return;
         }
-        if self.data[bank].contended {
-            self.delay = self.delay.wrapping_add(1);
+        if bank.contended {
+            self.delay += 1;
         }
-        self.data[bank].data[offs] = data;
+        unsafe { *bank.data.get_unchecked_mut(offs) = data };
     }
     pub fn take_delay(&mut self) -> u32 {
         let r = self.delay;

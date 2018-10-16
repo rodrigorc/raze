@@ -86,9 +86,9 @@ impl Bus for ULA {
         let mut r = 0xff;
         //ULA IO port
         if lo & 1 == 0 {
-            self.delay = self.delay.wrapping_add(1);
+            self.delay += 1;
             if port >= 0x4000 && port < 0x8000 {
-                self.delay = self.delay.wrapping_add(1);
+                self.delay += 1;
             }
             for i in 0..8 { //half row keyboard
                 if hi & (1 << i) == 0 {
@@ -107,7 +107,7 @@ impl Bus for ULA {
             }
         } else {
             if port >= 0x4000 && port < 0x8000 {
-                self.delay = self.delay.wrapping_add(4);
+                self.delay += 4;
             }
             match lo {
                 0xfd => { //Programmable Sound Generator
@@ -156,9 +156,9 @@ impl Bus for ULA {
         let hi = (port >> 8) as u8;
         if lo & 1 == 0 {
             //ULA IO port
-            self.delay = self.delay.wrapping_add(1);
+            self.delay += 1;
             if port >= 0x4000 && port < 0x8000 {
-                self.delay = self.delay.wrapping_add(1);
+                self.delay += 1;
             }
             let border = value & 7;
             self.border = PIXELS[0][border as usize];
@@ -168,7 +168,7 @@ impl Bus for ULA {
         } else {
             //log!("OUT {:04x}, {:02x}", port, value);
             if port >= 0x4000 && port < 0x8000 {
-                self.delay = self.delay.wrapping_add(4);
+                self.delay += 4;
             }
             match lo {
                 0xfd => { //128 stuff
@@ -236,28 +236,27 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
         _ => unreachable!()
     };
     let ym = y + BY0;
-    let prow = &mut ps[(BX0 + 256 + BX1) * ym .. (BX0 + 256 + BX1) * (ym + 1)];
-    for x in prow.iter_mut().take(BX0) {
+    let prow_full = &mut ps[(BX0 + 256 + BX1) * ym .. (BX0 + 256 + BX1) * (ym + 1)];
+    for x in &mut prow_full[0..BX0] {
         *x = border;
     }
-    for x in 0..BX1 {
-        prow[BX0 + 256 + x] = border;
+    for x in &mut prow_full[BX0 + 256 .. BX0 + 256 + BX1] {
+        *x = border;
     }
-    for x in 0..32 {
-        let attr = data[192 * 32 + (y / 8) * 32 + x];
-        let d = data[orow + x];
-        for b in 0..8 {
+    let prow = &mut prow_full[BX0 .. BX0 + 256];
+    let arow = 192 * 32 + (y / 8) * 32;
+    for ((&d, &attr), bits) in data[orow .. orow + 32].iter().zip(data[arow .. arow + 32].iter()).zip(prow.chunks_mut(8)) {
+        for (b, bo) in bits.iter_mut().enumerate() {
             let pix = ((d >> (7-b)) & 1) != 0;
-            let bright = (attr & 0b0100_0000) != 0;
-            let blink = inv && (attr & 0b1000_0000) != 0;
+            let bright = (attr & 0b01_000_000) != 0;
+            let blink = inv && (attr & 0b10_000_000) != 0;
 
             let c = if pix ^ blink {
-                (attr & 0b0000_0111)
+                (attr & 0b00_000_111)
             } else {
-                (attr & 0b0011_1000) >> 3
+                (attr & 0b00_111_000) >> 3
             };
-            let offs = BX0 + 8 * x + b;
-            prow[offs] = PIXELS[bright as usize][c as usize];
+            *bo = PIXELS[bright as usize][c as usize];
         }
     }
 }
@@ -321,23 +320,27 @@ impl Game {
             let mut audio_count : u32 = 0;
             while self.ula.time < TIME_TO_INT {
                 let mut t = self.z80.exec(&mut self.ula);
-                let delay = self.ula.memory.take_delay() + self.ula.take_delay();
+                let delay_m = self.ula.memory.take_delay();
+                let delay_io = self.ula.take_delay();
                 //contended memory
                 if self.ula.time >= 224*64 && self.ula.time < 224*256 {
                     //each row is 224 T, 128 are the real pixels where contention occurs
                     let offs = self.ula.time % 224;
+                    //TODO: contention should be only in the first 128 T of each row, but that
+                    //gives too fast emulation, so we compensate it for now by counting
+                    //the whole row
                     if offs < 128 {
                         //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
                         //average, it seems to be good enough
-                        t += (delay * 21) / 8;
+                        t += 4 * delay_m + 6 * delay_io;
                     }
                 }
-                self.ula.add_time(t);
+                self.ula.add_time(2);
                 
                 if !turbo {
                     audio_time += t as i32;
-                    audio_accum += self.ula.audio_sample(t as i32) as u32;
-                    audio_count += 1;
+                    audio_accum += t * self.ula.audio_sample(t as i32) as u32;
+                    audio_count += t;
                     if audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
                         let sample = audio_accum / audio_count;
@@ -357,8 +360,6 @@ impl Game {
                                 write_screen_row(screen_row - 64, self.ula.border, inverted, screen, &mut self.image);
                             }
                             _ => {}
-                        }
-                        if screen_row >= 64 && screen_row < 256 {
                         }
                         screen_row += 1;
                     }

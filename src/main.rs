@@ -163,8 +163,8 @@ fn main() -> io::Result<()> {
     let mut spectrum = Spectrum { x: 0, memory };
 
     const SCROPS : i32 = 5_000;
-    for count in 0 .. 2_000_000 {
-        z80.dump_regs();
+    for count in 0 .. 200_000_000 {
+        //z80.dump_regs();
         z80.exec(&mut spectrum);
         if (count+1) % SCROPS == 0 {
             if false {

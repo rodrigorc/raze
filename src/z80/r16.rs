@@ -15,21 +15,27 @@ const LO_IDX : usize = 1;
 const HI_IDX : usize = 1 - LO_IDX;
 
 impl R16 {
+    #[inline]
     pub fn as_u16(self) -> u16 {
         unsafe { self.w }
     }
+    #[inline]
     pub fn set(&mut self, w: u16) {
         self.w = w;
     }
+    #[inline]
     pub fn lo(self) -> u8 {
         unsafe { self.b[LO_IDX] }
     }
+    #[inline]
     pub fn hi(self) -> u8 {
         unsafe { self.b[HI_IDX] }
     }
+    #[inline]
     pub fn set_lo(&mut self, b: u8) {
         unsafe { self.b[LO_IDX] = b; }
     }
+    #[inline]
     pub fn set_hi(&mut self, b: u8) {
         unsafe { self.b[HI_IDX] = b; }
     }

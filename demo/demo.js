@@ -328,7 +328,6 @@ function handleTapeBlock(evt) {
     var btn = evt.target;
     var index = btn['data-index'];
     //evt.target.classList.add('playing');
-    console.log("Block ", index);
     Module.exports.wasm_tape_seek(Module.game, index);
 }
 
@@ -369,6 +368,7 @@ function handleSnapshotSelect(evt) {
         var d = new Uint8Array(Module.memory.buffer, ptr, lastSnapshot.byteLength);
         d.set(new Uint8Array(lastSnapshot));
         Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
+        Module.is128k = false;
     }
     reader.readAsArrayBuffer(f);
 }
@@ -389,6 +389,7 @@ function handleLoadLastSnapshot(evt) {
     var d = new Uint8Array(Module.memory.buffer, ptr, lastSnapshot.length);
     d.set(new Uint8Array(lastSnapshot));
     Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
+    Module.is128k = false;
 }
 
 function handleSnapshot(evt) {

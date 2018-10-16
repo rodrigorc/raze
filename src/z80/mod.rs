@@ -87,6 +87,22 @@ fn half_carry16(a: u16, b: u16, c: u16) -> bool {
     let mc = flag16(c, 0x0800);
     (mc && ma && mb) || (!mc && (ma || mb))
 }
+#[inline]
+fn overflow_add8(a: u8, b: u8, c: u8) -> bool {
+    flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(c, 0x80)
+}
+#[inline]
+fn overflow_add16(a: u16, b: u16, c: u16) -> bool {
+    flag16(a, 0x8000) == flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(c, 0x8000)
+}
+#[inline]
+fn overflow_sub8(a: u8, b: u8, c: u8) -> bool {
+    flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(c, 0x80)
+}
+#[inline]
+fn overflow_sub16(a: u16, b: u16, c: u16) -> bool {
+    flag16(a, 0x8000) != flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(c, 0x8000)
+}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum InterruptMode {
@@ -352,21 +368,22 @@ impl Z80 {
         }
         f = set_flag8(f, FLAG_N, true);
         f = set_flag8(f, FLAG_C, carry8(r, b, a));
-        f = set_flag8(f, FLAG_PV,
-                 flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80));
+        f = set_flag8(f, FLAG_PV, overflow_sub8(a, b, r));
         f = set_flag8(f, FLAG_Z, r == 0);
         f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, half_carry8(r, b, a));
         self.set_f(f);
         r
     }
-    fn sub16_flags(&mut self, a: u16, b: u16) -> u16 {
-        let r = a.wrapping_sub(b);
+    fn sbc16_flags(&mut self, a: u16, mut b: u16) -> u16 {
         let mut f = self.f();
+        if flag8(f, FLAG_C) {
+            b = b.wrapping_add(1);
+        }
+        let r = a.wrapping_sub(b);
         f = set_flag8(f, FLAG_N, true);
         f = set_flag8(f, FLAG_C, carry16(r, b, a));
-        f = set_flag8(f, FLAG_PV,
-                 flag16(a, 0x8000) != flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(r, 0x8000));
+        f = set_flag8(f, FLAG_PV, overflow_sub16(a, b, r));
         f = set_flag8(f, FLAG_Z, r == 0);
         f = set_flag8(f, FLAG_S, flag16(r, 0x8000));
         f = set_flag8(f, FLAG_H, half_carry16(r, b, a));
@@ -381,11 +398,25 @@ impl Z80 {
         }
         f = set_flag8(f, FLAG_N, false);
         f = set_flag8(f, FLAG_C, carry8(a, b, r));
-        f = set_flag8(f, FLAG_PV,
-                 flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(r, 0x80));
+        f = set_flag8(f, FLAG_PV, overflow_add8(a, b, r));
         f = set_flag8(f, FLAG_Z, r == 0);
         f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, half_carry8(a, b, r));
+        self.set_f(f);
+        r
+    }
+    fn adc16_flags(&mut self, a: u16, mut b: u16) -> u16 {
+        let mut f = self.f();
+        if flag8(f, FLAG_C) {
+            b = b.wrapping_add(1);
+        }
+        let r = a.wrapping_add(b);
+        f = set_flag8(f, FLAG_N, false);
+        f = set_flag8(f, FLAG_C, carry16(a, b, r));
+        f = set_flag8(f, FLAG_PV, overflow_add16(a, b, r));
+        f = set_flag8(f, FLAG_Z, r == 0);
+        f = set_flag8(f, FLAG_S, flag16(r, 0x8000));
+        f = set_flag8(f, FLAG_H, half_carry16(a, b, r));
         self.set_f(f);
         r
     }
@@ -1736,11 +1767,8 @@ impl Z80 {
             }
             0x42 => { //SBC HL,BC
                 let mut hl = self.hl.as_u16();
-                let mut bc = self.bc.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    bc = bc.wrapping_add(1);
-                }
-                hl = self.sub16_flags(hl, bc);
+                let bc = self.bc.as_u16();
+                hl = self.sbc16_flags(hl, bc);
                 self.hl.set(hl);
                 15
             }
@@ -1788,11 +1816,8 @@ impl Z80 {
             }
             0x4a => { //ADC HL,BC
                 let mut hl = self.hl.as_u16();
-                let mut bc = self.bc.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    bc = bc.wrapping_add(1);
-                }
-                hl = self.add16_flags(hl, bc);
+                let bc = self.bc.as_u16();
+                hl = self.adc16_flags(hl, bc);
                 self.hl.set(hl);
                 15
             }
@@ -1831,11 +1856,8 @@ impl Z80 {
             }
             0x52 => { //SBC HL,DE
                 let mut hl = self.hl.as_u16();
-                let mut de = self.de.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    de = de.wrapping_add(1);
-                }
-                hl = self.sub16_flags(hl, de);
+                let de = self.de.as_u16();
+                hl = self.sbc16_flags(hl, de);
                 self.hl.set(hl);
                 15
             }
@@ -1880,11 +1902,8 @@ impl Z80 {
             }
             0x5a => { //ADC HL,DE
                 let mut hl = self.hl.as_u16();
-                let mut de = self.de.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    de = de.wrapping_add(1);
-                }
-                hl = self.add16_flags(hl, de);
+                let de = self.de.as_u16();
+                hl = self.adc16_flags(hl, de);
                 self.hl.set(hl);
                 15
             }
@@ -1929,11 +1948,7 @@ impl Z80 {
             }
             0x62 => { //SBC HL,HL
                 let mut hl = self.hl.as_u16();
-                let mut rr = self.hl.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    rr = rr.wrapping_add(1);
-                }
-                hl = self.sub16_flags(hl, rr);
+                hl = self.sbc16_flags(hl, hl);
                 self.hl.set(hl);
                 15
             }
@@ -1978,11 +1993,7 @@ impl Z80 {
             }
             0x6a => { //ADC HL,HL
                 let mut hl = self.hl.as_u16();
-                let mut hl2 = hl;
-                if flag8(self.f(), FLAG_C) {
-                    hl2 = hl2.wrapping_add(1);
-                }
-                hl = self.add16_flags(hl, hl2);
+                hl = self.adc16_flags(hl, hl);
                 self.hl.set(hl);
                 15
             }
@@ -2020,11 +2031,8 @@ impl Z80 {
             }
             0x72 => { //SBC HL,SP
                 let mut hl = self.hl.as_u16();
-                let mut sp : u16 = self.sp.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    sp = sp.wrapping_add(1);
-                }
-                hl = self.sub16_flags(hl, sp);
+                let mut sp = self.sp.as_u16();
+                hl = self.sbc16_flags(hl, sp);
                 self.hl.set(hl);
                 15
             }
@@ -2054,11 +2062,8 @@ impl Z80 {
             }
             0x7a => { //ADC HL,SP
                 let mut hl = self.hl.as_u16();
-                let mut sp = self.sp.as_u16();
-                if flag8(self.f(), FLAG_C) {
-                    sp = sp.wrapping_add(1);
-                }
-                hl = self.add16_flags(hl, sp);
+                let sp = self.sp.as_u16();
+                hl = self.adc16_flags(hl, sp);
                 self.hl.set(hl);
                 15
             }
