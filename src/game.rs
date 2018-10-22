@@ -64,7 +64,7 @@ impl ULA {
         };
     }
     pub fn audio_sample(&mut self, t: i32) -> u8 {
-        let v = if self.ear { 0x7fu8 } else { 0x00 };
+        let v : u8 = if self.ear { 0x40 } else { 0x00 };
         match &mut self.psg {
             None => v,
             Some(psg) => v.saturating_add(psg.next_sample(t))
