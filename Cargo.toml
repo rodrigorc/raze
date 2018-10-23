@@ -27,6 +27,3 @@ zip = { version = "*", optional = true, default_features = false, features = ["d
 [features]
 default = ["zip"]
 dump_ops = []
-
-[patch.crates-io]
-libc = { git = "https://github.com/rodrigorc/rust-libc.git", branch = "wasm32-support" }
