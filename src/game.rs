@@ -320,22 +320,20 @@ impl Game {
             let mut audio_count : u32 = 0;
             while self.ula.time < TIME_TO_INT {
                 let mut t = self.z80.exec(&mut self.ula);
+                //contended memory and IO
                 let delay_m = self.ula.memory.take_delay();
                 let delay_io = self.ula.take_delay();
-                //contended memory
-                if self.ula.time >= 224*64 && self.ula.time < 224*256 {
+                if self.ula.time >= 224*64 && self.ula.time < 224*256 && self.ula.time % 224 < 128 {
                     //each row is 224 T, 128 are the real pixels where contention occurs
-                    let offs = self.ula.time % 224;
-                    //TODO: contention should be only in the first 128 T of each row, but that
-                    //gives too fast emulation, so we compensate it for now by counting
-                    //the whole row
-                    if offs < 128 {
-                        //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
-                        //average, it seems to be good enough
-                        t += 4 * delay_m + 6 * delay_io;
+                    //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
+                    //estimation
+                    match delay_m + delay_io {
+                        0 => (),
+                        1 => t += 4, //only 1 contention: these many Ts on average
+                        x => t += 6*x - 2, //more than 1 contention: they use to chain so max up all but the first one
                     }
                 }
-                self.ula.add_time(2);
+                self.ula.add_time(t);
                 
                 if !turbo {
                     audio_time += t as i32;
