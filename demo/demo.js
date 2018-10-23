@@ -236,8 +236,7 @@ function getKeyCode(ev) {
         return 0x64;
     case "Space":
         return 0x70;
-    case "AltLeft":
-    case "AltRight":
+    case "ControlRight":
         return 0x71;
     case "KeyM":
         return 0x72;
@@ -258,7 +257,6 @@ function getKeyCode(ev) {
     //Joystick
     case "Numpad0":
     case "ControlLeft":
-    case "ControlRight":
         return 0x84;
     case "Numpad8":
         return 0x83;
