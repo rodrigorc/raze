@@ -1078,7 +1078,7 @@ impl Z80 {
                 self.next_op = NextOp::Halt;
                 4
             }
-            0xc0 => { //RET NZ 
+            0xc0 => { //RET NZ
                 if !flag8(self.f(), FLAG_Z) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1133,7 +1133,7 @@ impl Z80 {
                 self.pc.set(0x00);
                 11
             }
-            0xc8 => { //RET Z 
+            0xc8 => { //RET Z
                 if flag8(self.f(), FLAG_Z) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1185,7 +1185,7 @@ impl Z80 {
                 self.pc.set(0x08);
                 11
             }
-            0xd0 => { //RET NC 
+            0xd0 => { //RET NC
                 if !flag8(self.f(), FLAG_C) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1242,7 +1242,7 @@ impl Z80 {
                 self.pc.set(0x10);
                 11
             }
-            0xd8 => { //RET C 
+            0xd8 => { //RET C
                 if flag8(self.f(), FLAG_C) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1267,7 +1267,7 @@ impl Z80 {
             0xdb => { //IN A,(n)
                 let n = self.fetch(bus);
                 let a = self.a();
-                let port = ((a as u16) << 8) | (n as u16); 
+                let port = ((a as u16) << 8) | (n as u16);
                 let a = bus.do_in(port);
                 self.set_a(a);
                 11
@@ -1296,7 +1296,7 @@ impl Z80 {
                 self.pc.set(0x18);
                 11
             }
-            0xe0 => { //RET PO 
+            0xe0 => { //RET PO
                 if !flag8(self.f(), FLAG_PV) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1352,7 +1352,7 @@ impl Z80 {
                 self.pc.set(0x20);
                 11
             }
-            0xe8 => { //RET PE 
+            0xe8 => { //RET PE
                 if flag8(self.f(), FLAG_PV) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1400,7 +1400,7 @@ impl Z80 {
                 self.pc.set(0x28);
                 11
             }
-            0xf0 => { //RET P 
+            0xf0 => { //RET P
                 if !flag8(self.f(), FLAG_S) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1454,7 +1454,7 @@ impl Z80 {
                 self.pc.set(0x30);
                 11
             }
-            0xf8 => { //RET M 
+            0xf8 => { //RET M
                 if flag8(self.f(), FLAG_S) {
                     let pc = self.pop(bus);
                     self.pc.set(pc);
@@ -1509,11 +1509,11 @@ impl Z80 {
                         if rs == 6 {
                             let (r, t) = self.reg_by_num(prefix, rs, bus);
                             self.set_reg_by_num_no_pre(rd, r);
-                            4 + t
+                            7 + t
                         } else if rd == 6 {
                             let r = self.reg_by_num_no_pre(rs);
                             let t = self.set_reg_by_num(prefix, rd, bus, r);
-                            4 + t
+                            7 + t
                         } else {
                             let r = self.reg_by_num_addr(prefix, rs, bus, 0);
                             self.set_reg_by_num_addr(prefix, rd, bus, r, 0);
@@ -1595,7 +1595,7 @@ impl Z80 {
         }
         let r = c & 0x07;
         let n = (c >> 3) & 0x07;
-        match c & 0b1100_0000 {
+        let write = match c & 0b1100_0000 {
             0x40 => { //BIT n,r
                 let b = self.reg_by_num_addr(prefix, r, bus, addr);
                 let r = b & (1 << n);
@@ -1606,16 +1606,19 @@ impl Z80 {
                 f = set_flag8(f, FLAG_H, true);
                 f = set_flag8(f, FLAG_N, false);
                 self.set_f(f);
+                false
             }
             0x80 => { //RES n,r
                 let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
                 b = set_flag8(b, 1 << n, false);
                 self.set_reg_by_num_addr(prefix, r, bus, b, addr);
+                true
             }
             0xc0 => { //SET n,r
                 let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
                 b = set_flag8(b, 1 << n, true);
                 self.set_reg_by_num_addr(prefix, r, bus, b, addr);
+                true
             }
             _ => match c & 0b1111_1000 {
                 0x00 => { //RLC r
@@ -1631,6 +1634,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x08 => { //RRC r
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1645,6 +1649,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x10 => { //RL r
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1661,6 +1666,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x18 => { //RR r
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1677,6 +1683,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x20 => { //SLA r
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1691,6 +1698,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x28 => { //SRA r
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1705,6 +1713,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x30 => { //SL1 r (undoc)
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1719,6 +1728,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 0x38 => { //SRL r
                     let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
@@ -1733,13 +1743,15 @@ impl Z80 {
                     f = set_flag8(f, FLAG_S, flag8(b, 0x80));
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
+                    true
                 }
                 _ => {
                     log!("unimplemented opcode CB {:02x}", c);
+                    false
                 }
             }
         };
-        t + if r == 6 { 15 } else  { 8 }
+        t + if r == 6 { 15 + if write { 3 } else { 0 } } else  { 8 }
     }
     fn exec_ed(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
         let c = self.fetch(bus);
