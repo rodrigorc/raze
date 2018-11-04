@@ -47,7 +47,7 @@ impl ULA {
             Some((tape, Some(pos))) => {
                 let index_pre = pos.block(&tape);
                 let index_post;
-                let next = tape.play(t, pos);
+                let mut next = tape.play(t, pos);
                 if let Some(p) = &next {
                     self.ear = p.mic();
                     index_post = p.block(&tape);
@@ -204,6 +204,7 @@ impl Bus for ULA {
 }
 
 pub struct Game {
+    is128k: bool,
     z80: Z80,
     ula: ULA,
     image: Vec<Pixel>,
@@ -287,6 +288,7 @@ impl Game {
         };
         let z80 = Z80::new();
         let game = Game {
+            is128k,
             z80,
             ula: ULA {
                 memory,
@@ -408,7 +410,7 @@ impl Game {
         }
     }
     pub fn tape_load(&mut self, data: Vec<u8>) -> usize {
-        match Tape::new(&mut Cursor::new(data)) {
+        match Tape::new(&mut Cursor::new(data), self.is128k) {
             Ok(tape) => {
                 let res = tape.len();
                 if res > 0 {

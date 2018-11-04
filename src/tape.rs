@@ -3,11 +3,23 @@ use std::borrow::Cow;
 #[cfg(feature="zip")]
 use zip;
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 struct Tone {
     num: u32,
     len1: u32,
     len2: u32,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum Duration {
+    Infinite,
+    T(u32),
+}
+
+impl Duration {
+    fn zero() -> Duration {
+        Duration::T(0)
+    }
 }
 
 #[derive(Clone)]
@@ -18,7 +30,7 @@ struct Block {
     len_zero: u32,
     len_one: u32,
     bits_last: u8,
-    pause: u32,
+    pause: Duration,
     data: Vec<u8>,
 }
 
@@ -46,8 +58,8 @@ impl Block {
             len_zero,
             len_one,
             bits_last,
-            pause,
-            data
+            pause: Duration::T(pause),
+            data,
         }
     }
     fn pure_data_block(len_zero: u32, len_one: u32, bits_last: u8, pause: u32, data: Vec<u8>) -> Block {
@@ -66,8 +78,8 @@ impl Block {
             len_zero: 0,
             len_one: 0,
             bits_last: 0,
-            pause: 0,
-            data: Vec::new()
+            pause: Duration::zero(),
+            data: Vec::new(),
         }
     }
     fn single_tone_block(len1: u32, len2: u32) -> Block {
@@ -78,8 +90,8 @@ impl Block {
             len_zero: 0,
             len_one: 0,
             bits_last: 0,
-            pause: 0,
-            data: Vec::new()
+            pause: Duration::zero(),
+            data: Vec::new(),
         }
     }
     fn pause_block(pause: u32) -> Block {
@@ -90,13 +102,25 @@ impl Block {
             len_zero: 0,
             len_one: 0,
             bits_last: 0,
-            pause,
+            pause: Duration::T(pause),
+            data: Vec::new(),
+        }
+    }
+    fn stop_block() -> Block {
+        Block {
+            name: Some("stop".to_string()),
+            selectable: true,
+            tones: Vec::new(),
+            len_zero: 0,
+            len_one: 0,
+            bits_last: 0,
+            pause: Duration::Infinite,
             data: Vec::new(),
         }
     }
 
     fn start() -> TapePhaseT {
-        TapePhaseT(0, TapePhase::Start)
+        TapePhaseT(Duration::zero(), TapePhase::Start)
     }
     fn tones(&self, index: usize, pulse: u32, last_half: bool) -> TapePhaseT {
         if index >= self.tones.len() {
@@ -104,7 +128,7 @@ impl Block {
         } else {
             let tone = &self.tones[index as usize];
             let len = if last_half { tone.len2 } else { tone.len1 };
-            TapePhaseT(len, TapePhase::Tones { index, pulse, last_half })
+            TapePhaseT(Duration::T(len), TapePhase::Tones { index, pulse, last_half })
         }
     }
     fn data_bit(&self, pos: usize, bit: u8, last_half: bool) -> TapePhaseT {
@@ -114,7 +138,7 @@ impl Block {
             let byte = self.data[pos];
             let v = byte & (0x80 >> bit) != 0;
             let len = if v { self.len_one } else { self.len_zero };
-            TapePhaseT(len, TapePhase::Data { pos, bit, last_half })
+            TapePhaseT(Duration::T(len), TapePhase::Data { pos, bit, last_half })
         }
     }
     fn pause(&self) -> TapePhaseT {
@@ -155,7 +179,7 @@ fn read_string(r: &mut impl Read, n: usize) -> io::Result<String> {
 }
 
 #[cfg(feature="zip")]
-fn new_zip<R: Read + Seek>(r: &mut R) -> io::Result<Vec<Block>> {
+fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
     let mut zip = zip::ZipArchive::new(r)?;
 
     for i in 0 .. zip.len() {
@@ -172,7 +196,7 @@ fn new_zip<R: Read + Seek>(r: &mut R) -> io::Result<Vec<Block>> {
             }
             Some("tzx") => {
                 log!("unzipping TZX {}", name.to_string_lossy());
-                return new_tzx(&mut ze);
+                return new_tzx(&mut ze, is128k);
             }
             _ => {}
         };
@@ -199,7 +223,7 @@ fn new_tap(r: &mut impl Read) -> io::Result<Vec<Block>> {
     Ok(blocks)
 }
 
-fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
+fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
     let mut sig = [0; 10];
     r.read_exact(&mut sig)?;
     if &sig[0..8] != b"ZXTape!\x1a" {
@@ -319,7 +343,7 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 let data = read_vec(r, block_len as usize)?;
                 log!("standard block P:{} D:{}", pause as f32 / 3_500_000.0, data.len());
                 let mut block = Block::standard_data_block(data);
-                block.pause = pause;
+                block.pause = Duration::T(pause);
                 parser.add_block(block);
             }
             0x11 => { //turbo speed data block
@@ -377,7 +401,9 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 let num1 = read_u8(r)? as usize;
                 let num = num0 | (num1 << 16);
                 let data = read_vec(r, num)?;
-                log!("pure data block 0:{} 1:{} L:{} P:{} D:{}", len_zero, len_one, bits_last, pause, num);
+                log!("pure data block 0:{} 1:{} L:{} P:{} D:{}",
+                     len_zero, len_one, bits_last,
+                     pause as f32 / 3_500_000.0, num);
                 let block = Block::pure_data_block(len_zero, len_one, bits_last, pause, data);
                 parser.add_block(block);
             }
@@ -389,6 +415,8 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                 let pause = read_u16(r)? as u32 * 3500; // ms -> T;
                 if pause == 0 {
                     log!("stop tape");
+                    let block = Block::stop_block();
+                    parser.add_block(block);
                 } else {
                     log!("pause {}", pause);
                     let block = Block::pause_block(pause);
@@ -424,6 +452,10 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
                     return Err(io::ErrorKind::InvalidData.into());
                 }
                 log!("stop tape if 48k");
+                if !is128k {
+                    let block = Block::stop_block();
+                    parser.add_block(block);
+                }
             }
             //0x2b => {} //set signal level
             0x30 => { //text description
@@ -450,7 +482,6 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
             //0x35 => {} //custom info block
             //0x40 => {} //snapshot block
             //0x5a => {} //glue block
-            //
             x => {
                 log!("*** unknown chunk type: 0x{:02x}", x);
             }
@@ -461,13 +492,13 @@ fn new_tzx(r: &mut impl Read) -> io::Result<Vec<Block>> {
 }
 
 impl Tape {
-    pub fn new<R: Read + Seek>(mut tap: R) -> io::Result<Tape> {
+    pub fn new<R: Read + Seek>(mut tap: R, is128k: bool) -> io::Result<Tape> {
         let start_pos = tap.seek(io::SeekFrom::Current(0))?;
 
-        let mut blocks = new_zip(tap.by_ref())
+        let mut blocks = new_zip(tap.by_ref(), is128k)
         .or_else(|_| {
             tap.seek(io::SeekFrom::Start(start_pos))?;
-            new_tzx(tap.by_ref())
+            new_tzx(tap.by_ref(), is128k)
         }).or_else(|_| {
             tap.seek(io::SeekFrom::Start(start_pos))?;
             new_tap(tap.by_ref())
@@ -539,7 +570,7 @@ pub enum TapePhase {
 
 //The phase and remaining Tstates
 #[derive(Debug)]
-struct TapePhaseT(u32, TapePhase);
+struct TapePhaseT(Duration, TapePhase);
 
 impl TapePhaseT {
     fn mic(&self) -> bool {
@@ -551,18 +582,25 @@ impl TapePhaseT {
         }
     }
     fn next(self, d: &mut u32, tape: &Tape, iblock: usize) -> Option<TapePhaseT> {
-        let TapePhaseT(trest, phase) = self;
+        let TapePhaseT(duration, phase) = self;
 
-        if trest > *d {
-            let tnext = trest - *d;
-            *d = 0;
-            return Some(TapePhaseT(tnext, phase));
+        match duration {
+            Duration::Infinite => {
+                return Some(TapePhaseT(Duration::Infinite, phase));
+            }
+            Duration::T(time) => {
+                if time > *d {
+                    let tnext = time - *d;
+                    *d = 0;
+                    return Some(TapePhaseT(Duration::T(tnext), phase));
+                }
+                *d -= time;
+            }
         }
-        *d -= trest;
 
         let block = &tape.blocks[iblock];
 
-        let TapePhaseT(mut tnext, rphase) = match phase {
+        let TapePhaseT(mut dnext, rphase) = match phase {
             TapePhase::Start => {
                 block.tones(0, 0, false)
             }
@@ -595,14 +633,21 @@ impl TapePhaseT {
                 return None;
             }
         };
-        if tnext > *d {
-            tnext -= *d;
-            *d = 0;
-        } else {
-            tnext = 0;
-            *d -= tnext;
+        match dnext {
+            Duration::Infinite => {
+                *d = 0;
+            }
+            Duration::T(ref mut time) => {
+                if *time > *d {
+                    *time -= *d;
+                    *d = 0;
+                } else {
+                    *time = 0;
+                    *d -= *time;
+                }
+            }
         }
-        Some(TapePhaseT(tnext, rphase))
+        Some(TapePhaseT(dnext, rphase))
     }
 }
 
