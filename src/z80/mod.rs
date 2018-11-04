@@ -28,11 +28,9 @@ pub trait Bus {
 
 const FLAG_S  : u8 = 0b1000_0000;
 const FLAG_Z  : u8 = 0b0100_0000;
-#[allow(unused)]
-const FLAG_F5 : u8 = 0b0010_0000;
+const FLAG_Y : u8 = 0b0010_0000;
 const FLAG_H  : u8 = 0b0001_0000;
-#[allow(unused)]
-const FLAG_F3 : u8 = 0b0000_1000;
+const FLAG_X : u8 = 0b0000_1000;
 const FLAG_PV : u8 = 0b0000_0100;
 const FLAG_N  : u8 = 0b0000_0010;
 const FLAG_C  : u8 = 0b0000_0001;
@@ -102,6 +100,20 @@ fn overflow_sub8(a: u8, b: u8, c: u8) -> bool {
 #[inline]
 fn overflow_sub16(a: u16, b: u16, c: u16) -> bool {
     flag16(a, 0x8000) != flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(c, 0x8000)
+}
+
+#[inline]
+fn set_flag_sz(f: u8, r: u8) -> u8 {
+    let f = set_flag8(f, FLAG_Z, r == 0);
+    const CF: u8 = FLAG_S | FLAG_X | FLAG_Y;
+    (f & !CF) | (r & CF)
+}
+
+#[inline]
+fn set_flag_szp(f: u8, r: u8) -> u8 {
+    let f = set_flag8(f, FLAG_PV, parity(r));
+    let f = set_flag_sz(f, r);
+    f
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -368,10 +380,9 @@ impl Z80 {
         }
         f = set_flag8(f, FLAG_N, true);
         f = set_flag8(f, FLAG_C, carry8(r, b, a));
-        f = set_flag8(f, FLAG_PV, overflow_sub8(a, b, r));
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, half_carry8(r, b, a));
+        f = set_flag8(f, FLAG_PV, overflow_sub8(a, b, r));
+        f = set_flag_sz(f, r);
         self.set_f(f);
         r
     }
@@ -398,10 +409,9 @@ impl Z80 {
         }
         f = set_flag8(f, FLAG_N, false);
         f = set_flag8(f, FLAG_C, carry8(a, b, r));
-        f = set_flag8(f, FLAG_PV, overflow_add8(a, b, r));
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, half_carry8(a, b, r));
+        f = set_flag8(f, FLAG_PV, overflow_add8(a, b, r));
+        f = set_flag_sz(f, r);
         self.set_f(f);
         r
     }
@@ -434,11 +444,9 @@ impl Z80 {
         let r = a.wrapping_add(1);
         let mut f = self.f();
         f = set_flag8(f, FLAG_N, false);
-        f = set_flag8(f, FLAG_PV, r == 0x80);
-        f = set_flag8(f, FLAG_Z,
-                 r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, (r & 0x0f) == 0x00);
+        f = set_flag8(f, FLAG_PV, r == 0x80);
+        f = set_flag_sz(f, r);
         self.set_f(f);
         r
     }
@@ -446,10 +454,9 @@ impl Z80 {
         let r = a.wrapping_sub(1);
         let mut f = self.f();
         f = set_flag8(f, FLAG_N, true);
-        f = set_flag8(f, FLAG_PV, r == 0x7f);
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, (r & 0x0f) == 0x0f);
+        f = set_flag8(f, FLAG_PV, r == 0x7f);
+        f = set_flag_sz(f, r);
         self.set_f(f);
         r
     }
@@ -458,10 +465,8 @@ impl Z80 {
         let mut f = self.f();
         f = set_flag8(f, FLAG_C, false);
         f = set_flag8(f, FLAG_N, false);
-        f = set_flag8(f, FLAG_PV, parity(r));
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, true);
+        f = set_flag_szp(f, r);
         self.set_f(f);
         r
     }
@@ -470,10 +475,8 @@ impl Z80 {
         let mut f = self.f();
         f = set_flag8(f, FLAG_C, false);
         f = set_flag8(f, FLAG_N, false);
-        f = set_flag8(f, FLAG_PV, parity(r));
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, false);
+        f = set_flag_szp(f, r);
         self.set_f(f);
         r
     }
@@ -482,10 +485,8 @@ impl Z80 {
         let mut f = self.f();
         f = set_flag8(f, FLAG_C, false);
         f = set_flag8(f, FLAG_N, false);
-        f = set_flag8(f, FLAG_PV, parity(r));
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, false);
+        f = set_flag_szp(f, r);
         self.set_f(f);
         r
     }
@@ -526,11 +527,10 @@ impl Z80 {
         self.bc -= 1;
 
         let r = a.wrapping_sub(x);
-        f = set_flag8(f, FLAG_Z, r == 0);
-        f = set_flag8(f, FLAG_S, flag8(r, 0x80));
         f = set_flag8(f, FLAG_H, half_carry8(r, x, a));
         f = set_flag8(f, FLAG_N, true);
         f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
+        f = set_flag_sz(f, r);
         self.set_f(f);
         r
     }
@@ -616,9 +616,7 @@ impl Z80 {
         let a = a.wrapping_add(plus_a);
         f = set_flag8(f, FLAG_C, new_c);
         f = set_flag8(f, FLAG_H, new_h);
-        f = set_flag8(f, FLAG_PV, parity(a));
-        f = set_flag8(f, FLAG_Z, a == 0);
-        f = set_flag8(f, FLAG_S, flag8(a, 0x80));
+        f = set_flag_szp(f, a);
         self.set_a(a);
         self.set_f(f);
     }
@@ -1600,11 +1598,9 @@ impl Z80 {
                 let b = self.reg_by_num_addr(prefix, r, bus, addr);
                 let r = b & (1 << n);
                 let mut f = self.f();
-                f = set_flag8(f, FLAG_S, flag8(r, 0x80));
-                f = set_flag8(f, FLAG_Z, r == 0);
-                f = set_flag8(f, FLAG_PV, parity(r));
                 f = set_flag8(f, FLAG_H, true);
                 f = set_flag8(f, FLAG_N, false);
+                f = set_flag_szp(f, r);
                 self.set_f(f);
                 false
             }
@@ -1629,9 +1625,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b7);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1644,9 +1638,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b0);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1661,9 +1653,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b7);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1678,9 +1668,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b0);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1693,9 +1681,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b7);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1708,9 +1694,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b0);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1723,9 +1707,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b7);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1738,9 +1720,7 @@ impl Z80 {
                     f = set_flag8(f, FLAG_C, b0);
                     f = set_flag8(f, FLAG_N, false);
                     f = set_flag8(f, FLAG_H, false);
-                    f = set_flag8(f, FLAG_PV, parity(b));
-                    f = set_flag8(f, FLAG_Z, b == 0);
-                    f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                    f = set_flag_szp(f, b);
                     self.set_reg_by_num_addr(prefix, r, bus, b, addr);
                     self.set_f(f);
                     true
@@ -1765,9 +1745,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag_szp(f, b);
                 self.bc.set_hi(b);
                 self.set_f(f);
                 12
@@ -1814,9 +1792,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag_szp(f, b);
                 self.bc.set_lo(b);
                 self.set_f(f);
                 12
@@ -1854,9 +1830,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag_szp(f, b);
                 self.de.set_hi(b);
                 self.set_f(f);
                 12
@@ -1888,8 +1862,7 @@ impl Z80 {
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_PV, self.iff1);
-                f = set_flag8(f, FLAG_Z, i == 0);
-                f = set_flag8(f, FLAG_S, flag8(i, 0x80));
+                f = set_flag_sz(f, i);
                 self.set_a(i);
                 self.set_f(f);
                 9
@@ -1900,9 +1873,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag_szp(f, b);
                 self.de.set_lo(b);
                 self.set_f(f);
                 12
@@ -1934,8 +1905,7 @@ impl Z80 {
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_PV, self.iff1);
-                f = set_flag8(f, FLAG_Z, r == 0);
-                f = set_flag8(f, FLAG_S, flag8(r, 0x80));
+                f = set_flag_sz(f, r);
                 self.set_a(r);
                 self.set_f(f);
                 9
@@ -1946,9 +1916,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag_szp(f, b);
                 self.hl.set_hi(b);
                 self.set_f(f);
                 12
@@ -1977,9 +1945,7 @@ impl Z80 {
                 let new_x = ((a & 0x0f) << 4) | ((x & 0xf0) >> 4);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_PV, parity(new_a));
-                f = set_flag8(f, FLAG_Z, new_a == 0);
-                f = set_flag8(f, FLAG_S, flag8(new_a, 0x80));
+                f = set_flag_szp(f, new_a);
                 self.set_a(new_a);
                 self.set_f(f);
                 bus.poke(self.hl, new_x);
@@ -1991,9 +1957,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
+                f = set_flag_szp(f, b);
                 self.hl.set_lo(b);
                 self.set_f(f);
                 12
@@ -2022,9 +1986,7 @@ impl Z80 {
                 let new_x = (a & 0x0f) | ((x & 0x0f) << 4);
                 f = set_flag8(f, FLAG_H, false);
                 f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_PV, parity(new_a));
-                f = set_flag8(f, FLAG_Z, new_a == 0);
-                f = set_flag8(f, FLAG_S, flag8(new_a, 0x80));
+                f = set_flag_szp(f, new_a);
                 self.set_a(new_a);
                 self.set_f(f);
                 bus.poke(self.hl, new_x);
@@ -2059,10 +2021,7 @@ impl Z80 {
                 let b = bus.do_in(bc);
                 f = set_flag8(f, FLAG_N, false);
                 f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_PV, parity(b));
-                f = set_flag8(f, FLAG_Z, b == 0);
-                f = set_flag8(f, FLAG_S, flag8(b, 0x80));
-                f = set_flag8(f, FLAG_H, false);
+                f = set_flag_szp(f, b);
                 self.set_a(b);
                 self.set_f(f);
                 12
