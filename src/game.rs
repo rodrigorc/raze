@@ -1,9 +1,9 @@
 use js;
-use z80::{Z80, Bus};
+use z80::{Z80, Bus, Z80FileVersion};
 use memory::Memory;
 use tape::{Tape, TapePos};
 use psg::PSG;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 
 const TIME_TO_INT : i32 = 69888;
 const AUDIO_SAMPLE : i32 = 168;
@@ -365,7 +365,7 @@ impl Game {
                     }
                 }
             }
-            self.z80.interrupt(&mut self.ula);
+            self.z80.interrupt();
             //we drag the excess T to the next loop
             self.ula.time -= TIME_TO_INT;
         }
@@ -467,9 +467,128 @@ impl Game {
         data
     }
     pub fn load_snapshot(&mut self, data: Vec<u8>) {
-        let mut load = Cursor::new(data);
-        self.ula.memory = Memory::load(&mut load).unwrap();
-        self.z80.load(&mut load).unwrap();
+        if data.len() == 65565 {
+            let mut load = Cursor::new(data);
+            self.ula.memory = Memory::load(&mut load).unwrap();
+            self.z80.load(&mut load).unwrap();
+        } else {
+            let version = self.z80.load_format_z80(&data);
+            self.ula.border = PIXELS[0][((data[12] >> 1) & 7) as usize];
+
+            self.is128k = match version {
+                Z80FileVersion::V1 => false,
+                Z80FileVersion::V2 => {
+                    match data[34] {
+                        0 => false,
+                        3 => true,
+                        _ => panic!("Unknown HW type {}", data[34]),
+                    }
+                }
+                Z80FileVersion::V3(_) => {
+                    match data[34] {
+                        0 => false,
+                        4 => true,
+                        _ => panic!("Unknown HW type {}", data[34]),
+                    }
+                }
+            };
+            if self.is128k {
+                //port 0x7ffd
+                self.ula.memory.switch_banks(data[35]);
+            }
+            if (data[37] & 4) != 0 {
+                self.ula.psg = Some(PSG::new_format_z80(&data[38 .. 55]));
+            } else {
+                self.ula.psg = None;
+            }
+            
+            let mut offset = match version {
+                Z80FileVersion::V1 => 30,
+                Z80FileVersion::V2 => 32 + 23,
+                Z80FileVersion::V3(false) => 32 + 54,
+                Z80FileVersion::V3(true) => 32 + 55,
+            };
+
+            if self.is128k {
+                self.ula.memory = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
+            } else {
+                self.ula.memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None);
+            };
+
+            fn uncompress(cdata: &[u8], bank: &mut [u8]) {
+                let mut wbank = Cursor::new(bank);
+                let mut rdata = cdata.iter();
+                let mut prev_ed = false;
+                loop {
+                    let b = match rdata.next() {
+                        Some(b) => *b,
+                        None => break,
+                    };
+                    prev_ed = match (prev_ed, b) {
+                        (true, 0xed) => {
+                            let times = *rdata.next().unwrap();
+                            let value = *rdata.next().unwrap();
+                            wbank.write(&vec![value; times as usize]).unwrap();
+                            false
+                        }
+                        (false, 0xed) => {
+                            true
+                        }
+                        (true, b) => {
+                            wbank.write(&[0xed, b]).unwrap();
+                            false
+                        }
+                        (false, b) => {
+                            wbank.write(&[b]).unwrap();
+                            false
+                        }
+                    }
+                }
+                log!("Uncompressed {:04x}", wbank.position());
+            }
+
+            match version {
+                Z80FileVersion::V1 => {
+                    let mut fullmem = vec![0; 0xc000];
+                    uncompress(&data[offset .. data.len() - 4], &mut fullmem);
+                    for (ibank, blockmem) in fullmem.chunks_exact(0x4000).enumerate() {
+                        let bank = self.ula.memory.get_bank_mut(ibank + 1);
+                        bank.copy_from_slice(blockmem)
+                    }
+                }
+                _ => {
+                    while offset < data.len() {
+                        let memlen = ((data[offset] as u16) | ((data[offset + 1] as u16) << 8)) as usize;
+                        let page = data[offset + 2];
+                        offset += 3;
+
+                        log!("MEM {:04x} {:02x}", memlen, page);
+                        let cdata = &data[offset .. offset + memlen];
+                        offset += memlen;
+
+                        let ibank = match (self.is128k, page) {
+                            (false, 8) => 1,
+                            (false, 4) => 2,
+                            (false, 5) => 3,
+                            (true, 3) => 0,
+                            (true, 4) => 1,
+                            (true, 5) => 2,
+                            (true, 6) => 3,
+                            (true, 7) => 4,
+                            (true, 8) => 5,
+                            (true, 9) => 6,
+                            (true, 10) => 7,
+                            _ => {
+                                log!("unknown memory block");
+                                continue;
+                            }
+                        };
+                        let bank = self.ula.memory.get_bank_mut(ibank);
+                        uncompress(cdata, bank);
+                    }
+                }
+            }
+        }
     }
 }
 

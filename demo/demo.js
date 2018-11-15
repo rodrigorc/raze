@@ -374,7 +374,7 @@ function handleSnapshotSelect(evt) {
 function handleLoadSnapshot(evt) {
     var x = document.createElement("input");
     x.type = "file";
-    x.accept = ".spec";
+    x.accept = [".spec", ".z80"];
     x.addEventListener('change', handleSnapshotSelect, false);
     x.click();
 }

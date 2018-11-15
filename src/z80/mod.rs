@@ -153,6 +153,12 @@ pub struct Z80 {
 #[derive(Clone, Copy)]
 enum Direction { Inc, Dec }
 
+
+#[derive(Debug)]
+pub enum Z80FileVersion {
+    V1, V2, V3(bool)
+}
+
 impl Z80 {
     pub fn new() -> Z80 {
         Z80 {
@@ -231,7 +237,59 @@ impl Z80 {
         self.next_op = match data[28] { 0=> NextOp::Fetch, 1 => NextOp::Fetch, 2 => NextOp::Halt, _ => panic!("invalid NextOp") };
         Ok(())
     }
-    pub fn interrupt(&mut self, _bus: &mut impl Bus) {
+    pub fn load_format_z80(&mut self, data: &[u8]) -> Z80FileVersion {
+        self.af.set_hi(data[0]);
+        self.af.set_lo(data[1]);
+        self.bc.set_lo(data[2]);
+        self.bc.set_hi(data[3]);
+        self.hl.set_lo(data[4]);
+        self.hl.set_hi(data[5]);
+        self.pc.set_lo(data[6]);
+        self.pc.set_hi(data[7]);
+        self.sp.set_lo(data[8]);
+        self.sp.set_hi(data[9]);
+        self.i = data[10];
+        self.r_ = data[11] & 0x7f;
+        self.r7 = (data[12] & 1) != 0;
+        self.de.set_lo(data[13]);
+        self.de.set_hi(data[14]);
+        self.bc_.set_lo(data[15]);
+        self.bc_.set_hi(data[16]);
+        self.de_.set_lo(data[17]);
+        self.de_.set_hi(data[18]);
+        self.hl_.set_lo(data[19]);
+        self.hl_.set_hi(data[20]);
+        self.af_.set_hi(data[21]);
+        self.af_.set_lo(data[22]);
+        self.iy.set_lo(data[23]);
+        self.iy.set_hi(data[24]);
+        self.ix.set_lo(data[25]);
+        self.ix.set_hi(data[26]);
+        self.iff1 = data[27] != 0;
+        //self.iff2 = data[28];
+        self.im = match data[29] & 0x03 {
+            1 => InterruptMode::IM1,
+            2 => InterruptMode::IM2,
+            _ => InterruptMode::IM0,
+        };
+        self.next_op = NextOp::Fetch;
+
+        let res = if self.pc.as_u16() == 0 { //v. 2 or 3
+            let extra = (data[30] as u16) | ((data[31] as u16) << 8);
+            self.pc.set_lo(data[32]);
+            self.pc.set_hi(data[33]);
+            match extra {
+                23 => Z80FileVersion::V2,
+                54 => Z80FileVersion::V3(false),
+                55 => Z80FileVersion::V3(true),
+                _ => panic!("Unknown Z80 file format"),
+            }
+        } else {
+            Z80FileVersion::V1
+        };
+        res
+    }
+    pub fn interrupt(&mut self) {
         if !self.iff1 {
             return;
         }
@@ -626,7 +684,10 @@ impl Z80 {
                 self.inc_r();
                 self.fetch(bus)
             }
-            NextOp::Halt => 0x00, //NOP
+            NextOp::Halt => {
+                self.inc_r();
+                0x00 //NOP
+            }
             NextOp::Interrupt => {
                 self.inc_r();
                 self.next_op = NextOp::Fetch;
@@ -1576,7 +1637,7 @@ impl Z80 {
                                 4 + t
                             }
                             _ => {
-                                log!("unimplemented opcode {:02x}", c);
+                                log!("unimplemented opcode {:02x} pc={:04x}", c, self.pc.as_u16());
                                 0
                             }
                         }
@@ -1726,7 +1787,7 @@ impl Z80 {
                     true
                 }
                 _ => {
-                    log!("unimplemented opcode CB {:02x}", c);
+                    log!("unimplemented opcode CB {:02x} pc={:04x}", c, self.pc.as_u16());
                     false
                 }
             }
@@ -2148,7 +2209,7 @@ impl Z80 {
                 }
             }
             _ => {
-                log!("unimplemented opcode ED {:02x}", c);
+                log!("unimplemented opcode ED {:02x} pc={:04x}", c, self.pc.as_u16());
                 0
             },
         }

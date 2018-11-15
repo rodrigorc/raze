@@ -145,4 +145,7 @@ impl Memory {
             self.locked = true;
         }
     }
+    pub fn get_bank_mut(&mut self, i: usize) -> &mut [u8] {
+        &mut self.data[i].data
+    }
 }
