@@ -177,7 +177,8 @@ impl Bus for ULA {
                             self.memory.switch_banks(value);
                         }
                         0x1f => { //+2 Memory banks (TODO)
-                            log!("MEM+2 {:04x}, {:02x}", port, value);
+                            //log!("MEM+2 {:04x}, {:02x}", port, value);
+                            self.memory.switch_banks_plus2(value);
                         }
                         0xff => {
                             if let Some(psg) = &mut self.psg {
@@ -463,8 +464,12 @@ impl Game {
         }
     }
     pub fn snapshot(&self) -> Vec<u8> {
-        //We will save V2, always
-        let mut data = vec![0; 32 + 23];
+        //We will save V2 or V3 depending on the plus2 memory bank
+        let banks_plus2 = self.ula.memory.last_banks_plus2();
+
+        const HEADER: usize = 32;
+        let header_extra = if banks_plus2 == 0 { 23 } else { 55 };
+        let mut data = vec![0; HEADER + header_extra];
         //self.ula.memory.save(&mut data).unwrap();
         //self.z80.save(&mut data).unwrap();
         self.z80.snapshot(&mut data);
@@ -472,20 +477,23 @@ impl Game {
 
         //extended header block
         //len of the block
-        data[30] = 23; data[31] = 0;
+        data[30] = header_extra as u8; data[31] = 0;
         //pc moved to signal v2
         data[32] = data[6]; data[33] = data[7];
         data[6] = 0; data[7] = 0;
         //hw mode
         data[34] = if self.is128k { 3 } else { 0 };
         //memory map
-        data[35] = if self.is128k { self.ula.memory.last_reg() } else { 0 };
+        data[35] = if self.is128k { self.ula.memory.last_banks() } else { 0 };
         //36
         data[37] = 3 | // R emulation | LDIR emulation 
                    (if !self.is128k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
         //psg
         if let Some(ref psg) = self.ula.psg {
             psg.snapshot(&mut data[38..55]);
+        }
+        if self.is128k && banks_plus2 != 0 {
+            data[86] = banks_plus2;
         }
 
         //memory dump
@@ -566,14 +574,14 @@ impl Game {
                 match data[34] {
                     0 => false,
                     3 => true,
-                    _ => panic!("Unknown HW type {}", data[34]),
+                    _ => true, //if in doubt, assume 128k
                 }
             }
             Z80FileVersion::V3(_) => {
                 match data[34] {
                     0 => false,
                     4 => true,
-                    _ => panic!("Unknown HW type {}", data[34]),
+                    _ => true, //if in doubt, assume 128k
                 }
             }
         };
@@ -603,6 +611,9 @@ impl Game {
             let mut m = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
             //port 0x7ffd
             m.switch_banks(data[35]);
+            if version == Z80FileVersion::V3(true) {
+                m.switch_banks_plus2(data[86]);
+            }
             m
         } else {
             Memory::new_from_bytes(include_bytes!("48k.rom"), None)

@@ -20,6 +20,8 @@ pub struct Memory {
     vram: usize,
     locked: bool,
     delay: u32,
+    last_banks: u8,
+    last_banks_plus2: u8,
 }
 
 impl Memory {
@@ -39,6 +41,8 @@ impl Memory {
                     vram: 1,
                     locked: true,
                     delay: 0,
+                    last_banks: 0,
+                    last_banks_plus2: 0,
                 }
             }
             Some(rom1) => {
@@ -56,6 +60,8 @@ impl Memory {
                     vram: 5,
                     locked: false,
                     delay: 0,
+                    last_banks: 0,
+                    last_banks_plus2: 0,
                 }
             }
         }
@@ -123,6 +129,8 @@ impl Memory {
             vram: 1,
             locked: true,
             delay: 0,
+            last_banks: 0,
+            last_banks_plus2: 0,
         })
     }
     pub fn switch_banks(&mut self, v: u8) {
@@ -136,13 +144,43 @@ impl Memory {
         if v & 0x20 != 0 {
             self.locked = true;
         }
+        self.last_banks = v;
     }
-    pub fn last_reg(&self) -> u8 {
-        let mut r = self.banks[3] as u8;
-        if self.vram == 7 { r |= 0x08; }
-        if self.banks[0] == 9 { r |= 0x10; }
-        if self.locked { r |= 0x20; }
-        r
+    pub fn switch_banks_plus2(&mut self, v: u8) {
+        if self.locked {
+            log!("mem locked");
+            return;
+        }
+        //special mode
+        if v & 1 != 0 {
+            let mode = (v >> 1) & 0x03;
+            match mode {
+                0 => {
+                    self.banks = [0, 1, 2, 3];
+                }
+                1 => {
+                    self.banks = [4, 5, 6, 7];
+                }
+                2 => {
+                    self.banks = [4, 5, 6, 3];
+                }
+                3 => {
+                    self.banks = [4, 7, 6, 3];
+                }
+                _ => unreachable!()
+            }
+        } else {
+            self.banks = [8, 5, 2, 0];
+            let v0 = self.last_banks;
+            self.switch_banks(v0);
+        }
+        self.last_banks_plus2 = v;
+    }
+    pub fn last_banks(&self) -> u8 {
+        self.last_banks
+    }
+    pub fn last_banks_plus2(&self) -> u8 {
+        self.last_banks_plus2
     }
     pub fn get_bank(&self, i: usize) -> &[u8] {
         &self.data[i].data
