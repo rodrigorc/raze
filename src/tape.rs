@@ -586,6 +586,7 @@ impl TapePhaseT {
 
         match duration {
             Duration::Infinite => {
+                *d = 0;
                 return Some(TapePhaseT(Duration::Infinite, phase));
             }
             Duration::T(time) => {

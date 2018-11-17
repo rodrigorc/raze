@@ -32,6 +32,7 @@ struct ULA {
     tape: Option<(Tape, Option<TapePos>)>,
     border: Pixel,
     ear: bool,
+    mic: bool,
     psg: Option<PSG>,
 }
 
@@ -49,10 +50,10 @@ impl ULA {
                 let index_post;
                 let mut next = tape.play(t, pos);
                 if let Some(p) = &next {
-                    self.ear = p.mic();
+                    self.mic = p.mic();
                     index_post = p.block(&tape);
                 } else {
-                    self.ear = false;
+                    self.mic = false;
                     index_post = 0xffff_ffff;
                 }
                 if index_pre != index_post {
@@ -64,7 +65,7 @@ impl ULA {
         };
     }
     pub fn audio_sample(&mut self, t: i32) -> u8 {
-        let v : u8 = if self.ear { 0x40 } else { 0x00 };
+        let v : u8 = if self.ear { 0x40 } else { 0x00 } + if self.mic { 0x20 } else { 0x00 };
         match &mut self.psg {
             None => v,
             Some(psg) => v.saturating_add(psg.next_sample(t))
@@ -163,8 +164,6 @@ impl Bus for ULA {
             let border = value & 7;
             self.border = PIXELS[0][border as usize];
             self.ear = value & 0x10 != 0;
-            //log!("EAR {:02x} {:02x} {:02x} {}", hi, lo, value, ear);
-            //log!("OUT {:04x}, {:02x}", port, value);
         } else {
             //log!("OUT {:04x}, {:02x}", port, value);
             if port >= 0x4000 && port < 0x8000 {
@@ -299,6 +298,7 @@ impl Game {
                 tape: None,
                 border: PIXELS[0][0],
                 ear: false,
+                mic: false,
                 psg,
             },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
@@ -456,7 +456,7 @@ impl Game {
     pub fn tape_stop(&mut self) {
         self.ula.tape = match self.ula.tape.take() {
             Some((tape, _)) => {
-                self.ula.ear = false;
+                self.ula.mic = false;
                 Some((tape, None))
             }
             None => None
@@ -703,6 +703,7 @@ impl Game {
                 tape: None,
                 border,
                 ear: false,
+                mic: false,
                 psg,
             },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
