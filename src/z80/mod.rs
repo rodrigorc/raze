@@ -1,5 +1,5 @@
 use std::mem::swap;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 
 mod r16;
 
@@ -154,7 +154,7 @@ pub struct Z80 {
 enum Direction { Inc, Dec }
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Z80FileVersion {
     V1, V2, V3(bool)
 }
@@ -186,34 +186,6 @@ impl Z80 {
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16(),
                  self.i, self.r());
     }
-    pub fn save(&self, mut w: impl Write) -> io::Result<()> {
-        let (next_op, iff1) = {
-            match (self.next_op, self.iff1) {
-                (NextOp::Interrupt, _) => (NextOp::Fetch, true),
-                x => x,
-            }
-        };
-        let data = [
-            self.pc.lo(), self.pc.hi(),
-            self.sp.lo(), self.sp.hi(),
-            self.f(), self.a(),
-            self.af_.lo(), self.af_.hi(),
-            self.bc.lo(), self.bc.hi(),
-            self.bc_.lo(), self.bc_.hi(),
-            self.de.lo(), self.de.hi(),
-            self.de_.lo(), self.de_.hi(),
-            self.hl.lo(), self.hl.hi(),
-            self.hl_.lo(), self.hl_.hi(),
-            self.ix.lo(), self.ix.hi(),
-            self.iy.lo(), self.iy.hi(),
-            self.r(), self.i,
-            iff1 as u8,
-            self.im as u8,
-            next_op as u8,
-        ];
-        w.write_all(&data)?;
-        Ok(())
-    }
     #[allow(unused)]
     pub fn load(&mut self, mut r: impl Read) -> io::Result<()> {
         let mut data = [0; 2 * 13 + 3];
@@ -237,64 +209,83 @@ impl Z80 {
         self.next_op = match data[28] { 0=> NextOp::Fetch, 1 => NextOp::Fetch, 2 => NextOp::Halt, _ => panic!("invalid NextOp") };
         Ok(())
     }
-    pub fn load_format_z80(&mut self, data: &[u8]) -> Z80FileVersion {
-        self.af.set_hi(data[0]);
-        self.af.set_lo(data[1]);
-        self.bc.set_lo(data[2]);
-        self.bc.set_hi(data[3]);
-        self.hl.set_lo(data[4]);
-        self.hl.set_hi(data[5]);
-        self.pc.set_lo(data[6]);
-        self.pc.set_hi(data[7]);
-        self.sp.set_lo(data[8]);
-        self.sp.set_hi(data[9]);
-        self.i = data[10];
-        self.r_ = data[11] & 0x7f;
-        self.r7 = (data[12] & 1) != 0;
-        self.de.set_lo(data[13]);
-        self.de.set_hi(data[14]);
-        self.bc_.set_lo(data[15]);
-        self.bc_.set_hi(data[16]);
-        self.de_.set_lo(data[17]);
-        self.de_.set_hi(data[18]);
-        self.hl_.set_lo(data[19]);
-        self.hl_.set_hi(data[20]);
-        self.af_.set_hi(data[21]);
-        self.af_.set_lo(data[22]);
-        self.iy.set_lo(data[23]);
-        self.iy.set_hi(data[24]);
-        self.ix.set_lo(data[25]);
-        self.ix.set_hi(data[26]);
-        self.iff1 = data[27] != 0;
-        //self.iff2 = data[28];
-        self.im = match data[29] & 0x03 {
+    pub fn snapshot(&self, data: &mut Vec<u8>) {
+        data[0] = self.af.hi(); data[1] = self.af.lo();
+        data[2] = self.bc.lo(); data[3] = self.bc.hi();
+        data[4] = self.hl.lo(); data[5] = self.hl.hi();
+        data[6] = self.pc.lo(); data[7] = self.pc.hi();
+        data[8] = self.sp.lo(); data[9] = self.sp.hi();
+        data[10] = self.i; data[11] = self.r_;
+        data[12] = if self.r7 { 1 } else { 0 };
+        data[13] = self.de.lo(); data[14] = self.de.hi();
+        data[15] = self.bc_.lo(); data[16] = self.bc_.hi();
+        data[17] = self.de_.lo(); data[18] = self.de_.hi();
+        data[19] = self.hl_.lo(); data[20] = self.hl_.hi();
+        data[21] = self.af_.hi(); data[22] = self.af_.lo();
+        data[23] = self.iy.lo(); data[24] = self.iy.hi();
+        data[25] = self.ix.lo(); data[26] = self.ix.hi();
+        data[27] = if self.iff1 { 1 } else { 0 };
+        data[28] = data[27]; //iff2
+        data[29] = match self.im {
+            InterruptMode::IM0 => 0,
+            InterruptMode::IM1 => 1,
+            InterruptMode::IM2 => 2,
+        } | 0x40; //kempston joystick
+    }
+    pub fn load_snapshot(data: &[u8]) -> (Self, Z80FileVersion) {
+        let af = R16::from_bytes(data[1], data[0]);
+        let bc = R16::from_bytes(data[2], data[3]);
+        let hl = R16::from_bytes(data[4], data[5]);
+        let pc = R16::from_bytes(data[6], data[7]);
+        let sp = R16::from_bytes(data[8], data[9]);
+        let i = data[10];
+        let r_ = data[11] & 0x7f;
+        let r7 = (data[12] & 1) != 0;
+        let de = R16::from_bytes(data[13], data[14]);
+        let bc_ = R16::from_bytes(data[15], data[16]);
+        let de_ = R16::from_bytes(data[17], data[18]);
+        let hl_ = R16::from_bytes(data[19], data[20]);
+        let af_ = R16::from_bytes(data[22], data[21]);
+        let iy = R16::from_bytes(data[23], data[24]);
+        let ix = R16::from_bytes(data[25], data[26]);
+        let iff1 = data[27] != 0;
+        //let iff2 = data[28];
+        let im = match data[29] & 0x03 {
             1 => InterruptMode::IM1,
             2 => InterruptMode::IM2,
             _ => InterruptMode::IM0,
         };
-        self.next_op = NextOp::Fetch;
-
-        let res = if self.pc.as_u16() == 0 { //v. 2 or 3
+        let (pc, version) = if pc.as_u16() == 0 { //v. 2 or 3
             let extra = (data[30] as u16) | ((data[31] as u16) << 8);
-            self.pc.set_lo(data[32]);
-            self.pc.set_hi(data[33]);
-            match extra {
+            let pc = R16::from_bytes(data[32], data[33]);
+            let version = match extra {
                 23 => Z80FileVersion::V2,
                 54 => Z80FileVersion::V3(false),
                 55 => Z80FileVersion::V3(true),
                 _ => panic!("Unknown Z80 file format"),
-            }
+            };
+            (pc, version)
         } else {
-            Z80FileVersion::V1
+            (pc, Z80FileVersion::V1)
         };
-        res
+        let z80 = Z80 {
+            pc, sp,
+            af, af_,
+            bc, bc_,
+            de, de_,
+            hl, hl_,
+            ix, iy,
+            i, r_, r7,
+            iff1, im,
+            next_op: NextOp::Fetch,
+        };
+        (z80, version)
     }
     pub fn interrupt(&mut self) {
         if !self.iff1 {
             return;
         }
         self.next_op = NextOp::Interrupt;
-        self.iff1 = false;
     }
     #[inline]
     fn r(&self) -> u8 {
@@ -691,13 +682,13 @@ impl Z80 {
             NextOp::Interrupt => {
                 self.inc_r();
                 self.next_op = NextOp::Fetch;
+                self.iff1 = false;
                 match self.im {
                     InterruptMode::IM0 => {
                         log!("IM0 interrupt!");
                         0x00 //NOP
                     }
                     InterruptMode::IM1 => {
-                        self.iff1 = false;
                         0xff //RST 38
                     }
                     InterruptMode::IM2 => {

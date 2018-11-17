@@ -1,4 +1,4 @@
-use std::io::{prelude::*, self, Cursor};
+use std::io::{prelude::*, self};
 use std::borrow::Cow;
 #[cfg(feature="zip")]
 use zip;
@@ -468,7 +468,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
             0x32 => { //archive info
                 let len = read_u16(r)?;
                 let info = read_vec(r, len as usize)?;
-                let ri = &mut Cursor::new(info);
+                let ri = &mut info.as_slice();
                 let num = read_u8(ri)?;
                 for _i in 0..num {
                     let id = read_u8(ri)?;

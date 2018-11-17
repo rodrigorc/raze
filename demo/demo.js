@@ -356,7 +356,7 @@ function handleStopTape(evt) {
 }
 
 var lastSnapshot = null;
-function handleSnapshotSelect(evt) {
+function handleLoadSnapshotSelect(evt) {
     var f = evt.target.files[0];
     console.log("reading " + f.name);
     var reader = new FileReader();
@@ -365,8 +365,7 @@ function handleSnapshotSelect(evt) {
         var ptr = Module.exports.wasm_alloc(lastSnapshot.byteLength);
         var d = new Uint8Array(Module.memory.buffer, ptr, lastSnapshot.byteLength);
         d.set(new Uint8Array(lastSnapshot));
-        Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
-        Module.is128k = false;
+        Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
     }
     reader.readAsArrayBuffer(f);
 }
@@ -375,7 +374,7 @@ function handleLoadSnapshot(evt) {
     var x = document.createElement("input");
     x.type = "file";
     x.accept = [".spec", ".z80"];
-    x.addEventListener('change', handleSnapshotSelect, false);
+    x.addEventListener('change', handleLoadSnapshotSelect, false);
     x.click();
 }
 
@@ -386,30 +385,30 @@ function handleLoadLastSnapshot(evt) {
     var ptr = Module.exports.wasm_alloc(lastSnapshot.length);
     var d = new Uint8Array(Module.memory.buffer, ptr, lastSnapshot.length);
     d.set(new Uint8Array(lastSnapshot));
-    Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
-    Module.is128k = false;
+    Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
 }
 
 function handleSnapshot(evt) {
     console.log("snapshot");
-    const SNAPSHOT_SIZE = 0x10000 + 29;
-    let ptr = Module.exports.wasm_snapshot(Module.game);
-    var data = new Uint8Array(Module.memory.buffer, ptr, SNAPSHOT_SIZE);
+    let snapshot = Module.exports.wasm_snapshot(Module.game);
+    let ptr = Module.exports.wasm_buffer_ptr(snapshot);
+    let len = Module.exports.wasm_buffer_len(snapshot);
+    var data = new Uint8Array(Module.memory.buffer, ptr, len);
     var blob = new Blob([data], {type: "application/octet-stream"});
     var url = window.URL.createObjectURL(blob);
 
-    lastSnapshot = new Uint8Array(SNAPSHOT_SIZE);
+    lastSnapshot = new Uint8Array(len);
     lastSnapshot.set(data);
 
     var a = document.createElement("a");
     a.style = "display: none";
     a.href = url;
-    a.download = "snapshot.spec";
+    a.download = "snapshot.z80";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    Module.exports.wasm_free_snapshot(ptr, SNAPSHOT_SIZE);
+    Module.exports.wasm_buffer_free(snapshot);
 }
 function handleFullscreen(evt) {
     console.log("fullscreen");

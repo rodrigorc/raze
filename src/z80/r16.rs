@@ -16,6 +16,12 @@ const HI_IDX : usize = 1 - LO_IDX;
 
 impl R16 {
     #[inline]
+    pub fn from_bytes(lo: u8, hi: u8) -> R16 {
+        let mut r = R16::default();
+        r.set_lo(lo);
+        r.set_hi(hi);
+        r
+    }
     pub fn as_u16(self) -> u16 {
         unsafe { self.w }
     }

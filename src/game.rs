@@ -9,7 +9,7 @@ const TIME_TO_INT : i32 = 69888;
 const AUDIO_SAMPLE : i32 = 168;
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 struct Pixel(u8,u8,u8,u8);
 
 static PIXELS : [[Pixel; 8]; 2] = [
@@ -275,7 +275,7 @@ fn write_screen(border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
 }
 
 impl Game {
-    pub fn new(is128k: bool) -> Box<Game> {
+    pub fn new(is128k: bool) -> Game {
         log!("Go!");
         let memory;
         let psg;
@@ -287,7 +287,7 @@ impl Game {
             psg = None;
         };
         let z80 = Z80::new();
-        let game = Game {
+        Game {
             is128k,
             z80,
             ula: ULA {
@@ -303,8 +303,10 @@ impl Game {
             },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
             audio: vec![],
-        };
-        game.into()
+        }
+    }
+    pub fn is_128k(&self) -> bool {
+        self.is128k
     }
     pub fn draw_frame(&mut self, turbo: bool) {
         //log!("Draw!");
@@ -410,7 +412,7 @@ impl Game {
         }
     }
     pub fn tape_load(&mut self, data: Vec<u8>) -> usize {
-        match Tape::new(&mut Cursor::new(data), self.is128k) {
+        match Tape::new(Cursor::new(data), self.is128k) {
             Ok(tape) => {
                 let res = tape.len();
                 if res > 0 {
@@ -461,133 +463,250 @@ impl Game {
         }
     }
     pub fn snapshot(&self) -> Vec<u8> {
-        let mut data = Vec::new();
-        self.ula.memory.save(&mut data).unwrap();
-        self.z80.save(&mut data).unwrap();
-        data
-    }
-    pub fn load_snapshot(&mut self, data: Vec<u8>) {
-        if data.len() == 65565 {
-            let mut load = Cursor::new(data);
-            self.ula.memory = Memory::load(&mut load).unwrap();
-            self.z80.load(&mut load).unwrap();
-        } else {
-            let version = self.z80.load_format_z80(&data);
-            self.ula.border = PIXELS[0][((data[12] >> 1) & 7) as usize];
+        //We will save V2, always
+        let mut data = vec![0; 32 + 23];
+        //self.ula.memory.save(&mut data).unwrap();
+        //self.z80.save(&mut data).unwrap();
+        self.z80.snapshot(&mut data);
+        data[12] |= (PIXELS[0].iter().position(|c| *c == self.ula.border).unwrap_or(0) as u8) << 1;
 
-            self.is128k = match version {
-                Z80FileVersion::V1 => false,
-                Z80FileVersion::V2 => {
-                    match data[34] {
-                        0 => false,
-                        3 => true,
-                        _ => panic!("Unknown HW type {}", data[34]),
+        //extended header block
+        //len of the block
+        data[30] = 23; data[31] = 0;
+        //pc moved to signal v2
+        data[32] = data[6]; data[33] = data[7];
+        data[6] = 0; data[7] = 0;
+        //hw mode
+        data[34] = if self.is128k { 3 } else { 0 };
+        //memory map
+        data[35] = if self.is128k { self.ula.memory.last_reg() } else { 0 };
+        //36
+        data[37] = 3 | // R emulation | LDIR emulation 
+                   (if !self.is128k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
+        //psg
+        if let Some(ref psg) = self.ula.psg {
+            psg.snapshot(&mut data[38..55]);
+        }
+
+        //memory dump
+        fn compress(data: &mut Vec<u8>, index: u8, bank: &[u8]) {
+            //length, delayed
+            let start = data.len();
+            data.push(0); data.push(0);
+            data.push(index);
+
+            let mut seq : Option<(u8, u8)> = None;
+
+            for &b in bank {
+                seq = match seq {
+                    None => {
+                        Some((b, 1))
                     }
-                }
-                Z80FileVersion::V3(_) => {
-                    match data[34] {
-                        0 => false,
-                        4 => true,
-                        _ => panic!("Unknown HW type {}", data[34]),
+                    Some((seq_byte, seq_count)) if seq_byte == b && seq_count < 0xff => {
+                        Some((b, seq_count + 1))
                     }
-                }
-            };
-            if self.is128k {
-                //port 0x7ffd
-                self.ula.memory.switch_banks(data[35]);
+                    Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
+                        data.write(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
+                        Some((b, 1))
+                    }
+                    Some((0xed, 1)) => {
+                        data.push(0xed);
+                        data.push(b);
+                        None
+                    }
+                    Some((seq_byte, seq_count)) => {
+                        data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
+                        Some((b, 1))
+                    }
+                };
             }
-            if (data[37] & 4) != 0 {
-                self.ula.psg = Some(PSG::new_format_z80(&data[38 .. 55]));
-            } else {
-                self.ula.psg = None;
+            match seq {
+                None => {}
+                Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
+                    data.write(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
+                }
+                Some((seq_byte, seq_count)) => {
+                    data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
+                }
             }
             
-            let mut offset = match version {
-                Z80FileVersion::V1 => 30,
-                Z80FileVersion::V2 => 32 + 23,
-                Z80FileVersion::V3(false) => 32 + 54,
-                Z80FileVersion::V3(true) => 32 + 55,
-            };
+            let len = (data.len() - start - 3) as u16;
+            data[start] = len as u8;
+            data[start + 1] = (len >> 8) as u8;
+        }
 
-            if self.is128k {
-                self.ula.memory = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
-            } else {
-                self.ula.memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None);
-            };
+        if self.is128k {
+            for i in 0..8 {
+                let bank = self.ula.memory.get_bank(i as usize);
+                compress(&mut data, i + 3, &bank);
+            }
+        } else {
+            for i in 1..4 {
+                let bank = self.ula.memory.get_bank(i);
+                compress(&mut data, [0, 8, 4, 5][i as usize], &bank);
+            }
+        }
+        data
+    }
+    pub fn load_snapshot(data: &[u8]) -> Game {
+        if data.len() == 65565 {
+            let mut game = Game::new(false);
+            let mut rdr = data;
+            game.ula.memory = Memory::load(&mut rdr).unwrap();
+            game.z80.load(&mut rdr).unwrap();
+            return game;
+		}
 
-            fn uncompress(cdata: &[u8], bank: &mut [u8]) {
-                let mut wbank = Cursor::new(bank);
-                let mut rdata = cdata.iter();
-                let mut prev_ed = false;
-                loop {
-                    let b = match rdata.next() {
-                        Some(b) => *b,
-                        None => break,
+        let (z80, version) = Z80::load_snapshot(&data);
+        log!("z80 version {:?}", version);
+        let border = PIXELS[0][((data[12] >> 1) & 7) as usize];
+        let is128k = match version {
+            Z80FileVersion::V1 => false,
+            Z80FileVersion::V2 => {
+                match data[34] {
+                    0 => false,
+                    3 => true,
+                    _ => panic!("Unknown HW type {}", data[34]),
+                }
+            }
+            Z80FileVersion::V3(_) => {
+                match data[34] {
+                    0 => false,
+                    4 => true,
+                    _ => panic!("Unknown HW type {}", data[34]),
+                }
+            }
+        };
+        let psg = if version != Z80FileVersion::V1 && (data[37] & 4) != 0 || is128k {
+            Some(PSG::load_snapshot(&data[38 .. 55]))
+        } else {
+            None
+        };
+        match (is128k, &psg) {
+            (true, _) => {
+                log!("machine = 128k");
+            }
+            (false, Some(_)) => {
+                log!("machine = 48k with PSG");
+            }
+            (false, None) => {
+                log!("machine = 48k");
+            }
+        }
+        let mut offset = match version {
+            Z80FileVersion::V1 => 30,
+            Z80FileVersion::V2 => 32 + 23,
+            Z80FileVersion::V3(false) => 32 + 54,
+            Z80FileVersion::V3(true) => 32 + 55,
+        };
+        let mut memory = if is128k {
+            let mut m = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
+            //port 0x7ffd
+            m.switch_banks(data[35]);
+            m
+        } else {
+            Memory::new_from_bytes(include_bytes!("48k.rom"), None)
+        };
+
+        fn uncompress(cdata: &[u8], bank: &mut [u8]) {
+            let mut wbank = bank;
+            let mut rdata = cdata.iter();
+            let mut prev_ed = false;
+            loop {
+                let b = match rdata.next() {
+                    Some(b) => *b,
+                    None => break,
+                };
+                prev_ed = match (prev_ed, b) {
+                    (true, 0xed) => {
+                        let times = *rdata.next().unwrap();
+                        let value = *rdata.next().unwrap();
+                        wbank.write(&vec![value; times as usize]).unwrap();
+                        false
+                    }
+                    (false, 0xed) => {
+                        true
+                    }
+                    (true, b) => {
+                        wbank.write(&[0xed, b]).unwrap();
+                        false
+                    }
+                    (false, b) => {
+                        wbank.write(&[b]).unwrap();
+                        false
+                    }
+                }
+            }
+            if prev_ed {
+                wbank.write(&[0xed]).unwrap();
+            }
+            if wbank.len() != 0 {
+                log!("Warning: uncompressed page misses {} bytes", wbank.len());
+            }
+        }
+
+        match version {
+            Z80FileVersion::V1 => {
+                //TODO is compressed?
+                let _compressed = (data[12] & 0x20) != 0;
+                let mut fullmem = vec![0; 0xc000];
+                //the signature is 4 bytes long
+                uncompress(&data[offset .. data.len() - 4], &mut fullmem);
+                for (ibank, blockmem) in fullmem.chunks_exact(0x4000).enumerate() {
+                    let bank = memory.get_bank_mut(ibank + 1);
+                    bank.copy_from_slice(blockmem)
+                }
+            }
+            _ => {
+                while offset < data.len() {
+                    let memlen = ((data[offset] as u16) | ((data[offset + 1] as u16) << 8)) as usize;
+                    //TODO is compressed?
+                    let _compressed = memlen >= 0x4000;
+                    let page = data[offset + 2];
+                    offset += 3;
+
+                    log!("MEM {:04x} {:02x}", memlen, page);
+                    let cdata = &data[offset .. offset + memlen];
+                    offset += memlen;
+
+                    let ibank = match (is128k, page) {
+                        (false, 8) => 1,
+                        (false, 4) => 2,
+                        (false, 5) => 3,
+                        (true, 3) => 0,
+                        (true, 4) => 1,
+                        (true, 5) => 2,
+                        (true, 6) => 3,
+                        (true, 7) => 4,
+                        (true, 8) => 5,
+                        (true, 9) => 6,
+                        (true, 10) => 7,
+                        _ => {
+                            log!("unknown memory block");
+                            continue;
+                        }
                     };
-                    prev_ed = match (prev_ed, b) {
-                        (true, 0xed) => {
-                            let times = *rdata.next().unwrap();
-                            let value = *rdata.next().unwrap();
-                            wbank.write(&vec![value; times as usize]).unwrap();
-                            false
-                        }
-                        (false, 0xed) => {
-                            true
-                        }
-                        (true, b) => {
-                            wbank.write(&[0xed, b]).unwrap();
-                            false
-                        }
-                        (false, b) => {
-                            wbank.write(&[b]).unwrap();
-                            false
-                        }
-                    }
-                }
-                log!("Uncompressed {:04x}", wbank.position());
-            }
-
-            match version {
-                Z80FileVersion::V1 => {
-                    let mut fullmem = vec![0; 0xc000];
-                    uncompress(&data[offset .. data.len() - 4], &mut fullmem);
-                    for (ibank, blockmem) in fullmem.chunks_exact(0x4000).enumerate() {
-                        let bank = self.ula.memory.get_bank_mut(ibank + 1);
-                        bank.copy_from_slice(blockmem)
-                    }
-                }
-                _ => {
-                    while offset < data.len() {
-                        let memlen = ((data[offset] as u16) | ((data[offset + 1] as u16) << 8)) as usize;
-                        let page = data[offset + 2];
-                        offset += 3;
-
-                        log!("MEM {:04x} {:02x}", memlen, page);
-                        let cdata = &data[offset .. offset + memlen];
-                        offset += memlen;
-
-                        let ibank = match (self.is128k, page) {
-                            (false, 8) => 1,
-                            (false, 4) => 2,
-                            (false, 5) => 3,
-                            (true, 3) => 0,
-                            (true, 4) => 1,
-                            (true, 5) => 2,
-                            (true, 6) => 3,
-                            (true, 7) => 4,
-                            (true, 8) => 5,
-                            (true, 9) => 6,
-                            (true, 10) => 7,
-                            _ => {
-                                log!("unknown memory block");
-                                continue;
-                            }
-                        };
-                        let bank = self.ula.memory.get_bank_mut(ibank);
-                        uncompress(cdata, bank);
-                    }
+                    let bank = memory.get_bank_mut(ibank);
+                    uncompress(cdata, bank);
                 }
             }
+        }
+        Game {
+            is128k,
+            z80,
+            ula: ULA {
+                memory,
+                keys: Default::default(),
+                delay: 0,
+                frame_counter: 0,
+                time: 0,
+                tape: None,
+                border,
+                ear: false,
+                psg,
+            },
+            image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
+            audio: vec![],
         }
     }
 }

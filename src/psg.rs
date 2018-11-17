@@ -169,7 +169,7 @@ impl PSG {
             envelope: Envelope::new(),
         }
     }
-    pub fn new_format_z80(data: &[u8]) -> PSG {
+    pub fn load_snapshot(data: &[u8]) -> PSG {
         let mut psg = Self::new();
         for (r, &v) in (0..16).zip(&data[1..17]) {
             psg.reg_sel = r;
@@ -177,6 +177,10 @@ impl PSG {
         }
         psg.reg_sel = data[0];
         psg
+    }
+    pub fn snapshot(&self, data: &mut [u8]) {
+        data[0] = self.reg_sel;
+        data[1..17].copy_from_slice(&self.reg);
     }
     pub fn select_reg(&mut self, reg: u8) {
         if let 0..=0x0f = reg {

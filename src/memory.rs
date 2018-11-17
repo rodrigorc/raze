@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 
 struct Bank {
     data: Vec<u8>,
@@ -38,7 +38,7 @@ impl Memory {
                     banks: [0, 1, 2, 3],
                     vram: 1,
                     locked: true,
-                    delay: 0
+                    delay: 0,
                 }
             }
             Some(rom1) => {
@@ -55,7 +55,7 @@ impl Memory {
                     banks: [8, 5, 2, 0],
                     vram: 5,
                     locked: false,
-                    delay: 0
+                    delay: 0,
                 }
             }
         }
@@ -107,14 +107,6 @@ impl Memory {
     pub fn video_memory(&self) -> &[u8] {
         &self.data[self.vram].data[0..32 * 192 + 32 * 24]
     }
-    //TODO load/save banks
-    pub fn save(&self, mut w: impl Write) -> io::Result<()> {
-        for i in &self.banks {
-            let bs = &self.data[*i].data;
-            w.write_all(bs)?;
-        }
-        Ok(())
-    }
     pub fn load(mut r: impl Read) -> io::Result<Self> {
         let mut data = vec![];
         for i in 0..4 {
@@ -130,7 +122,7 @@ impl Memory {
             banks: [0, 1, 2, 3],
             vram: 1,
             locked: true,
-            delay: 0
+            delay: 0,
         })
     }
     pub fn switch_banks(&mut self, v: u8) {
@@ -144,6 +136,16 @@ impl Memory {
         if v & 0x20 != 0 {
             self.locked = true;
         }
+    }
+    pub fn last_reg(&self) -> u8 {
+        let mut r = self.banks[3] as u8;
+        if self.vram == 7 { r |= 0x08; }
+        if self.banks[0] == 9 { r |= 0x10; }
+        if self.locked { r |= 0x20; }
+        r
+    }
+    pub fn get_bank(&self, i: usize) -> &[u8] {
+        &self.data[i].data
     }
     pub fn get_bank_mut(&mut self, i: usize) -> &mut [u8] {
         &mut self.data[i].data

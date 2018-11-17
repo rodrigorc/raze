@@ -49,7 +49,7 @@ pub fn onTapeBlock(index: usize) {
 
 #[no_mangle]
 pub extern "C" fn wasm_main(is128k: bool) -> *mut Game {
-    let game = Game::new(is128k);
+    let game = Box::new(Game::new(is128k));
     Box::into_raw(game)
 }
 #[no_mangle]
@@ -100,22 +100,32 @@ pub unsafe extern "C" fn wasm_tape_stop(game: *mut Game) {
     game.tape_stop();
 }
 #[no_mangle]
-pub unsafe extern "C" fn wasm_load_snapshot(game: *mut Game, ptr: *mut u8, size: usize) {
-    let game = &mut *game;
+pub unsafe extern "C" fn wasm_load_snapshot(game: *mut Game, ptr: *mut u8, size: usize) -> bool{
+    let old_game = &mut *game;
     let data = Vec::from_raw_parts(ptr, size, size);
-    game.load_snapshot(data);
+    let new_game = Game::load_snapshot(&data);
+    *old_game = new_game;
+    old_game.is_128k()
 }
 #[no_mangle]
-pub unsafe extern "C" fn wasm_snapshot(game: *mut Game) -> *const u8 {
+pub unsafe extern "C" fn wasm_snapshot(game: *mut Game) -> *mut Box<[u8]> {
     let game = &mut *game;
     let data = game.snapshot();
-    let ptr = data.as_ptr();
-    mem::forget(data);
-    ptr
+    Box::into_raw(Box::new(data.into_boxed_slice()))
 }
 #[no_mangle]
-pub unsafe extern "C" fn wasm_free_snapshot(ptr: *mut u8, size: usize) {
-    let _data = Vec::from_raw_parts(ptr, size, size);
+pub unsafe extern "C" fn wasm_buffer_len(buffer: *const Box<[u8]>) -> usize {
+    let buffer = &*buffer;
+    buffer.len()
+}
+#[no_mangle]
+pub unsafe extern "C" fn wasm_buffer_ptr(buffer: *mut Box<[u8]>) -> *mut u8 {
+    let buffer = &mut *buffer;
+    buffer.as_mut_ptr()
+}
+#[no_mangle]
+pub unsafe extern "C" fn wasm_buffer_free(buffer: *mut Box<[u8]>) {
+    Box::from_raw(buffer);
 }
 #[no_mangle]
 pub unsafe extern "C" fn wasm_reset_input(game: *mut Game) {
