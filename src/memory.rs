@@ -1,5 +1,3 @@
-use std::io::{self, Read};
-
 struct Bank {
     data: Vec<u8>,
     ro: bool,
@@ -112,26 +110,6 @@ impl Memory {
     }
     pub fn video_memory(&self) -> &[u8] {
         &self.data[self.vram].data[0..32 * 192 + 32 * 24]
-    }
-    pub fn load(mut r: impl Read) -> io::Result<Self> {
-        let mut data = vec![];
-        for i in 0..4 {
-            let mut bank = Bank::ram(i == 1);
-            if i == 0 {
-                bank.ro = true;
-            }
-            r.read_exact(&mut bank.data)?;
-            data.push(bank);
-        }
-        Ok(Memory {
-            data,
-            banks: [0, 1, 2, 3],
-            vram: 1,
-            locked: true,
-            delay: 0,
-            last_banks: 0,
-            last_banks_plus2: 0,
-        })
     }
     pub fn switch_banks(&mut self, v: u8) {
         if self.locked {

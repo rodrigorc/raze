@@ -1,5 +1,3 @@
-#![allow(unused)]
-#![warn(unreachable_patterns)]
 extern crate png;
 #[cfg(feature="zip")]
 extern crate zip;
@@ -149,12 +147,13 @@ fn main() -> io::Result<()> {
         None => {
             memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
         }
-        Some(load) => {
+        Some(_load) => {
+            memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
             //let load = File::open(load)?;
             //let mut load = BufReader::new(load);
-            let data = std::fs::read(&load)?;
-            tape::Tape::new(&mut io::Cursor::new(data))?;
-            return Ok(());
+            //let data = std::fs::read(&load)?;
+            //tape::Tape::new(&mut io::Cursor::new(data))?;
+            //return Ok(());
             //memory = Memory::load(&mut load)?;
             //z80.load(&mut load)?;
             //spectrum.load(&mut load)?;
@@ -164,21 +163,21 @@ fn main() -> io::Result<()> {
 
     const SCROPS : i32 = 5_000;
     for count in 0 .. 200_000_000 {
-        //z80.dump_regs();
+        //z80._dump_regs();
         z80.exec(&mut spectrum);
         if (count+1) % SCROPS == 0 {
             if false {
                 let screen = spectrum.memory.video_memory();
                 write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
             }
-            z80.interrupt(&mut spectrum);
+            z80.interrupt();
         }
     }
 
-    let save = File::create("save.spec")?;
-    let mut save = BufWriter::new(save);
-    spectrum.memory.save(&mut save)?;
-    z80.save(&mut save)?;
+    //let save = File::create("save.spec")?;
+    //let mut save = BufWriter::new(save);
+    //spectrum.memory.save(&mut save)?;
+    //z80.save(&mut save)?;
     //spectrum.save(&mut save)?;
 
     Ok(())

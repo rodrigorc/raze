@@ -557,14 +557,6 @@ impl Game {
         data
     }
     pub fn load_snapshot(data: &[u8]) -> Game {
-        if data.len() == 65565 {
-            let mut game = Game::new(false);
-            let mut rdr = data;
-            game.ula.memory = Memory::load(&mut rdr).unwrap();
-            game.z80.load(&mut rdr).unwrap();
-            return game;
-		}
-
         let (z80, version) = Z80::load_snapshot(&data);
         log!("z80 version {:?}", version);
         let border = PIXELS[0][((data[12] >> 1) & 7) as usize];

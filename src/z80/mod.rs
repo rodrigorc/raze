@@ -1,5 +1,4 @@
-use std::mem::swap;
-use std::io::{self, Read};
+use std::mem;
 
 mod r16;
 
@@ -178,36 +177,12 @@ impl Z80 {
             next_op: NextOp::Fetch,
         }
     }
-    #[allow(unused)]
-    pub fn dump_regs(&self) {
+    pub fn _dump_regs(&self) {
         log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}",
                  self.pc.as_u16(),
                  self.af.as_u16() & 0xffd7,
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16(),
                  self.i, self.r());
-    }
-    #[allow(unused)]
-    pub fn load(&mut self, mut r: impl Read) -> io::Result<()> {
-        let mut data = [0; 2 * 13 + 3];
-        r.read_exact(&mut data)?;
-        self.pc.set_lo(data[0]); self.pc.set_hi(data[1]);
-        self.sp.set_lo(data[2]); self.sp.set_hi(data[3]);
-        self.set_f(data[4]); self.set_a(data[5]);
-        self.af_.set_lo(data[6]); self.af_.set_hi(data[7]);
-        self.bc.set_lo(data[8]); self.bc.set_hi(data[9]);
-        self.bc_.set_lo(data[10]); self.bc_.set_hi(data[11]);
-        self.de.set_lo(data[12]); self.de.set_hi(data[13]);
-        self.de_.set_lo(data[14]); self.de_.set_hi(data[15]);
-        self.hl.set_lo(data[16]); self.hl.set_hi(data[17]);
-        self.hl_.set_lo(data[18]); self.hl_.set_hi(data[19]);
-        self.ix.set_lo(data[20]); self.ix.set_hi(data[21]);
-        self.iy.set_lo(data[22]); self.iy.set_hi(data[23]);
-        self.set_r(data[24]);
-        self.i = data[25];
-        self.iff1 = data[26] != 0;
-        self.im = match data[27] { 0 => InterruptMode::IM0, 1 => InterruptMode::IM1, 2 => InterruptMode::IM2, _ => panic!("invalid IM") };
-        self.next_op = match data[28] { 0=> NextOp::Fetch, 1 => NextOp::Fetch, 2 => NextOp::Halt, _ => panic!("invalid NextOp") };
-        Ok(())
     }
     pub fn snapshot(&self, data: &mut Vec<u8>) {
         data[0] = self.af.hi(); data[1] = self.af.lo();
@@ -773,7 +748,7 @@ impl Z80 {
                 4
             }
             0x08 => { //EX AF,AF
-                swap(&mut self.af, &mut self.af_);
+                mem::swap(&mut self.af, &mut self.af_);
                 4
             }
             0x09 => { //ADD HL,BC
@@ -1302,9 +1277,9 @@ impl Z80 {
                 }
             }
             0xd9 => { //EXX
-                swap(&mut self.bc, &mut self.bc_);
-                swap(&mut self.de, &mut self.de_);
-                swap(&mut self.hl, &mut self.hl_);
+                mem::swap(&mut self.bc, &mut self.bc_);
+                mem::swap(&mut self.de, &mut self.de_);
+                mem::swap(&mut self.hl, &mut self.hl_);
                 4
             }
             0xda => { //JP C,nn
@@ -1423,7 +1398,7 @@ impl Z80 {
                 10
             }
             0xeb => { //EX DE,HL
-                swap(&mut self.de, &mut self.hl);
+                mem::swap(&mut self.de, &mut self.hl);
                 4
             }
             0xec => { //CALL PE,nn

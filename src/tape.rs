@@ -204,7 +204,7 @@ fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
     Err(io::ErrorKind::InvalidData.into())
 }
 #[cfg(not(feature="zip"))]
-fn new_zip<R: Read + Seek>(_r: &mut R) -> io::Result<Vec<Block>> {
+fn new_zip<R: Read + Seek>(_r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
     Err(io::ErrorKind::NotFound.into())
 }
 
