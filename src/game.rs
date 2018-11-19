@@ -8,6 +8,10 @@ use std::io::{Cursor, Write};
 const TIME_TO_INT : i32 = 69888;
 const AUDIO_SAMPLE : i32 = 168;
 
+static ROM_128_0: &[u8] = include_bytes!("128-0.rom");
+static ROM_128_1: &[u8] = include_bytes!("128-1.rom");
+static ROM_48: &[u8] = include_bytes!("48k.rom");
+
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 struct Pixel(u8,u8,u8,u8);
@@ -280,10 +284,10 @@ impl Game {
         let memory;
         let psg;
         if is128k {
-            memory = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
+            memory = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
             psg = Some(PSG::new());
         } else {
-            memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None);
+            memory = Memory::new_from_bytes(ROM_48, None);
             psg = None;
         };
         let z80 = Z80::new();
@@ -600,7 +604,7 @@ impl Game {
             Z80FileVersion::V3(true) => 32 + 55,
         };
         let mut memory = if is128k {
-            let mut m = Memory::new_from_bytes(include_bytes!("128-0.rom"), Some(include_bytes!("128-1.rom")));
+            let mut m = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
             //port 0x7ffd
             m.switch_banks(data[35]);
             if version == Z80FileVersion::V3(true) {
@@ -608,7 +612,7 @@ impl Game {
             }
             m
         } else {
-            Memory::new_from_bytes(include_bytes!("48k.rom"), None)
+            Memory::new_from_bytes(ROM_48, None)
         };
 
         fn uncompress(cdata: &[u8], bank: &mut [u8]) {
