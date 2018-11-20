@@ -373,7 +373,7 @@ function handleLoadSnapshotSelect(evt) {
 function handleLoadSnapshot(evt) {
     var x = document.createElement("input");
     x.type = "file";
-    x.accept = [".spec", ".z80"];
+    x.accept = [".z80", ".zip"];
     x.addEventListener('change', handleLoadSnapshotSelect, false);
     x.click();
 }

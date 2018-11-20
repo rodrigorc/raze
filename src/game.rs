@@ -3,7 +3,8 @@ use z80::{Z80, Bus, Z80FileVersion};
 use memory::Memory;
 use tape::{Tape, TapePos};
 use psg::PSG;
-use std::io::{Cursor, Write};
+use std::io::{self, Cursor, Read, Write};
+use std::borrow::Cow;
 
 const TIME_TO_INT : i32 = 69888;
 const AUDIO_SAMPLE : i32 = 168;
@@ -474,8 +475,6 @@ impl Game {
         const HEADER: usize = 32;
         let header_extra = if banks_plus2 == 0 { 23 } else { 55 };
         let mut data = vec![0; HEADER + header_extra];
-        //self.ula.memory.save(&mut data).unwrap();
-        //self.z80.save(&mut data).unwrap();
         self.z80.snapshot(&mut data);
         data[12] |= (PIXELS[0].iter().position(|c| *c == self.ula.border).unwrap_or(0) as u8) << 1;
 
@@ -560,29 +559,74 @@ impl Game {
         }
         data
     }
-    pub fn load_snapshot(data: &[u8]) -> Game {
-        let (z80, version) = Z80::load_snapshot(&data);
+    fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
+        let rdr = Cursor::new(data);
+        let mut zip = zip::ZipArchive::new(rdr)?;
+        for i in 0 .. zip.len() {
+            let mut ze = zip.by_index(i)?;
+            let name = ze.sanitized_name();
+            let ext = name.extension().
+                and_then(|e| e.to_str()).
+                map(|e| e.to_string()).
+                map(|e| e.to_ascii_lowercase());
+            match ext.as_ref().map(|s| s.as_str()) {
+                Some("z80") => {
+                    log!("unzipping Z80 {}", name.to_string_lossy());
+                    let mut res = Vec::new();
+                    ze.read_to_end(&mut res)?;
+                    return Ok(res);
+                }
+                _ => {}
+            };
+        }
+        Err(io::ErrorKind::InvalidData.into())
+    }
+    pub fn load_snapshot(data: &[u8]) -> io::Result<Game> {
+        let data = match Self::snapshot_from_zip(data) {
+            Ok(v) => Cow::from(v),
+            Err(_) => Cow::from(data),
+        };
+        let data_z80 = data.get(..34).ok_or(io::ErrorKind::InvalidData)?;
+        let (z80, version) = Z80::load_snapshot(&data_z80);
         log!("z80 version {:?}", version);
-        let border = PIXELS[0][((data[12] >> 1) & 7) as usize];
+        let border = PIXELS[0][((data_z80[12] >> 1) & 7) as usize];
+        let (hdr, mem) = match version {
+            Z80FileVersion::V1 => {
+                (&[] as &[u8], data.get(30..).ok_or(io::ErrorKind::InvalidData)?)
+            }
+            Z80FileVersion::V2 => {
+                (data.get(..55).ok_or(io::ErrorKind::InvalidData)?,
+                 data.get(55..).ok_or(io::ErrorKind::InvalidData)?)
+            }
+            Z80FileVersion::V3(false) => {
+                (data.get(..86).ok_or(io::ErrorKind::InvalidData)?,
+                 data.get(86..).ok_or(io::ErrorKind::InvalidData)?)
+
+            }
+            Z80FileVersion::V3(true) => {
+                (data.get(..87).ok_or(io::ErrorKind::InvalidData)?,
+                 data.get(87..).ok_or(io::ErrorKind::InvalidData)?)
+            }
+        };
         let is128k = match version {
             Z80FileVersion::V1 => false,
             Z80FileVersion::V2 => {
-                match data[34] {
+                match hdr[34] {
                     0 => false,
                     3 => true,
                     _ => true, //if in doubt, assume 128k
                 }
             }
             Z80FileVersion::V3(_) => {
-                match data[34] {
+                match hdr[34] {
                     0 => false,
                     4 => true,
                     _ => true, //if in doubt, assume 128k
                 }
             }
         };
-        let psg = if version != Z80FileVersion::V1 && (data[37] & 4) != 0 || is128k {
-            Some(PSG::load_snapshot(&data[38 .. 55]))
+        let psg = if version != Z80FileVersion::V1 && (hdr[37] & 4) != 0 || is128k {
+            Some(PSG::load_snapshot(&hdr[38 .. 55]))
         } else {
             None
         };
@@ -597,18 +641,19 @@ impl Game {
                 log!("machine = 48k");
             }
         }
+        /*
         let mut offset = match version {
             Z80FileVersion::V1 => 30,
             Z80FileVersion::V2 => 32 + 23,
             Z80FileVersion::V3(false) => 32 + 54,
             Z80FileVersion::V3(true) => 32 + 55,
-        };
+        };*/
         let mut memory = if is128k {
             let mut m = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
             //port 0x7ffd
-            m.switch_banks(data[35]);
+            m.switch_banks(hdr[35]);
             if version == Z80FileVersion::V3(true) {
-                m.switch_banks_plus2(data[86]);
+                m.switch_banks_plus2(hdr[86]);
             }
             m
         } else {
@@ -654,26 +699,35 @@ impl Game {
 
         match version {
             Z80FileVersion::V1 => {
-                //TODO is compressed?
-                let _compressed = (data[12] & 0x20) != 0;
-                let mut fullmem = vec![0; 0xc000];
-                //the signature is 4 bytes long
-                uncompress(&data[offset .. data.len() - 4], &mut fullmem);
+                let compressed = (data_z80[12] & 0x20) != 0;
+                let fullmem = if compressed {
+                    let mut fullmem = vec![0; 0xc000];
+                    //the signature is 4 bytes long
+                    let sig = mem.get(mem.len() - 4..).ok_or(io::ErrorKind::InvalidData)?;
+                    if sig != [0, 0xed, 0xed, 0] {
+                        return Err(io::ErrorKind::InvalidData.into());
+                    }
+                    let cdata = mem.get(.. mem.len() - 4).ok_or(io::ErrorKind::InvalidData)?;
+                    uncompress(cdata, &mut fullmem);
+                    Cow::from(fullmem)
+                } else {
+                    //is there a signature in uncompressed memory?
+                    Cow::from(mem)
+                };
                 for (ibank, blockmem) in fullmem.chunks_exact(0x4000).enumerate() {
                     let bank = memory.get_bank_mut(ibank + 1);
                     bank.copy_from_slice(blockmem)
                 }
             }
             _ => {
-                while offset < data.len() {
-                    let memlen = ((data[offset] as u16) | ((data[offset + 1] as u16) << 8)) as usize;
-                    //TODO is compressed?
-                    let _compressed = memlen >= 0x4000;
-                    let page = data[offset + 2];
+                let mut offset = 0;
+                while offset < mem.len() - 3 {
+                    let memlen = ((mem[offset] as u16) | ((mem[offset + 1] as u16) << 8)) as usize;
+                    let memlen = std::cmp::min(memlen, 0x4000);
+                    let compressed = memlen < 0x4000;
+                    let page = mem[offset + 2];
                     offset += 3;
-
-                    log!("MEM {:04x} {:02x}", memlen, page);
-                    let cdata = &data[offset .. offset + memlen];
+                    let cdata = mem.get(offset .. offset + memlen).ok_or(io::ErrorKind::InvalidData)?;
                     offset += memlen;
 
                     let ibank = match (is128k, page) {
@@ -689,16 +743,20 @@ impl Game {
                         (true, 9) => 6,
                         (true, 10) => 7,
                         _ => {
-                            log!("unknown memory block");
-                            continue;
+                            return Err(io::ErrorKind::InvalidData.into());
                         }
                     };
+                    log!("MEM {:02x}: {:04x}", ibank, memlen);
                     let bank = memory.get_bank_mut(ibank);
-                    uncompress(cdata, bank);
+                    if compressed {
+                        uncompress(cdata, bank);
+                    } else {
+                        bank.copy_from_slice(cdata);
+                    }
                 }
             }
         }
-        Game {
+        let game = Game {
             is128k,
             z80,
             ula: ULA {
@@ -715,7 +773,8 @@ impl Game {
             },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
             audio: vec![],
-        }
+        };
+        Ok(game)
     }
 }
 

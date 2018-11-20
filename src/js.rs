@@ -103,8 +103,14 @@ pub unsafe extern "C" fn wasm_tape_stop(game: *mut Game) {
 pub unsafe extern "C" fn wasm_load_snapshot(game: *mut Game, ptr: *mut u8, size: usize) -> bool{
     let old_game = &mut *game;
     let data = Vec::from_raw_parts(ptr, size, size);
-    let new_game = Game::load_snapshot(&data);
-    *old_game = new_game;
+    match Game::load_snapshot(&data) {
+        Ok(new_game) => {
+            *old_game = new_game;
+        }
+        Err(e) => {
+            alert!("{}", e);
+        }
+    }
     old_game.is_128k()
 }
 #[no_mangle]
