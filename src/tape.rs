@@ -510,10 +510,10 @@ impl Tape {
             //header block
             let name = if block.data.len() == 0x13 && block.data[0] == 0 {
                 let block_type = match block.data[1] {
-                    0 => Cow::from("Program"),
-                    1 => Cow::from("Array"),
-                    3 => Cow::from("Bytes"),
-                    x => Cow::from(format!("Type {}", x)),
+                    0 => Cow::Borrowed("Program"),
+                    1 => Cow::Borrowed("Array"),
+                    3 => Cow::Borrowed("Bytes"),
+                    x => Cow::Owned(format!("Type {}", x)),
                 };
                 let block_name = String::from_utf8_lossy(&block.data[2..12]);
                 prefixed = true;

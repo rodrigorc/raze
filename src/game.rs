@@ -583,8 +583,8 @@ impl Game {
     }
     pub fn load_snapshot(data: &[u8]) -> io::Result<Game> {
         let data = match Self::snapshot_from_zip(data) {
-            Ok(v) => Cow::from(v),
-            Err(_) => Cow::from(data),
+            Ok(v) => Cow::Owned(v),
+            Err(_) => Cow::Borrowed(data),
         };
         let data_z80 = data.get(..34).ok_or(io::ErrorKind::InvalidData)?;
         let (z80, version) = Z80::load_snapshot(&data_z80);
@@ -700,7 +700,7 @@ impl Game {
         match version {
             Z80FileVersion::V1 => {
                 let compressed = (data_z80[12] & 0x20) != 0;
-                let fullmem = if compressed {
+                let ram = if compressed {
                     let mut fullmem = vec![0; 0xc000];
                     //the signature is 4 bytes long
                     let sig = mem.get(mem.len() - 4..).ok_or(io::ErrorKind::InvalidData)?;
@@ -709,12 +709,12 @@ impl Game {
                     }
                     let cdata = mem.get(.. mem.len() - 4).ok_or(io::ErrorKind::InvalidData)?;
                     uncompress(cdata, &mut fullmem);
-                    Cow::from(fullmem)
+                    Cow::Owned(fullmem)
                 } else {
                     //is there a signature in uncompressed memory?
-                    Cow::from(mem)
+                    Cow::Borrowed(mem)
                 };
-                for (ibank, blockmem) in fullmem.chunks_exact(0x4000).enumerate() {
+                for (ibank, blockmem) in ram.chunks_exact(0x4000).enumerate() {
                     let bank = memory.get_bank_mut(ibank + 1);
                     bank.copy_from_slice(blockmem)
                 }
