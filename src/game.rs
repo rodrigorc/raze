@@ -181,7 +181,7 @@ impl Bus for ULA {
                             //log!("MEM {:04x}, {:02x}", port, value);
                             self.memory.switch_banks(value);
                         }
-                        0x1f => { //+2 Memory banks (TODO)
+                        0x1f => { //+2 Memory banks
                             //log!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
                         }
@@ -194,6 +194,14 @@ impl Bus for ULA {
                             if let Some(psg) = &mut self.psg {
                                 psg.write_reg(value);
                             }
+                        }
+                        hi if (hi & 0x80) == 0 => { //same as 0x7f
+                            //log!("MEM {:04x}, {:02x}", port, value);
+                            self.memory.switch_banks(value);
+                        }
+                        hi if (hi & 0xf0) == 0x10 => { //same as 0x1f
+                            //log!("MEM+2 {:04x}, {:02x}", port, value);
+                            self.memory.switch_banks_plus2(value);
                         }
                         _ => {
                             //log!("FD OUT {:04x}, {:02x}", port, value);
