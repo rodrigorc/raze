@@ -18,9 +18,32 @@ mod logger {
     }
 }
 
+#[macro_use]
+mod js;
+mod game;
+mod psg;
 mod memory;
 mod z80;
 mod tape;
+
+#[no_mangle]
+pub extern "C" fn alert(_ptr: *const u8, _len: usize) {
+}
+#[no_mangle]
+pub unsafe extern "C" fn consolelog(ptr: *const u8, len: usize) {
+    let data = std::slice::from_raw_parts(ptr, len);
+    let text = String::from_utf8_lossy(data);
+    println!("{}", text);
+}
+#[no_mangle]
+pub extern "C" fn putImageData(_w: i32, h: i32, _data: *const u8, _len: usize) {
+}
+#[no_mangle]
+pub extern "C" fn putSoundData(_data: *const u8, _len: usize) {
+}
+#[no_mangle]
+pub extern "C" fn onTapeBlock(_index: usize) {
+}
 
 use memory::Memory;
 use z80::{Z80, Bus};
@@ -137,48 +160,22 @@ impl Bus for Spectrum {
 }
 
 fn main() -> io::Result<()> {
+
     let mut args = env::args_os();
     let _program = args.next().ok_or(ErrorKind::InvalidData)?;
-    let mut z80 = Z80::new();
-    let mut memory;
 
-    let load = args.next();
-    match load {
-        None => {
-            memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
-        }
-        Some(_load) => {
-            memory = Memory::new_from_bytes(include_bytes!("48k.rom"), None)
-            //let load = File::open(load)?;
-            //let mut load = BufReader::new(load);
-            //let data = std::fs::read(&load)?;
-            //tape::Tape::new(&mut io::Cursor::new(data))?;
-            //return Ok(());
-            //memory = Memory::load(&mut load)?;
-            //z80.load(&mut load)?;
-            //spectrum.load(&mut load)?;
-        }
+
+    let load = args.next().unwrap();
+
+    let snap = std::fs::read(load)?;
+    let mut game = game::Game::load_snapshot(&snap)?;
+
+    game.key_down(0x60);
+
+    for _ in 0..100 {
+        game.draw_frame(false);
     }
-    let mut spectrum = Spectrum { x: 0, memory };
-
-    const SCROPS : i32 = 5_000;
-    for count in 0 .. 200_000_000 {
-        //z80._dump_regs();
-        z80.exec(&mut spectrum);
-        if (count+1) % SCROPS == 0 {
-            if false {
-                let screen = spectrum.memory.video_memory();
-                write_screen(format!("scr{:06}.png", count / SCROPS), screen)?;
-            }
-            z80.interrupt();
-        }
-    }
-
-    //let save = File::create("save.spec")?;
-    //let mut save = BufWriter::new(save);
-    //spectrum.memory.save(&mut save)?;
-    //z80.save(&mut save)?;
-    //spectrum.save(&mut save)?;
+    game.dump_memory("fairlight.bin");
 
     Ok(())
 }
