@@ -12,9 +12,9 @@ pub trait Bus {
 
     fn peek_u16(&mut self, addr: impl Into<u16>) -> u16 {
         let addr = addr.into();
-        let lo = self.peek(addr) as u16;
+        let lo = u16::from(self.peek(addr));
         let addr = addr.wrapping_add(1);
-        let hi = self.peek(addr) as u16;
+        let hi = u16::from(self.peek(addr));
         (hi << 8) | lo
     }
     fn poke_u16(&mut self, addr: impl Into<u16>, data: u16) {
@@ -178,11 +178,17 @@ impl Z80 {
         }
     }
     pub fn _dump_regs(&self) {
-        log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}",
+        log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}; INT {}-{}",
                  self.pc.as_u16(),
                  self.af.as_u16() & 0xffd7,
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16(),
-                 self.i, self.r());
+                 self.i, self.r(),
+                 match self.im {
+                     InterruptMode::IM0 => 0,
+                     InterruptMode::IM1 => 1,
+                     InterruptMode::IM2 => 2,
+                 },
+                 if self.iff1 { 1 } else { 0 });
     }
     pub fn snapshot(&self, data: &mut Vec<u8>) {
         data[0] = self.af.hi(); data[1] = self.af.lo();
@@ -231,7 +237,7 @@ impl Z80 {
             _ => InterruptMode::IM0,
         };
         let (pc, version) = if pc.as_u16() == 0 { //v. 2 or 3
-            let extra = (data[30] as u16) | ((data[31] as u16) << 8);
+            let extra = u16::from(data[30]) | (u16::from(data[31]) << 8);
             let pc = R16::from_bytes(data[32], data[33]);
             let version = match extra {
                 23 => Z80FileVersion::V2,
@@ -296,9 +302,9 @@ impl Z80 {
         c
     }
     fn fetch_u16(&mut self, bus: &mut impl Bus) -> u16 {
-        let l = bus.peek(self.pc) as u16;
+        let l = u16::from(bus.peek(self.pc));
         self.pc += 1;
-        let h = bus.peek(self.pc) as u16;
+        let h = u16::from(bus.peek(self.pc));
         self.pc += 1;
         h << 8 | l
     }
@@ -668,7 +674,7 @@ impl Z80 {
                     }
                     InterruptMode::IM2 => {
                         //assume 0xff in the data bus
-                        let v = ((self.i as u16) << 8) | 0xff;
+                        let v = (u16::from(self.i) << 8) | 0xff;
                         let v = bus.peek_u16(v);
                         let pc = self.pc;
                         self.push(bus, pc);
@@ -1234,7 +1240,7 @@ impl Z80 {
             0xd3 => { //OUT (n),A
                 let n = self.fetch(bus);
                 let a = self.a();
-                let n = ((a as u16) << 8) | n as u16;
+                let n = (u16::from(a) << 8) | u16::from(n);
                 bus.do_out(n, a);
                 11
             }
@@ -1292,7 +1298,7 @@ impl Z80 {
             0xdb => { //IN A,(n)
                 let n = self.fetch(bus);
                 let a = self.a();
-                let port = ((a as u16) << 8) | (n as u16);
+                let port = (u16::from(a) << 8) | u16::from(n);
                 let a = bus.do_in(port);
                 self.set_a(a);
                 11

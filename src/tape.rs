@@ -126,7 +126,7 @@ impl Block {
         if index >= self.tones.len() {
             self.data_bit(0, 0, false)
         } else {
-            let tone = &self.tones[index as usize];
+            let tone = &self.tones[index];
             let len = if last_half { tone.len2 } else { tone.len1 };
             TapePhaseT(Duration::T(len), TapePhase::Tones { index, pulse, last_half })
         }
@@ -158,11 +158,11 @@ fn read_u8(r: &mut impl Read) -> io::Result<u8> {
 fn read_u16(r: &mut impl Read) -> io::Result<u16> {
     let mut bs = [0; 2];
     r.read_exact(&mut bs)?;
-    Ok((bs[0] as u16) | ((bs[1] as u16) << 8))
+    Ok((u16::from(bs[0])) | (u16::from(bs[1]) << 8))
 }
 fn read_u32(r: &mut impl Read) -> io::Result<u32> {
-    let l = read_u16(r)? as u32;
-    let h = read_u16(r)? as u32;
+    let l = u32::from(read_u16(r)?);
+    let h = u32::from(read_u16(r)?);
     Ok(l | (h << 16))
 }
 fn read_vec(r: &mut impl Read, n: usize) -> io::Result<Vec<u8>> {
@@ -216,7 +216,7 @@ fn new_tap(r: &mut impl Read) -> io::Result<Vec<Block>> {
             Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
             Err(e) => return Err(e),
         };
-        let mut data = vec![0; len as usize];
+        let mut data = vec![0; usize::from(len)];
         r.read_exact(&mut data)?;
         blocks.push(Block::standard_data_block(data));
     }
@@ -338,25 +338,25 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
         };
         match kind {
             0x10 => { //standard speed data block
-                let pause = read_u16(r)? as u32 * 3500; // ms -> T
+                let pause = u32::from(read_u16(r)?) * 3500; // ms -> T
                 let block_len = read_u16(r)?;
-                let data = read_vec(r, block_len as usize)?;
+                let data = read_vec(r, usize::from(block_len))?;
                 log!("standard block P:{} D:{}", pause as f32 / 3_500_000.0, data.len());
                 let mut block = Block::standard_data_block(data);
                 block.pause = Duration::T(pause);
                 parser.add_block(block);
             }
             0x11 => { //turbo speed data block
-                let len_pilot = read_u16(r)? as u32;
-                let len_sync1 = read_u16(r)? as u32;
-                let len_sync2 = read_u16(r)? as u32;
-                let len_zero = read_u16(r)? as u32;
-                let len_one = read_u16(r)? as u32;
-                let num_pilots = read_u16(r)? as u32;
+                let len_pilot = u32::from(read_u16(r)?);
+                let len_sync1 = u32::from(read_u16(r)?);
+                let len_sync2 = u32::from(read_u16(r)?);
+                let len_zero = u32::from(read_u16(r)?);
+                let len_one = u32::from(read_u16(r)?);
+                let num_pilots = u32::from(read_u16(r)?);
                 let bits_last = read_u8(r)?;
-                let pause = read_u16(r)? as u32 * 3500; // ms -> T
-                let num0 = read_u16(r)? as usize;
-                let num1 = read_u8(r)? as usize;
+                let pause = u32::from(read_u16(r)?) * 3500; // ms -> T
+                let num0 = usize::from(read_u16(r)?);
+                let num1 = usize::from(read_u8(r)?);
                 let num = num0 | (num1 << 16);
                 let data = read_vec(r, num)?;
                 log!("turbo speed data block P:{}*{} S1:{} S2:{} 0:{} 1:{} L:{} P:{} D:{}",
@@ -370,22 +370,22 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
                 parser.add_block(block);
             }
             0x12 => { //pure tone
-                let len_tone = read_u16(r)? as u32;
-                let num_tones = read_u16(r)? as u32;
+                let len_tone = u32::from(read_u16(r)?);
+                let num_tones = u32::from(read_u16(r)?);
                 log!("pure tone {} {}", len_tone, num_tones);
                 let block = Block::pure_tone_block(len_tone, num_tones);
                 parser.add_block(block);
             }
             0x13 => { //pulse sequence
                 let num = read_u8(r)?;
-                let mut pulses = Vec::with_capacity(num as usize);
+                let mut pulses = Vec::with_capacity(usize::from(num));
                 for _ in 0..num {
                     pulses.push(read_u16(r)?);
                 }
                 log!("pulse sequence {:?}", pulses);
                 for p in pulses.chunks(2) {
                     if p.len() == 2 {
-                        let block = Block::single_tone_block(p[0] as u32, p[1] as u32);
+                        let block = Block::single_tone_block(u32::from(p[0]), u32::from(p[1]));
                         parser.add_block(block);
                     } else {
                         log!("odd pulse sequence unimplemented");
@@ -393,12 +393,12 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
                 }
             }
             0x14 => { //pure data block
-                let len_zero = read_u16(r)? as u32;
-                let len_one = read_u16(r)? as u32;
+                let len_zero = u32::from(read_u16(r)?);
+                let len_one = u32::from(read_u16(r)?);
                 let bits_last = read_u8(r)?;
-                let pause = read_u16(r)? as u32 * 3500; // ms -> T;
-                let num0 = read_u16(r)? as usize;
-                let num1 = read_u8(r)? as usize;
+                let pause = u32::from(read_u16(r)?) * 3500; // ms -> T;
+                let num0 = usize::from(read_u16(r)?);
+                let num1 = usize::from(read_u8(r)?);
                 let num = num0 | (num1 << 16);
                 let data = read_vec(r, num)?;
                 log!("pure data block 0:{} 1:{} L:{} P:{} D:{}",
@@ -412,7 +412,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
             //0x18 => {} //CSW Recording
             //0x19 => {} //generalized data block
             0x20 => { //pause (stop)
-                let pause = read_u16(r)? as u32 * 3500; // ms -> T;
+                let pause = u32::from(read_u16(r)?) * 3500; // ms -> T;
                 if pause == 0 {
                     log!("stop tape");
                     let block = Block::stop_block();
@@ -425,7 +425,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
             }
             0x21 => { //group start
                 let len = read_u8(r)?;
-                let text = read_string(r, len as usize)?;
+                let text = read_string(r, usize::from(len))?;
                 log!("group start: {}", text);
                 parser.group_start(text);
             }
@@ -460,20 +460,20 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
             //0x2b => {} //set signal level
             0x30 => { //text description
                 let len = read_u8(r)?;
-                let text = read_string(r, len as usize)?;
+                let text = read_string(r, usize::from(len))?;
                 log!("text description: {}", text);
                 parser.text_description(text);
             }
             //0x31 => {} //message block
             0x32 => { //archive info
                 let len = read_u16(r)?;
-                let info = read_vec(r, len as usize)?;
+                let info = read_vec(r, usize::from(len))?;
                 let ri = &mut info.as_slice();
                 let num = read_u8(ri)?;
                 for _i in 0..num {
                     let id = read_u8(ri)?;
                     let ilen = read_u8(ri)?;
-                    let itext = read_string(ri, ilen as usize)?;
+                    let itext = read_string(ri, usize::from(ilen))?;
                     log!("archive info {:02x}: {}", id, itext);
                 }
             }

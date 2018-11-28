@@ -12,7 +12,7 @@ impl FreqGen {
         }
     }
     fn set_freq(&mut self, freq: u16) {
-        self.divisor = 32 * freq as i32;
+        self.divisor = 32 * i32::from(freq);
         self.phase = 0;
     }
     fn next_sample(&mut self, t: i32) -> bool {
@@ -41,7 +41,7 @@ impl NoiseGen {
         }
     }
     fn set_freq(&mut self, freq: u8) {
-        self.divisor = 32 * freq as i32;
+        self.divisor = 32 * i32::from(freq);
         //log!("noise div {}", self.divisor);
     }
     fn next_sample(&mut self, t: i32) -> bool {
@@ -99,7 +99,7 @@ impl Envelope {
     }
     fn set_freq_shape(&mut self, freq: u16, shape: u8) {
         use self::{EnvShape::*, EnvBlock::*};
-        self.divisor = 32 * freq as i32;
+        self.divisor = 32 * i32::from(freq);
         self.phase = 0;
         self.step = 0;
         let (shape, block) = match shape & 0x0f {
@@ -189,10 +189,10 @@ impl PSG {
     }
     pub fn read_reg(&self) -> u8 {
         //log!("PSG read {:02x} <- {:02x}", self.psg_sel, r);
-        self.reg[self.reg_sel as usize]
+        self.reg[usize::from(self.reg_sel)]
     }
     pub fn write_reg(&mut self, x: u8) {
-        self.reg[self.reg_sel as usize] = x;
+        self.reg[usize::from(self.reg_sel)] = x;
         //log!("PSG write {:02x} <- {:02x}", self.reg_sel, x);
         match self.reg_sel {
             0x00 | 0x01 => {
@@ -269,14 +269,14 @@ impl PSG {
         };
         const M: u8 = 3;
         const LEVELS: [u8; 16] = [1/M, 2/M, 3/M, 4/M, 6/M, 8/M, 11/M, 16/M, 23/M, 32/M, 45/M, 64/M, 90/M, 127/M, 180/M, 255/M];
-        LEVELS[v as usize] / 3
+        LEVELS[usize::from(v)] / 3
     }
     fn freq_12(a: u8, b: u8) -> u16 {
-        let n = a as u16 | (((b & 0x0f) as u16) << 8);
+        let n = u16::from(a) | (u16::from(b & 0x0f) << 8);
         if n == 0 { 1 } else { n }
     }
     fn freq_16(a: u8, b: u8) -> u16 {
-        let n = a as u16 | ((b as u16) << 8);
+        let n = u16::from(a) | (u16::from(b) << 8);
         if n == 0 { 1 } else { n }
     }
     fn channel(tone_enabled: bool, noise_enabled: bool, freq: &mut FreqGen, noise: bool, t: i32) -> bool {

@@ -352,10 +352,10 @@ impl Game {
                     }
                 }
                 self.ula.add_time(t);
-                
+
                 if !turbo {
                     audio_time += t as i32;
-                    audio_accum += t * self.ula.audio_sample(t as i32) as u32;
+                    audio_accum += t * u32::from(self.ula.audio_sample(t as i32));
                     audio_count += t;
                     if audio_time >= AUDIO_SAMPLE {
                         audio_time -= AUDIO_SAMPLE;
@@ -525,7 +525,7 @@ impl Game {
                         Some((b, seq_count + 1))
                     }
                     Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
-                        data.write(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
+                        data.write_all(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
                         Some((b, 1))
                     }
                     Some((0xed, 1)) => {
@@ -542,7 +542,7 @@ impl Game {
             match seq {
                 None => {}
                 Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
-                    data.write(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
+                    data.write_all(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
                 }
                 Some((seq_byte, seq_count)) => {
                     data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
@@ -577,15 +577,12 @@ impl Game {
                 and_then(|e| e.to_str()).
                 map(|e| e.to_string()).
                 map(|e| e.to_ascii_lowercase());
-            match ext.as_ref().map(|s| s.as_str()) {
-                Some("z80") => {
-                    log!("unzipping Z80 {}", name.to_string_lossy());
-                    let mut res = Vec::new();
-                    ze.read_to_end(&mut res)?;
-                    return Ok(res);
-                }
-                _ => {}
-            };
+            if let Some("z80") = ext.as_ref().map(|s| s.as_str()) {
+                log!("unzipping Z80 {}", name.to_string_lossy());
+                let mut res = Vec::new();
+                ze.read_to_end(&mut res)?;
+                return Ok(res);
+            }
         }
         Err(io::ErrorKind::InvalidData.into())
     }
@@ -672,35 +669,31 @@ impl Game {
             let mut wbank = bank;
             let mut rdata = cdata.iter();
             let mut prev_ed = false;
-            loop {
-                let b = match rdata.next() {
-                    Some(b) => *b,
-                    None => break,
-                };
+            while let Some(&b) = rdata.next() {
                 prev_ed = match (prev_ed, b) {
                     (true, 0xed) => {
                         let times = *rdata.next().unwrap();
                         let value = *rdata.next().unwrap();
-                        wbank.write(&vec![value; times as usize]).unwrap();
+                        wbank.write_all(&vec![value; times as usize]).unwrap();
                         false
                     }
                     (false, 0xed) => {
                         true
                     }
                     (true, b) => {
-                        wbank.write(&[0xed, b]).unwrap();
+                        wbank.write_all(&[0xed, b]).unwrap();
                         false
                     }
                     (false, b) => {
-                        wbank.write(&[b]).unwrap();
+                        wbank.write_all(&[b]).unwrap();
                         false
                     }
                 }
             }
             if prev_ed {
-                wbank.write(&[0xed]).unwrap();
+                wbank.write_all(&[0xed]).unwrap();
             }
-            if wbank.len() != 0 {
+            if !wbank.is_empty() {
                 log!("Warning: uncompressed page misses {} bytes", wbank.len());
             }
         }
@@ -730,7 +723,7 @@ impl Game {
             _ => {
                 let mut offset = 0;
                 while offset < mem.len() - 3 {
-                    let memlen = ((mem[offset] as u16) | ((mem[offset + 1] as u16) << 8)) as usize;
+                    let memlen = usize::from(u16::from(mem[offset]) | (u16::from(mem[offset + 1]) << 8));
                     let memlen = std::cmp::min(memlen, 0x4000);
                     let compressed = memlen < 0x4000;
                     let page = mem[offset + 2];
