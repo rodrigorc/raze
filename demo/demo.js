@@ -95,6 +95,24 @@ function onDocumentLoad() {
             });
             Module.is128k = true;
             Module.game = exports.wasm_main(Module.is128k);
+            var url = new URL(window.location.href);
+            var tape = url.searchParams.get("tape");
+            if (tape) {
+                fetch('https://cors-anywhere.herokuapp.com/' + tape).
+                    then(resp => {
+                        if (resp.ok) {
+                            return resp.arrayBuffer();
+                        } else {
+                            return null;
+                        }
+                    }).
+                    then(bytes => {
+                        if (bytes) {
+                            console.log("done");
+                            onLoadTape(bytes);
+                        }
+                    });
+            }
             window.addEventListener('keydown', onKeyDown)
             window.addEventListener('keyup', onKeyUp)
             window.addEventListener('focus', onFocus)
@@ -290,35 +308,37 @@ function onTapeBlock(index) {
     }
 }
 
+function onLoadTape(data) {
+    console.log("data " + data.byteLength);
+    console.log(data);
+    var ptr = Module.exports.wasm_alloc(data.byteLength);
+    var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
+    d.set(new Uint8Array(data));
+    let tape_len = Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
+    var xTape = resetTape();
+
+    for (let i = 0; i < tape_len; ++i) {
+        let tape_ptr = Module.exports.wasm_tape_name(Module.game, i);
+        let tape_ptr_len = Module.exports.wasm_tape_name_len(Module.game, i);
+        let selectable = Module.exports.wasm_tape_selectable(Module.game, i);
+        let tape_name = getStr(tape_ptr, tape_ptr_len);
+        console.log("Tape ", i, tape_name);
+        if (selectable) {
+            let btn = document.createElement("button");
+            btn.textContent = tape_name;
+            xTape.appendChild(btn);
+            btn.addEventListener('click', handleTapeBlock, false);
+            btn['data-index'] = i;
+        }
+    }
+    xTape.firstChild.classList.add('selected');
+}
+
 function handleTapeSelect(evt) {
     var f = evt.target.files[0];
     console.log("reading " + f.name);
     var reader = new FileReader();
-    reader.onload = function(e) {
-        let data = this.result;
-        console.log("data " + data.byteLength);
-        var ptr = Module.exports.wasm_alloc(data.byteLength);
-        var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
-        d.set(new Uint8Array(data));
-        let tape_len = Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
-        var xTape = resetTape();
-
-        for (let i = 0; i < tape_len; ++i) {
-            let tape_ptr = Module.exports.wasm_tape_name(Module.game, i);
-            let tape_ptr_len = Module.exports.wasm_tape_name_len(Module.game, i);
-            let selectable = Module.exports.wasm_tape_selectable(Module.game, i);
-            let tape_name = getStr(tape_ptr, tape_ptr_len);
-            console.log("Tape ", i, tape_name);
-            if (selectable) {
-                let btn = document.createElement("button");
-                btn.textContent = tape_name;
-                xTape.appendChild(btn);
-                btn.addEventListener('click', handleTapeBlock, false);
-                btn['data-index'] = i;
-            }
-        }
-        xTape.firstChild.classList.add('selected');
-    }
+    reader.onload = function(e) { onLoadTape(this.result); };
     reader.readAsArrayBuffer(f);
 }
 
