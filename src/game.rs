@@ -70,10 +70,10 @@ impl ULA {
         };
     }
     pub fn audio_sample(&mut self, t: i32) -> i16 {
-        let v = if self.ear { 0x2000 } else { 0x00 } + if self.mic { 0x1000 } else { 0x00 };
+        let v = if self.ear { 0x2000 } else { 0 } + if self.mic { 0x1000 } else { 0 };
         match &mut self.psg {
             None => v,
-            Some(psg) => v.saturating_add(psg.next_sample(t))
+            Some(psg) => v + psg.next_sample(t),
         }
     }
 }
@@ -168,7 +168,8 @@ impl Bus for ULA {
             }
             let border = value & 7;
             self.border = PIXELS[0][border as usize];
-            self.ear = value & 0x10 != 0;
+            self.ear = (value & 0x10) != 0;
+            self.mic = (value & 0x08) != 0;
         } else {
             //log!("OUT {:04x}, {:02x}", port, value);
             if port >= 0x4000 && port < 0x8000 {

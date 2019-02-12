@@ -8,7 +8,7 @@ mod imports {
         pub fn alert(ptr: *const u8, len: usize);
         pub fn consolelog(ptr: *const u8, len: usize);
         pub fn putImageData(w: i32, h: i32, data: *const u8, len: usize);
-        pub fn putSoundData(data: *const i16, len: usize);
+        pub fn putSoundData(data: *const f32, len: usize);
         pub fn onTapeBlock(index: usize);
     }
 }
@@ -38,8 +38,8 @@ pub fn putImageData<T>(w: i32, h: i32, data: &[T]) {
     unsafe { imports::putImageData(w, h, data.as_ptr() as *const u8, data.len() * mem::size_of::<T>()) };
 }
 
-pub fn putSoundData(data: &[i16]) {
-    unsafe { imports::putSoundData(data.as_ptr() as *const i16, data.len()) };
+pub fn putSoundData(data: &[f32]) {
+    unsafe { imports::putSoundData(data.as_ptr(), data.len()) };
 }
 
 pub fn onTapeBlock(index: usize) {

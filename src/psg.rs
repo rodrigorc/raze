@@ -248,17 +248,17 @@ impl PSG {
         if chan_a {
             let v = self.reg[0x08];
             let vol = Self::volume(v, env);
-            res = res.saturating_add(vol);
+            res = res + vol;
         }
         if chan_b {
             let v = self.reg[0x09];
             let vol = Self::volume(v, env);
-            res = res.saturating_add(vol);
+            res = res + vol;
         }
         if chan_c {
             let v = self.reg[0x0a];
             let vol = Self::volume(v, env);
-            res = res.saturating_add(vol);
+            res = res + vol;
         }
         res
     }
@@ -270,8 +270,8 @@ impl PSG {
         };
         //The volume curve is an exponential where each level is sqrt(2) lower than the next,
         //but with an offset so that the first one is 0. computed with this python line:
-        //>>> [round((0x2000+45) * pow(sqrt(2), x))-46 for x in range(-15, 1)]
-        const LEVELS: [i16; 16] = [0, 18, 45, 83, 136, 211, 318, 469, 682, 984, 1410, 2013, 2866, 4072, 5778, 8191];
+        //>>> [round(8192*exp(i/2-7.5)) for i in range(0, 16)]
+        const LEVELS: [i16; 16] = [5, 7, 12, 20, 33, 55, 91, 150, 247, 408, 672, 1109, 1828, 3014, 4969, 8192];
         LEVELS[usize::from(v)]
     }
     fn freq_12(a: u8, b: u8) -> u16 {

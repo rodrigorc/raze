@@ -63,9 +63,9 @@ function onDocumentLoad() {
                 let asrc = actx.createBufferSource();
                 let abuf = actx.createBuffer(1, len, Module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
                 let data = abuf.getChannelData(0);
-                let slice = new Int16Array(Module.memory.buffer, ptr, len);
+                let slice = new Float32Array(Module.memory.buffer, ptr, len);
                 for (let i = 0; i < len; ++i)
-                    data[i] = slice[i] / 32767;
+                    data[i] = slice[i];
                 asrc.buffer = abuf;
                 asrc.connect(actx.destination);
 
