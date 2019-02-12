@@ -1,3 +1,4 @@
+//Emulation of the AY-3-8910 programmable sound generator
 
 struct FreqGen {
     divisor: i32,
@@ -224,9 +225,9 @@ impl PSG {
             _ => {}
         }
     }
-    pub fn next_sample(&mut self, t: i32) -> u8 {
+    pub fn next_sample(&mut self, t: i32) -> i16 {
         let mix = self.reg[0x07];
-        let mut res : u8 = 0;
+        let mut res : i16 = 0;
         let noise = if mix & 0x38 != 0x38 {
             self.noise.next_sample(t)
         } else {
@@ -261,15 +262,17 @@ impl PSG {
         }
         res
     }
-    fn volume(v: u8, env: u8) -> u8 {
+    fn volume(v: u8, env: u8) -> i16 {
         let v = if v & 0x10 != 0 {
             env
         } else {
             v & 0x0f
         };
-        const M: u8 = 3;
-        const LEVELS: [u8; 16] = [1/M, 2/M, 3/M, 4/M, 6/M, 8/M, 11/M, 16/M, 23/M, 32/M, 45/M, 64/M, 90/M, 127/M, 180/M, 255/M];
-        LEVELS[usize::from(v)] / 3
+        //The volume curve is an exponential where each level is sqrt(2) lower than the next,
+        //but with an offset so that the first one is 0. computed with this python line:
+        //>>> [round((0x2000+45) * pow(sqrt(2), x))-46 for x in range(-15, 1)]
+        const LEVELS: [i16; 16] = [0, 18, 45, 83, 136, 211, 318, 469, 682, 984, 1410, 2013, 2866, 4072, 5778, 8191];
+        LEVELS[usize::from(v)]
     }
     fn freq_12(a: u8, b: u8) -> u16 {
         let n = u16::from(a) | (u16::from(b & 0x0f) << 8);

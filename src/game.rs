@@ -3,11 +3,11 @@ use crate::z80::{Z80, Bus, Z80FileVersion};
 use crate::memory::Memory;
 use crate::tape::{Tape, TapePos};
 use crate::psg::PSG;
+use crate::speaker::Speaker;
 use std::io::{self, Cursor, Read, Write};
 use std::borrow::Cow;
 
 const TIME_TO_INT : i32 = 69888;
-const AUDIO_SAMPLE : i32 = 168;
 
 static ROM_128_0: &[u8] = include_bytes!("128-0.rom");
 static ROM_128_1: &[u8] = include_bytes!("128-1.rom");
@@ -69,8 +69,8 @@ impl ULA {
             tape => tape
         };
     }
-    pub fn audio_sample(&mut self, t: i32) -> u8 {
-        let v : u8 = if self.ear { 0x40 } else { 0x00 } + if self.mic { 0x20 } else { 0x00 };
+    pub fn audio_sample(&mut self, t: i32) -> i16 {
+        let v = if self.ear { 0x2000 } else { 0x00 } + if self.mic { 0x1000 } else { 0x00 };
         match &mut self.psg {
             None => v,
             Some(psg) => v.saturating_add(psg.next_sample(t))
@@ -221,7 +221,7 @@ pub struct Game {
     z80: Z80,
     ula: ULA,
     image: Vec<Pixel>,
-    audio: Vec<u8>,
+    speaker: Speaker,
 }
 
 fn write_border_row(y: usize, border: Pixel, ps: &mut [Pixel]) {
@@ -316,7 +316,7 @@ impl Game {
                 psg,
             },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
-            audio: vec![],
+            speaker: Speaker::new(),
         }
     }
     pub fn is_128k(&self) -> bool {
@@ -327,15 +327,11 @@ impl Game {
 
         let n = if turbo { 100 } else { 1 };
 
-        self.audio.clear();
         for _ in 0..n {
             self.ula.frame_counter = self.ula.frame_counter.wrapping_add(1);
             let inverted = self.ula.frame_counter % 32 < 16;
-            let mut audio_time = 0; //TODO: use ula.time instead
             let mut screen_time = 0;
             let mut screen_row = 0;
-            let mut audio_accum : u32 = 0;
-            let mut audio_count : u32 = 0;
             while self.ula.time < TIME_TO_INT {
                 let mut t = self.z80.exec(&mut self.ula);
                 //contended memory and IO
@@ -354,16 +350,8 @@ impl Game {
                 self.ula.add_time(t);
 
                 if !turbo {
-                    audio_time += t as i32;
-                    audio_accum += t * u32::from(self.ula.audio_sample(t as i32));
-                    audio_count += t;
-                    if audio_time >= AUDIO_SAMPLE {
-                        audio_time -= AUDIO_SAMPLE;
-                        let sample = audio_accum / audio_count;
-                        self.audio.push(if sample > 0xff { 0xff } else { sample as u8 });
-                        audio_accum = 0;
-                        audio_count = 0;
-                    }
+                    let sample = self.ula.audio_sample(t as i32);
+                    self.speaker.push_sample(sample, t as i32);
                     screen_time += t as i32;
                     while screen_time > 224 {
                         screen_time -= 224;
@@ -389,10 +377,11 @@ impl Game {
             let screen = self.ula.memory.video_memory();
             write_screen(self.ula.border, false, screen, &mut self.image);
         } else {
-            while self.audio.len() < (TIME_TO_INT / AUDIO_SAMPLE) as usize {
-                self.audio.push(self.ula.audio_sample(0));
-            }
-            js::putSoundData(&self.audio);
+            //adding samples should be rarely necessary, so use lazy generation
+            let ula = &mut self.ula;
+            let audio = self.speaker.complete_frame(TIME_TO_INT, || ula.audio_sample(0));
+            js::putSoundData(audio);
+            self.speaker.clear();
         }
         js::putImageData((BX0 + 256 + BX1) as i32, (BY0 + 192 + BY1) as i32, &self.image);
     }
@@ -773,7 +762,7 @@ impl Game {
                 psg,
             },
             image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
-            audio: vec![],
+            speaker: Speaker::new(),
         };
         Ok(game)
     }
