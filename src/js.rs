@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use game::Game;
+use crate::game::Game;
 use std::mem;
 
 mod imports {

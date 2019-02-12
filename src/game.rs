@@ -1,8 +1,8 @@
-use js;
-use z80::{Z80, Bus, Z80FileVersion};
-use memory::Memory;
-use tape::{Tape, TapePos};
-use psg::PSG;
+use crate::js;
+use crate::z80::{Z80, Bus, Z80FileVersion};
+use crate::memory::Memory;
+use crate::tape::{Tape, TapePos};
+use crate::psg::PSG;
 use std::io::{self, Cursor, Read, Write};
 use std::borrow::Cow;
 
@@ -53,7 +53,7 @@ impl ULA {
             Some((tape, Some(pos))) => {
                 let index_pre = pos.block(&tape);
                 let index_post;
-                let mut next = tape.play(t, pos);
+                let next = tape.play(t, pos);
                 if let Some(p) = &next {
                     self.mic = p.mic();
                     index_post = p.block(&tape);

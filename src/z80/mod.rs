@@ -1315,7 +1315,7 @@ impl Z80 {
                 }
             }
             0xde => { //SBC n
-                let mut n = self.fetch(bus);
+                let n = self.fetch(bus);
                 let a = self.a();
                 let a = self.sub_flags(a, n, true);
                 self.set_a(a);
@@ -2038,7 +2038,7 @@ impl Z80 {
             }
             0x72 => { //SBC HL,SP
                 let mut hl = self.hl.as_u16();
-                let mut sp = self.sp.as_u16();
+                let sp = self.sp.as_u16();
                 hl = self.sbc16_flags(hl, sp);
                 self.hl.set(hl);
                 15
