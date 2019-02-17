@@ -53,6 +53,7 @@ function onDocumentLoad() {
                     let data = new Uint8Array(Module.memory.buffer, ptr, len);
                     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
                     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    gl.flush();
                 } else {
                     let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
                     let img = new ImageData(data, w, h);
@@ -172,8 +173,9 @@ function onFocus(ev) {
         interval = setInterval(function(){
             if (turbo) {
                 Module.exports.wasm_draw_frame(Module.game, true);
-            } else if (audio_next - actx.currentTime < 0.05)
+            } else while (audio_next - actx.currentTime < 0.05) {
                 Module.exports.wasm_draw_frame(Module.game, false);
+            }
         }, 0);
     }
 }

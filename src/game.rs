@@ -354,7 +354,7 @@ impl Game {
                     let sample = self.ula.audio_sample(t as i32);
                     self.speaker.push_sample(sample, t as i32);
                     screen_time += t as i32;
-                    while screen_time > 224 {
+                    while screen_time >= 224 {
                         screen_time -= 224;
                         match screen_row {
                             60..=63 | 256..=259 => {
