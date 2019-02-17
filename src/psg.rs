@@ -248,17 +248,17 @@ impl PSG {
         if chan_a {
             let v = self.reg[0x08];
             let vol = Self::volume(v, env);
-            res = res + vol;
+            res += vol;
         }
         if chan_b {
             let v = self.reg[0x09];
             let vol = Self::volume(v, env);
-            res = res + vol;
+            res += vol;
         }
         if chan_c {
             let v = self.reg[0x0a];
             let vol = Self::volume(v, env);
-            res = res + vol;
+            res += vol;
         }
         res
     }

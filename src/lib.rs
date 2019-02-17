@@ -1,5 +1,5 @@
-#[cfg(feature="zip")]
-extern crate zip;
+#[macro_use]
+extern crate cfg_if;
 
 #[macro_use]
 pub mod js;

@@ -1,7 +1,3 @@
-extern crate png;
-#[cfg(feature="zip")]
-extern crate zip;
-
 use std::env;
 use std::io::{self, BufWriter, Write, BufReader, Read, ErrorKind};
 use std::fs::File;

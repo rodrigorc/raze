@@ -45,12 +45,13 @@ impl Speaker {
         self.audio.clear();
     }
     pub fn push_sample(&mut self, sample: i16, t: i32) {
+        let sample = i32::from(sample);
         self.audio_time += t;
-        self.audio_accum += t * sample as i32;
+        self.audio_accum += t * sample;
         while self.audio_time >= AUDIO_SAMPLE {
             //remove the excess samples
             self.audio_time -= AUDIO_SAMPLE;
-            let audio_excess = self.audio_time * sample as i32;
+            let audio_excess = self.audio_time * sample;
             self.push_intermediate_audio_accum(self.audio_accum - audio_excess);
             self.audio_accum = audio_excess;
         }

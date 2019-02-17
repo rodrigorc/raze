@@ -4,7 +4,7 @@ use crate::memory::Memory;
 use crate::tape::{Tape, TapePos};
 use crate::psg::PSG;
 use crate::speaker::Speaker;
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Cursor, Write};
 use std::borrow::Cow;
 
 const TIME_TO_INT : i32 = 69888;
@@ -557,27 +557,8 @@ impl Game {
         }
         data
     }
-    fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
-        let rdr = Cursor::new(data);
-        let mut zip = zip::ZipArchive::new(rdr)?;
-        for i in 0 .. zip.len() {
-            let mut ze = zip.by_index(i)?;
-            let name = ze.sanitized_name();
-            let ext = name.extension().
-                and_then(|e| e.to_str()).
-                map(|e| e.to_string()).
-                map(|e| e.to_ascii_lowercase());
-            if let Some("z80") = ext.as_ref().map(|s| s.as_str()) {
-                log!("unzipping Z80 {}", name.to_string_lossy());
-                let mut res = Vec::new();
-                ze.read_to_end(&mut res)?;
-                return Ok(res);
-            }
-        }
-        Err(io::ErrorKind::InvalidData.into())
-    }
     pub fn load_snapshot(data: &[u8]) -> io::Result<Game> {
-        let data = match Self::snapshot_from_zip(data) {
+        let data = match snapshot_from_zip(data) {
             Ok(v) => Cow::Owned(v),
             Err(_) => Cow::Borrowed(data),
         };
@@ -769,3 +750,32 @@ impl Game {
     }
 }
 
+cfg_if! {
+    if #[cfg(feature="zip")] {
+        fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
+            use std::io::Read;
+
+            let rdr = Cursor::new(data);
+            let mut zip = zip::ZipArchive::new(rdr)?;
+            for i in 0 .. zip.len() {
+                let mut ze = zip.by_index(i)?;
+                let name = ze.sanitized_name();
+                let ext = name.extension().
+                    and_then(|e| e.to_str()).
+                    map(|e| e.to_string()).
+                    map(|e| e.to_ascii_lowercase());
+                if let Some("z80") = ext.as_ref().map(|s| s.as_str()) {
+                    log!("unzipping Z80 {}", name.to_string_lossy());
+                    let mut res = Vec::new();
+                    ze.read_to_end(&mut res)?;
+                    return Ok(res);
+                }
+            }
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    } else {
+        fn snapshot_from_zip(_data: &[u8]) -> io::Result<Vec<u8>> {
+            Err(io::ErrorKind::NotFound.into())
+        }
+    }
+}

@@ -1,7 +1,5 @@
 use std::io::{prelude::*, self};
 use std::borrow::Cow;
-#[cfg(feature="zip")]
-use zip;
 
 #[derive(Copy, Clone)]
 struct Tone {
@@ -178,34 +176,37 @@ fn read_string(r: &mut impl Read, n: usize) -> io::Result<String> {
     Ok(latin1_to_string(&bs))
 }
 
-#[cfg(feature="zip")]
-fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
-    let mut zip = zip::ZipArchive::new(r)?;
+cfg_if! {
+    if #[cfg(feature="zip")] {
+        fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
+            let mut zip = zip::ZipArchive::new(r)?;
 
-    for i in 0 .. zip.len() {
-        let mut ze = zip.by_index(i)?;
-        let name = ze.sanitized_name();
-        let ext = name.extension().
-            and_then(|e| e.to_str()).
-            map(|e| e.to_string()).
-            map(|e| e.to_ascii_lowercase());
-        match ext.as_ref().map(|s| s.as_str()) {
-            Some("tap") => {
-                log!("unzipping TAP {}", name.to_string_lossy());
-                return new_tap(&mut ze);
+            for i in 0 .. zip.len() {
+                let mut ze = zip.by_index(i)?;
+                let name = ze.sanitized_name();
+                let ext = name.extension().
+                    and_then(|e| e.to_str()).
+                    map(|e| e.to_string()).
+                    map(|e| e.to_ascii_lowercase());
+                match ext.as_ref().map(|s| s.as_str()) {
+                    Some("tap") => {
+                        log!("unzipping TAP {}", name.to_string_lossy());
+                        return new_tap(&mut ze);
+                    }
+                    Some("tzx") => {
+                        log!("unzipping TZX {}", name.to_string_lossy());
+                        return new_tzx(&mut ze, is128k);
+                    }
+                    _ => {}
+                };
             }
-            Some("tzx") => {
-                log!("unzipping TZX {}", name.to_string_lossy());
-                return new_tzx(&mut ze, is128k);
-            }
-            _ => {}
-        };
+            Err(io::ErrorKind::InvalidData.into())
+        }
+    } else {
+        fn new_zip<R: Read + Seek>(_r: &mut R, _is128k: bool) -> io::Result<Vec<Block>> {
+            Err(io::ErrorKind::NotFound.into())
+        }
     }
-    Err(io::ErrorKind::InvalidData.into())
-}
-#[cfg(not(feature="zip"))]
-fn new_zip<R: Read + Seek>(_r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
-    Err(io::ErrorKind::NotFound.into())
 }
 
 fn new_tap(r: &mut impl Read) -> io::Result<Vec<Block>> {

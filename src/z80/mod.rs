@@ -1,3 +1,5 @@
+#![allow(clippy::many_single_char_names)]
+
 use std::mem;
 
 mod r16;
@@ -34,15 +36,15 @@ const FLAG_PV : u8 = 0b0000_0100;
 const FLAG_N  : u8 = 0b0000_0010;
 const FLAG_C  : u8 = 0b0000_0001;
 
-#[inline]
+#[inline] #[must_use]
 fn flag8(f: u8, bit: u8) -> bool {
     (f & bit) != 0
 }
-#[inline]
+#[inline] #[must_use]
 fn flag16(f: u16, bit: u16) -> bool {
     (f & bit) != 0
 }
-#[inline]
+#[inline] #[must_use]
 fn set_flag8(f: u8, bit: u8, set: bool) -> u8 {
     if set {
         f | bit
@@ -51,68 +53,73 @@ fn set_flag8(f: u8, bit: u8, set: bool) -> u8 {
     }
 
 }
-#[inline]
+#[inline] #[must_use]
 fn parity(b: u8) -> bool {
     (b.count_ones()) % 2 == 0
 }
 
-#[inline]
+#[inline] #[must_use]
 fn carry8(a: u8, b: u8, c: u8) -> bool {
     let ma = flag8(a, 0x80);
     let mb = flag8(b, 0x80);
     let mc = flag8(c, 0x80);
     (mc && ma && mb) || (!mc && (ma || mb))
 }
-#[inline]
+#[inline] #[must_use]
 fn carry16(a: u16, b: u16, c: u16) -> bool {
     let ma = flag16(a, 0x8000);
     let mb = flag16(b, 0x8000);
     let mc = flag16(c, 0x8000);
     (mc && ma && mb) || (!mc && (ma || mb))
 }
-#[inline]
+#[inline] #[must_use]
 fn half_carry8(a: u8, b: u8, c: u8) -> bool {
     let ma = flag8(a, 0x08);
     let mb = flag8(b, 0x08);
     let mc = flag8(c, 0x08);
     (mc && ma && mb) || (!mc && (ma || mb))
 }
-#[inline]
+#[inline] #[must_use]
 fn half_carry16(a: u16, b: u16, c: u16) -> bool {
     let ma = flag16(a, 0x0800);
     let mb = flag16(b, 0x0800);
     let mc = flag16(c, 0x0800);
     (mc && ma && mb) || (!mc && (ma || mb))
 }
-#[inline]
+#[inline] #[must_use]
 fn overflow_add8(a: u8, b: u8, c: u8) -> bool {
     flag8(a, 0x80) == flag8(b, 0x80) && flag8(a, 0x80) != flag8(c, 0x80)
 }
-#[inline]
+#[inline] #[must_use]
 fn overflow_add16(a: u16, b: u16, c: u16) -> bool {
     flag16(a, 0x8000) == flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(c, 0x8000)
 }
-#[inline]
+#[inline] #[must_use]
 fn overflow_sub8(a: u8, b: u8, c: u8) -> bool {
     flag8(a, 0x80) != flag8(b, 0x80) && flag8(a, 0x80) != flag8(c, 0x80)
 }
-#[inline]
+#[inline] #[must_use]
 fn overflow_sub16(a: u16, b: u16, c: u16) -> bool {
     flag16(a, 0x8000) != flag16(b, 0x8000) && flag16(a, 0x8000) != flag16(c, 0x8000)
 }
 
-#[inline]
+#[inline] #[must_use]
 fn set_flag_sz(f: u8, r: u8) -> u8 {
     let f = set_flag8(f, FLAG_Z, r == 0);
     const CF: u8 = FLAG_S | FLAG_X | FLAG_Y;
     (f & !CF) | (r & CF)
 }
 
-#[inline]
+#[inline] #[must_use]
 fn set_flag_szp(f: u8, r: u8) -> u8 {
     let f = set_flag8(f, FLAG_PV, parity(r));
     let f = set_flag_sz(f, r);
     f
+}
+
+#[inline] #[must_use]
+fn extend_sign(x: u8) -> u16 {
+    i16::from(x as i8) as u16
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -394,11 +401,11 @@ impl Z80 {
             XYPrefix::None => (self.hl.as_u16(), 0),
             XYPrefix::IX => {
                 let d = self.fetch(bus);
-                (self.ix.as_u16().wrapping_add(d as i8 as i16 as u16), 8)
+                (self.ix.as_u16().wrapping_add(extend_sign(d)), 8)
             }
             XYPrefix::IY => {
                 let d = self.fetch(bus);
-                (self.iy.as_u16().wrapping_add(d as i8 as i16 as u16), 8)
+                (self.iy.as_u16().wrapping_add(extend_sign(d)), 8)
             }
         }
     }
@@ -808,7 +815,7 @@ impl Z80 {
                 b = b.wrapping_sub(1);
                 self.bc.set_hi(b);
                 if b != 0 {
-                    self.pc += d as i8 as i16 as u16;
+                    self.pc += extend_sign(d);
                     13
                 } else {
                     8
@@ -861,7 +868,7 @@ impl Z80 {
             }
             0x18 => { //JR d
                 let d = self.fetch(bus);
-                self.pc += d as i8 as i16 as u16;
+                self.pc += extend_sign(d);
                 12
             }
             0x19 => { //ADD HL,DE
@@ -914,7 +921,7 @@ impl Z80 {
             0x20 => { //JR NZ,d
                 let d = self.fetch(bus);
                 if !flag8(self.f(), FLAG_Z) {
-                    self.pc += d as i8 as i16 as u16;
+                    self.pc += extend_sign(d);
                 }
                 12
              }
@@ -956,7 +963,7 @@ impl Z80 {
             0x28 => { //JR Z,d
                 let d = self.fetch(bus);
                 if flag8(self.f(), FLAG_Z) {
-                    self.pc += d as i8 as i16 as u16;
+                    self.pc += extend_sign(d);
                 }
                 12
             }
@@ -1006,7 +1013,7 @@ impl Z80 {
             0x30 => { //JR NC,d
                 let d = self.fetch(bus);
                 if !flag8(self.f(), FLAG_C) {
-                    self.pc += d as i8 as i16 as u16;
+                    self.pc += extend_sign(d);
                 }
                 12
             }
@@ -1055,7 +1062,7 @@ impl Z80 {
             0x38 => { //JR C,d
                 let d = self.fetch(bus);
                 if flag8(self.f(), FLAG_C) {
-                    self.pc += d as i8 as i16 as u16;
+                    self.pc += extend_sign(d);
                 }
                 12
             }

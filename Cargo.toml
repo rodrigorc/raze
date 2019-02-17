@@ -24,6 +24,7 @@ panic = "abort"
 [dependencies]
 png = { version = "*", optional = true }
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
+cfg-if = "*"
 
 [features]
 default = ["zip"]
