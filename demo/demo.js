@@ -185,24 +185,23 @@ function onBlur(ev) {
     }
 }
 
-const KEYS = 0;
-const KEMPSTON = 1;
-const SINCLAIR = 2;
-
 var cursorKeys = null;
 
 function handleCursorKeys(evt) {
     var sel;
     switch (this.value) {
+        default:
+        case "cursorkeys":
+            sel = 0;
+            break;
         case "kempston":
-            sel = KEMPSTON;
+            sel = 1;
             break;
         case "sinclair":
-            sel = SINCLAIR;
+            sel = 2;
             break;
-        case "keys":
-        default:
-            sel = KEYS;
+        case "cursorjoy":
+            sel = 3;
             break;
     }
     cursorKeys = CURSOR_KEYS[sel];
@@ -210,12 +209,14 @@ function handleCursorKeys(evt) {
 }
 
 const CURSOR_KEYS = [
-    //keys
+    //cursorkeys
     [0xf034, 0xf042, 0xf044, 0xf043, 0x71], //Shift+{5,8,6,7}, SymbolShift
     //kempston
     [0x81, 0x80, 0x82, 0x83, 0x84],
     //sinclair
-    [0x44, 0x43, 0x42, 0x41, 0x40],  //6, 7, 8, 9, 0
+    [0x44, 0x43, 0x42, 0x41, 0x40], //6, 7, 8, 9, 0
+    //cursorjoy
+    [0x34, 0x42, 0x44, 0x43, 0x40], //5, 8, 6, 7, 0
 ];
 
 function getKeyCode(ev) {
