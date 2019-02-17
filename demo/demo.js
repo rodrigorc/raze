@@ -130,6 +130,8 @@ function onDocumentLoad() {
     document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
     document.getElementById('turbo').addEventListener('click', handleTurbo, false);
+    document.getElementById('cursor_keys').addEventListener('change', handleCursorKeys, false);
+    handleCursorKeys.call(document.getElementById('cursor_keys'));
 }
 
 function onKeyDown(ev) {
@@ -141,6 +143,10 @@ function onKeyDown(ev) {
         return;
     case "F9":
         handleLoadLastSnapshot(ev);
+        ev.preventDefault(ev);
+        return;
+    case "F11":
+        handleFullscreen(ev);
         ev.preventDefault(ev);
         return;
     }
@@ -179,8 +185,52 @@ function onBlur(ev) {
     }
 }
 
+const KEYS = 0;
+const KEMPSTON = 1;
+const SINCLAIR = 2;
+
+var cursorKeys = null;
+
+function handleCursorKeys(evt) {
+    var sel;
+    switch (this.value) {
+        case "kempston":
+            sel = KEMPSTON;
+            break;
+        case "sinclair":
+            sel = SINCLAIR;
+            break;
+        case "keys":
+        default:
+            sel = KEYS;
+            break;
+    }
+    cursorKeys = CURSOR_KEYS[sel];
+    this.blur();
+}
+
+const CURSOR_KEYS = [
+    //keys
+    [0xf034, 0xf042, 0xf044, 0xf043, 0x71], //Shift+{5,8,6,7}, SymbolShift
+    //kempston
+    [0x81, 0x80, 0x82, 0x83, 0x84],
+    //sinclair
+    [0x44, 0x43, 0x42, 0x41, 0x40],  //6, 7, 8, 9, 0
+];
+
 function getKeyCode(ev) {
     switch (ev.code) {
+    case "ArrowLeft":
+        return cursorKeys[0];
+    case "ArrowRight":
+        return cursorKeys[1];
+    case "ArrowDown":
+        return cursorKeys[2];
+    case "ArrowUp":
+        return cursorKeys[3];
+    case "ControlLeft":
+        return cursorKeys[4];
+
     case "ShiftLeft":
     case "ShiftRight":
         return 0xf0; //just like 0x00, but 0x00 is ignored by game code
@@ -264,26 +314,6 @@ function getKeyCode(ev) {
         return 0x74;
     case "Backspace":
         return 0xf040; //Shift+0
-    case "ArrowLeft":
-        return 0xf034; //Shift+5
-    case "ArrowRight":
-        return 0xf042; //Shift+8
-    case "ArrowDown":
-        return 0xf044; //Shift+6
-    case "ArrowUp":
-        return 0xf043; //Shift+7
-    //Joystick
-    case "Numpad0":
-    case "ControlLeft":
-        return 0x84;
-    case "Numpad8":
-        return 0x83;
-    case "Numpad4":
-        return 0x81;
-    case "Numpad5":
-        return 0x82;
-    case "Numpad6":
-        return 0x80;
     default:
         return null;
     }
