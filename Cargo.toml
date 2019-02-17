@@ -20,6 +20,7 @@ required-features = ["dump_ops"]
 [profile.release]
 lto = true
 panic = "abort"
+opt-level = 2
 
 [dependencies]
 png = { version = "*", optional = true }
