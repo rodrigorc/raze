@@ -22,6 +22,7 @@ impl R16 {
         r.set_hi(hi);
         r
     }
+    #[inline]
     pub fn as_u16(self) -> u16 {
         unsafe { self.w }
     }
@@ -48,24 +49,28 @@ impl R16 {
 }
 
 impl Default for R16 {
+    #[inline]
     fn default() -> Self {
         R16{ w: 0 }
     }
 }
 
 impl From<R16> for u16 {
+    #[inline]
     fn from(r: R16) -> Self {
         r.as_u16()
     }
 }
 
 impl From<u16> for R16 {
+    #[inline]
     fn from(w: u16) -> Self {
         R16{ w }
     }
 }
 
 impl AddAssign<u16> for R16 {
+    #[inline]
     fn add_assign(&mut self, r: u16) {
         let w = self.as_u16().wrapping_add(r);
         self.set(w);
@@ -73,11 +78,9 @@ impl AddAssign<u16> for R16 {
 }
 
 impl SubAssign<u16> for R16 {
+    #[inline]
     fn sub_assign(&mut self, r: u16) {
         let w = self.as_u16().wrapping_sub(r);
         self.set(w);
     }
 }
-
-
-
