@@ -165,6 +165,9 @@ pub enum Z80FileVersion {
     V1, V2, V3(bool)
 }
 
+mod exec_cb;
+mod exec_ed;
+
 impl Z80 {
     pub fn new() -> Z80 {
         Z80 {
@@ -288,41 +291,27 @@ impl Z80 {
         self.r7 = flag8(r, 0x80);
     }
 
-    #[inline]
-    fn a(&self) -> u8 { self.af.hi() }
-    #[inline]
-    fn set_a(&mut self, a: u8) { self.af.set_hi(a); }
-    #[inline]
-    fn f(&self) -> u8 { self.af.lo() }
-    #[inline]
-    fn set_f(&mut self, f: u8) { self.af.set_lo(f); }
-
-    #[inline]
-    fn b(&self) -> u8 { self.bc.hi() }
-    #[inline]
-    fn set_b(&mut self, a: u8) { self.bc.set_hi(a); }
-    #[inline]
-    fn c(&self) -> u8 { self.bc.lo() }
-    #[inline]
-    fn set_c(&mut self, f: u8) { self.bc.set_lo(f); }
-
-    #[inline]
-    fn d(&self) -> u8 { self.de.hi() }
-    #[inline]
-    fn set_d(&mut self, a: u8) { self.de.set_hi(a); }
-    #[inline]
-    fn e(&self) -> u8 { self.de.lo() }
-    #[inline]
-    fn set_e(&mut self, f: u8) { self.de.set_lo(f); }
-
-    #[inline]
-    fn h(&self) -> u8 { self.hl.hi() }
-    #[inline]
-    fn set_h(&mut self, a: u8) { self.hl.set_hi(a); }
-    #[inline]
-    fn l(&self) -> u8 { self.hl.lo() }
-    #[inline]
-    fn set_l(&mut self, f: u8) { self.hl.set_lo(f); }
+    //Easy access to registers by name
+    #[inline] fn a(&self) -> u8 { self.af.hi() }
+    #[inline] fn set_a(&mut self, a: u8) { self.af.set_hi(a); }
+    #[inline] fn f(&self) -> u8 { self.af.lo() }
+    #[inline] fn set_f(&mut self, f: u8) { self.af.set_lo(f); }
+    #[inline] fn b(&self) -> u8 { self.bc.hi() }
+    #[inline] fn set_b(&mut self, a: u8) { self.bc.set_hi(a); }
+    #[inline] fn c(&self) -> u8 { self.bc.lo() }
+    #[inline] fn set_c(&mut self, f: u8) { self.bc.set_lo(f); }
+    #[inline] fn d(&self) -> u8 { self.de.hi() }
+    #[inline] fn set_d(&mut self, a: u8) { self.de.set_hi(a); }
+    #[inline] fn e(&self) -> u8 { self.de.lo() }
+    #[inline] fn set_e(&mut self, f: u8) { self.de.set_lo(f); }
+    #[inline] fn h(&self) -> u8 { self.hl.hi() }
+    #[inline] fn set_h(&mut self, a: u8) { self.hl.set_hi(a); }
+    #[inline] fn l(&self) -> u8 { self.hl.lo() }
+    #[inline] fn set_l(&mut self, f: u8) { self.hl.set_lo(f); }
+    #[inline] fn hx(&self, prefix: XYPrefix) -> u8 { self.hlx(prefix).hi() }
+    #[inline] fn set_hx(&mut self, prefix: XYPrefix, a: u8) { self.hlx_mut(prefix).set_hi(a); }
+    #[inline] fn lx(&self, prefix: XYPrefix) -> u8 { self.hlx(prefix).lo() }
+    #[inline] fn set_lx(&mut self, prefix: XYPrefix, f: u8) { self.hlx_mut(prefix).set_lo(f); }
 
     fn fetch(&mut self, bus: &mut impl Bus) -> u8 {
         let c = bus.peek(self.pc);
@@ -348,68 +337,14 @@ impl Z80 {
         self.sp += 2;
         x
     }
-    fn reg_by_num_addr(&mut self, prefix: XYPrefix, r: u8, bus: &mut impl Bus, addr: u16) -> u8 {
-        match r {
-            0 => self.b(),
-            1 => self.c(),
-            2 => self.d(),
-            3 => self.e(),
-            4 => self.hlx(prefix).hi(),
-            5 => self.hlx(prefix).lo(),
-            6 => bus.peek(addr),
-            7 => self.a(),
-            _ => unreachable!("unknown reg_by_num {}", r),
+    fn hlx(&self, prefix: XYPrefix) -> R16 {
+        match prefix {
+            XYPrefix::None => self.hl,
+            XYPrefix::IX => self.ix,
+            XYPrefix::IY => self.iy,
         }
     }
-    fn set_reg_by_num_addr(&mut self, prefix: XYPrefix, r: u8, bus: &mut impl Bus, b: u8, addr: u16) {
-        match r {
-            0 => self.set_b(b),
-            1 => self.set_c(b),
-            2 => self.set_d(b),
-            3 => self.set_e(b),
-            4 => self.hlx(prefix).set_hi(b),
-            5 => self.hlx(prefix).set_lo(b),
-            6 => bus.poke(addr, b),
-            7 => self.set_a(b),
-            _ => unreachable!("unknown reg_by_num {}", r),
-        }
-    }
-    fn reg_by_num(&mut self, prefix: XYPrefix, r: u8, bus: &mut impl Bus) -> (u8, u32) {
-        let (addr, t) = if r == 6 { self.hlx_addr(prefix, bus) } else { (0,0) };
-        (self.reg_by_num_addr(prefix, r, bus, addr), t)
-    }
-    fn set_reg_by_num(&mut self, prefix: XYPrefix, r: u8, bus: &mut impl Bus, b: u8) -> u32 {
-        let (addr, t) = if r == 6 { self.hlx_addr(prefix, bus) } else { (0,0) };
-        self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-        t
-    }
-    fn reg_by_num_no_pre(&mut self, r: u8) -> u8 {
-        match r {
-            0 => self.b(),
-            1 => self.c(),
-            2 => self.d(),
-            3 => self.e(),
-            4 => self.h(),
-            5 => self.l(),
-            //6 is impossible
-            7 => self.a(),
-            _ => unreachable!("unknown reg_by_num {}", r),
-        }
-    }
-    fn set_reg_by_num_no_pre(&mut self, r: u8, b: u8) {
-        match r {
-            0 => self.set_b(b),
-            1 => self.set_c(b),
-            2 => self.set_d(b),
-            3 => self.set_e(b),
-            4 => self.set_h(b),
-            5 => self.set_l(b),
-            //6 is impossible
-            7 => self.set_a(b),
-            _ => unreachable!("unknown reg_by_num {}", r),
-        }
-    }
-    fn hlx(&mut self, prefix: XYPrefix) -> &mut R16 {
+    fn hlx_mut(&mut self, prefix: XYPrefix) -> &mut R16 {
         match prefix {
             XYPrefix::None => &mut self.hl,
             XYPrefix::IX => &mut self.ix,
@@ -732,9 +667,6 @@ impl Z80 {
             };
         };
         t + match c {
-            0xcb => { self.exec_cb(prefix, bus) }
-            0xed => { self.exec_ed(prefix, bus) }
-
             0x00 => { //NOP
                 4
             }
@@ -789,7 +721,7 @@ impl Z80 {
                 let mut hl = self.hlx(prefix).as_u16();
                 let bc = self.bc.as_u16();
                 hl = self.add16_flags(hl, bc);
-                self.hlx(prefix).set(hl);
+                self.hlx_mut(prefix).set(hl);
                 11
             }
             0x0a => { //LD A,(BC)
@@ -896,7 +828,7 @@ impl Z80 {
                 let mut hl = self.hlx(prefix).as_u16();
                 let de = self.de.as_u16();
                 hl = self.add16_flags(hl, de);
-                self.hlx(prefix).set(hl);
+                self.hlx_mut(prefix).set(hl);
                 11
             }
             0x1a => { //LD A,(DE)
@@ -948,7 +880,7 @@ impl Z80 {
              }
             0x21 => { //LD HL,nn
                 let d = self.fetch_u16(bus);
-                self.hlx(prefix).set(d);
+                self.hlx_mut(prefix).set(d);
                 10
             }
             0x22 => { //LD (nn),HL
@@ -957,24 +889,24 @@ impl Z80 {
                 16
             }
             0x23 => { //INC HL
-                *self.hlx(prefix) += 1;
+                *self.hlx_mut(prefix) += 1;
                 6
             }
             0x24 => { //INC H
-                let mut r = self.hlx(prefix).hi();
+                let mut r = self.hx(prefix);
                 r = self.inc_flags(r);
-                self.hlx(prefix).set_hi(r);
+                self.set_hx(prefix, r);
                 4
             }
             0x25 => { //DEC H
-                let mut r = self.hlx(prefix).hi();
+                let mut r = self.hx(prefix);
                 r = self.dec_flags(r);
-                self.hlx(prefix).set_hi(r);
+                self.set_hx(prefix, r);
                 4
             }
             0x26 => { //LD H,n
                 let n = self.fetch(bus);
-                self.hlx(prefix).set_hi(n);
+                self.set_hx(prefix, n);
                 7
             }
             0x27 => { //DAA
@@ -991,34 +923,34 @@ impl Z80 {
             0x29 => { //ADD HL,HL
                 let mut hl = self.hlx(prefix).as_u16();
                 hl = self.add16_flags(hl, hl);
-                self.hlx(prefix).set(hl);
+                self.hlx_mut(prefix).set(hl);
                 11
             }
             0x2a => { //LD HL,(nn)
                 let addr = self.fetch_u16(bus);
                 let d = bus.peek_u16(addr);
-                self.hlx(prefix).set(d);
+                self.hlx_mut(prefix).set(d);
                 16
             }
             0x2b => { //DEC HL
-                *self.hlx(prefix) -= 1;
+                *self.hlx_mut(prefix) -= 1;
                 6
             }
             0x2c => { //INC L
-                let mut r = self.hlx(prefix).lo();
+                let mut r = self.lx(prefix);
                 r = self.inc_flags(r);
-                self.hlx(prefix).set_lo(r);
+                self.set_lx(prefix, r);
                 4
             }
             0x2d => { //DEC L
-                let mut r = self.hlx(prefix).lo();
+                let mut r = self.lx(prefix);
                 r = self.dec_flags(r);
-                self.hlx(prefix).set_lo(r);
+                self.set_lx(prefix, r);
                 4
             }
             0x2e => { //LD L,n
                 let n = self.fetch(bus);
-                self.hlx(prefix).set_lo(n);
+                self.set_lx(prefix, n);
                 7
             }
             0x2f => { //CPL
@@ -1091,7 +1023,7 @@ impl Z80 {
                 let mut hl = self.hlx(prefix).as_u16();
                 let sp = self.sp.as_u16();
                 hl = self.add16_flags(hl, sp);
-                self.hlx(prefix).set(hl);
+                self.hlx_mut(prefix).set(hl);
                 11
             }
             0x3a => { //LD A,(nn)
@@ -1130,11 +1062,768 @@ impl Z80 {
                 self.set_f(f);
                 4
             }
+            0x40 => { //LD B,B
+                4
+            }
+            0x41 => { //LD B,C
+                let r = self.c();
+                self.set_b(r);
+                4
+            }
+            0x42 => { //LD B,D
+                let r = self.d();
+                self.set_b(r);
+                4
+            }
+            0x43 => { //LD B,E
+                let r = self.e();
+                self.set_b(r);
+                4
+            }
+            0x44 => { //LD B,H
+                let r = self.hx(prefix);
+                self.set_b(r);
+                4
+            }
+            0x45 => { //LD B,L
+                let r = self.lx(prefix);
+                self.set_b(r);
+                4
+            }
+            0x46 => { //LD B,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_b(r);
+                7 + t
+            }
+            0x47 => { //LD B,A
+                let r = self.a();
+                self.set_b(r);
+                4
+            }
+            0x48 => { //LD C,B
+                let r = self.b();
+                self.set_c(r);
+                4
+            }
+            0x49 => { //LD C,C
+                4
+            }
+            0x4a => { //LD C,D
+                let r = self.d();
+                self.set_c(r);
+                4
+            }
+            0x4b => { //LD C,E
+                let r = self.e();
+                self.set_c(r);
+                4
+            }
+            0x4c => { //LD C,H
+                let r = self.hx(prefix);
+                self.set_c(r);
+                4
+            }
+            0x4d => { //LD C,L
+                let r = self.lx(prefix);
+                self.set_c(r);
+                4
+            }
+            0x4e => { //LD C,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_c(r);
+                7 + t
+            }
+            0x4f => { //LD C,A
+                let r = self.a();
+                self.set_c(r);
+                4
+            }
+            0x50 => { //LD D,B
+                let r = self.b();
+                self.set_d(r);
+                4
+            }
+            0x51 => { //LD D,C
+                let r = self.c();
+                self.set_d(r);
+                4
+            }
+            0x52 => { //LD D,D
+                4
+            }
+            0x53 => { //LD D,E
+                let r = self.e();
+                self.set_d(r);
+                4
+            }
+            0x54 => { //LD D,H
+                let r = self.hx(prefix);
+                self.set_d(r);
+                4
+            }
+            0x55 => { //LD D,L
+                let r = self.lx(prefix);
+                self.set_d(r);
+                4
+            }
+            0x56 => { //LD D,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_d(r);
+                7 + t
+            }
+            0x57 => { //LD D,A
+                let r = self.a();
+                self.set_d(r);
+                4
+            }
+            0x58 => { //LD E,B
+                let r = self.b();
+                self.set_e(r);
+                4
+            }
+            0x59 => { //LD E,C
+                let r = self.c();
+                self.set_e(r);
+                4
+            }
+            0x5a => { //LD E,D
+                let r = self.d();
+                self.set_e(r);
+                4
+            }
+            0x5b => { //LD E,E
+                4
+            }
+            0x5c => { //LD E,H
+                let r = self.hx(prefix);
+                self.set_e(r);
+                4
+            }
+            0x5d => { //LD E,L
+                let r = self.lx(prefix);
+                self.set_e(r);
+                4
+            }
+            0x5e => { //LD E,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_e(r);
+                7 + t
+            }
+            0x5f => { //LD E,A
+                let r = self.a();
+                self.set_e(r);
+                4
+            }
+            0x60 => { //LD H,B
+                let r = self.b();
+                self.set_hx(prefix, r);
+                4
+            }
+            0x61 => { //LD H,C
+                let r = self.c();
+                self.set_hx(prefix, r);
+                4
+            }
+            0x62 => { //LD H,D
+                let r = self.d();
+                self.set_hx(prefix, r);
+                4
+            }
+            0x63 => { //LD H,E
+                let r = self.e();
+                self.set_hx(prefix, r);
+                4
+            }
+            0x64 => { //LD H,H
+                let r = self.hx(prefix);
+                self.set_h(r);
+                4
+            }
+            0x65 => { //LD H,L
+                let r = self.lx(prefix);
+                self.set_hx(prefix, r);
+                4
+            }
+            0x66 => { //LD H,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_h(r);
+                7 + t
+            }
+            0x67 => { //LD H,A
+                let r = self.a();
+                self.set_hx(prefix, r);
+                4
+            }
+            0x68 => { //LD L,B
+                let r = self.b();
+                self.set_lx(prefix, r);
+                4
+            }
+            0x69 => { //LD L,C
+                let r = self.c();
+                self.set_lx(prefix, r);
+                4
+            }
+            0x6a => { //LD L,D
+                let r = self.d();
+                self.set_lx(prefix, r);
+                4
+            }
+            0x6b => { //LD L,E
+                let r = self.e();
+                self.set_lx(prefix, r);
+                4
+            }
+            0x6c => { //LD L,H
+                let r = self.hx(prefix);
+                self.set_lx(prefix, r);
+                4
+            }
+            0x6d => { //LD L,L
+                4
+            }
+            0x6e => { //LD L,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_l(r);
+                7 + t
+            }
+            0x6f => { //LD L,A
+                let r = self.a();
+                self.set_lx(prefix, r);
+                4
+            }
+            0x70 => { //LD (HL),B
+                let r = self.b();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
+            0x71 => { //LD (HL),C
+                let r = self.c();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
+            0x72 => { //LD (HL),D
+                let r = self.d();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
+            0x73 => { //LD (HL),E
+                let r = self.e();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
+            0x74 => { //LD (HL),H
+                let r = self.h();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
+            0x75 => { //LD (HL),L
+                let r = self.l();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
             0x76 => { //HALT
                 if !self.iff1 {
                     log!("DI/HALT deadlock!");
                 }
                 self.next_op = NextOp::Halt;
+                4
+            }
+            0x77 => { //LD (HL),A
+                let r = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                bus.poke(addr, r);
+                7 + t
+            }
+            0x78 => { //LD A,B
+                let r = self.b();
+                self.set_a(r);
+                4
+            }
+            0x79 => { //LD A,C
+                let r = self.c();
+                self.set_a(r);
+                4
+            }
+            0x7a => { //LD A,D
+                let r = self.d();
+                self.set_a(r);
+                4
+            }
+            0x7b => { //LD A,E
+                let r = self.e();
+                self.set_a(r);
+                4
+            }
+            0x7c => { //LD A,H
+                let r = self.hx(prefix);
+                self.set_a(r);
+                4
+            }
+            0x7d => { //LD A,L
+                let r = self.lx(prefix);
+                self.set_a(r);
+                4
+            }
+            0x7e => { //LD A,(HL)
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.set_a(r);
+                7 + t
+            }
+            0x7f => { //LD A,A
+                4
+            }
+            0x80 => { //ADD B
+                let a = self.a();
+                let r = self.b();
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x81 => { //ADD C
+                let a = self.a();
+                let r = self.c();
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x82 => { //ADD D
+                let a = self.a();
+                let r = self.d();
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x83 => { //ADD E
+                let a = self.a();
+                let r = self.e();
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x84 => { //ADD H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x85 => { //ADD L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x86 => { //ADD (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.add_flags(a, r, false);
+                self.set_a(a);
+                4 + t
+            }
+            0x87 => { //ADD A
+                let a = self.a();
+                let a = self.add_flags(a, a, false);
+                self.set_a(a);
+                4
+            }
+            0x88 => { //ADC B
+                let a = self.a();
+                let r = self.b();
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x89 => { //ADC C
+                let a = self.a();
+                let r = self.c();
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x8a => { //ADC D
+                let a = self.a();
+                let r = self.d();
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x8b => { //ADC E
+                let a = self.a();
+                let r = self.e();
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x8c => { //ADC H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x8d => { //ADC L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x8e => { //ADC (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.add_flags(a, r, true);
+                self.set_a(a);
+                4 + t
+            }
+            0x8f => { //ADC A
+                let a = self.a();
+                let a = self.add_flags(a, a, true);
+                self.set_a(a);
+                4
+            }
+            0x90 => { //SUB B
+                let a = self.a();
+                let r = self.b();
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x91 => { //SUB C
+                let a = self.a();
+                let r = self.c();
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x92 => { //SUB D
+                let a = self.a();
+                let r = self.d();
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x93 => { //SUB E
+                let a = self.a();
+                let r = self.e();
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x94 => { //SUB H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x95 => { //SUB L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4
+            }
+            0x96 => { //SUB (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.sub_flags(a, r, false);
+                self.set_a(a);
+                4 + t
+            }
+            0x97 => { //SUB A
+                let a = self.a();
+                let a = self.sub_flags(a, a, false);
+                self.set_a(a);
+                4
+            }
+            0x98 => { //SBC B
+                let a = self.a();
+                let r = self.b();
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x99 => { //SBC C
+                let a = self.a();
+                let r = self.c();
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x9a => { //SBC D
+                let a = self.a();
+                let r = self.d();
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x9b => { //SBC E
+                let a = self.a();
+                let r = self.e();
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x9c => { //SBC H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x9d => { //SBC L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4
+            }
+            0x9e => { //SBC (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.sub_flags(a, r, true);
+                self.set_a(a);
+                4 + t
+            }
+            0x9f => { //SBC A
+                let a = self.a();
+                let a = self.sub_flags(a, a, true);
+                self.set_a(a);
+                4
+            }
+            0xa0 => { //AND B
+                let a = self.a();
+                let r = self.b();
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa1 => { //AND C
+                let a = self.a();
+                let r = self.c();
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa2 => { //AND D
+                let a = self.a();
+                let r = self.d();
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa3 => { //AND E
+                let a = self.a();
+                let r = self.e();
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa4 => { //AND H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa5 => { //AND L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa6 => { //AND (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.and_flags(a, r);
+                self.set_a(a);
+                4 + t
+            }
+            0xa7 => { //AND A
+                let a = self.a();
+                let a = self.and_flags(a, a);
+                self.set_a(a);
+                4
+            }
+            0xa8 => { //XOR B
+                let a = self.a();
+                let r = self.b();
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xa9 => { //XOR C
+                let a = self.a();
+                let r = self.c();
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xaa => { //XOR D
+                let a = self.a();
+                let r = self.d();
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xab => { //XOR E
+                let a = self.a();
+                let r = self.e();
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xac => { //XOR H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xad => { //XOR L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xae => { //XOR (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.xor_flags(a, r);
+                self.set_a(a);
+                4 + t
+            }
+            0xaf => { //XOR A
+                let a = self.a();
+                let a = self.xor_flags(a, a);
+                self.set_a(a);
+                4
+            }
+            0xb0 => { //OR B
+                let a = self.a();
+                let r = self.b();
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xb1 => { //OR C
+                let a = self.a();
+                let r = self.c();
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xb2 => { //OR D
+                let a = self.a();
+                let r = self.d();
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xb3 => { //OR E
+                let a = self.a();
+                let r = self.e();
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xb4 => { //OR H
+                let a = self.a();
+                let r = self.hx(prefix);
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xb5 => { //OR L
+                let a = self.a();
+                let r = self.lx(prefix);
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4
+            }
+            0xb6 => { //OR (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                let a = self.or_flags(a, r);
+                self.set_a(a);
+                4 + t
+            }
+            0xb7 => { //OR A
+                let a = self.a();
+                let a = self.or_flags(a, a);
+                self.set_a(a);
+                4
+            }
+            0xb8 => { //CP B
+                let a = self.a();
+                let r = self.b();
+                self.sub_flags(a, r, false);
+                4
+            }
+            0xb9 => { //CP C
+                let a = self.a();
+                let r = self.c();
+                self.sub_flags(a, r, false);
+                4
+            }
+            0xba => { //CP D
+                let a = self.a();
+                let r = self.d();
+                self.sub_flags(a, r, false);
+                4
+            }
+            0xbb => { //CP E
+                let a = self.a();
+                let r = self.e();
+                self.sub_flags(a, r, false);
+                4
+            }
+            0xbc => { //CP H
+                let a = self.a();
+                let r = self.hx(prefix);
+                self.sub_flags(a, r, false);
+                4
+            }
+            0xbd => { //CP L
+                let a = self.a();
+                let r = self.lx(prefix);
+                self.sub_flags(a, r, false);
+                4
+            }
+            0xbe => { //CP (HL)
+                let a = self.a();
+                let (addr, t) = self.hlx_addr(prefix, bus);
+                let r = bus.peek(addr);
+                self.sub_flags(a, r, false);
+                4 + t
+            }
+            0xbf => { //CP A
+                let a = self.a();
+                self.sub_flags(a, a, false);
                 4
             }
             0xc0 => { //RET NZ
@@ -1212,6 +1901,9 @@ impl Z80 {
                     self.pc.set(addr);
                 }
                 10
+            }
+            0xcb => {
+                self.exec_cb(prefix, bus)
             }
             0xcc => { //CALL Z,nn
                 let addr = self.fetch_u16(bus);
@@ -1342,6 +2034,9 @@ impl Z80 {
                     10
                 }
             }
+            0xdd => { //IX prefix
+                unreachable!();
+            }
             0xde => { //SBC n
                 let n = self.fetch(bus);
                 let a = self.a();
@@ -1366,7 +2061,7 @@ impl Z80 {
             }
             0xe1 => { //POP HL
                 let hl = self.pop(bus);
-                self.hlx(prefix).set(hl);
+                self.hlx_mut(prefix).set(hl);
                 10
             }
             0xe2 => { //JP PO,nn
@@ -1379,7 +2074,7 @@ impl Z80 {
             0xe3 => { //EX (SP),HL
                 let x = bus.peek_u16(self.sp);
                 bus.poke_u16(self.sp, self.hlx(prefix).as_u16());
-                self.hlx(prefix).set(x);
+                self.hlx_mut(prefix).set(x);
                 19
             }
             0xe4 => { //CALL PO,nn
@@ -1394,7 +2089,7 @@ impl Z80 {
                 }
             }
             0xe5 => { //PUSH HL
-                let hl = *self.hlx(prefix);
+                let hl = self.hlx(prefix);
                 self.push(bus, hl);
                 11
             }
@@ -1421,7 +2116,7 @@ impl Z80 {
                 }
             }
             0xe9 => { //JP (HL)
-                self.pc = *self.hlx(prefix);
+                self.pc = self.hlx(prefix);
                 4
             }
             0xea => { //JP PE,nn
@@ -1445,6 +2140,9 @@ impl Z80 {
                 } else {
                     10
                 }
+            }
+            0xed => {
+                self.exec_ed(prefix, bus)
             }
             0xee => { //XOR n
                 let n = self.fetch(bus);
@@ -1523,7 +2221,7 @@ impl Z80 {
                 }
             }
             0xf9 => { //LD SP,HL
-                self.sp = *self.hlx(prefix);
+                self.sp = self.hlx(prefix);
                 6
             }
             0xfa => { //JP M,nn
@@ -1548,6 +2246,9 @@ impl Z80 {
                     10
                 }
             }
+            0xfd => { //IY prefix
+                unreachable!();
+            }
             0xfe => { //CP n
                 let n = self.fetch(bus);
                 let a = self.a();
@@ -1560,713 +2261,10 @@ impl Z80 {
                 self.pc.set(0x38);
                 11
             }
-            _ => {
-                let rs = c & 0x07;
-                let rd = (c >> 3) & 0x07;
-                match c & 0b1100_0000 {
-                    0x40 => { //LD r,r
-                        if rs == 6 {
-                            let (r, t) = self.reg_by_num(prefix, rs, bus);
-                            self.set_reg_by_num_no_pre(rd, r);
-                            7 + t
-                        } else if rd == 6 {
-                            let r = self.reg_by_num_no_pre(rs);
-                            let t = self.set_reg_by_num(prefix, rd, bus, r);
-                            7 + t
-                        } else {
-                            let r = self.reg_by_num_addr(prefix, rs, bus, 0);
-                            self.set_reg_by_num_addr(prefix, rd, bus, r, 0);
-                            4
-                        }
-                    }
-                    _ => {
-                        match c & 0b1111_1000 {
-                            0x80 => { //ADD r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.add_flags(a, r, false);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0x88 => { //ADC r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.add_flags(a, r, true);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0x90 => { //SUB r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.sub_flags(a, r, false);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0x98 => { //SBC r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.sub_flags(a, r, true);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0xa0 => { //AND r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.and_flags(a, r);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0xa8 => { //XOR r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.xor_flags(a, r);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0xb0 => { //OR r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                let a = self.or_flags(a, r);
-                                self.set_a(a);
-                                4 + t
-                            }
-                            0xb8 => { //CP r
-                                let a = self.a();
-                                let (r, t) = self.reg_by_num(prefix, rs, bus);
-                                self.sub_flags(a, r, false);
-                                4 + t
-                            }
-                            _ => {
-                                log!("unimplemented opcode {:02x} pc={:04x}", c, self.pc.as_u16());
-                                0
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    fn exec_cb(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
-        let (addr, t) = self.hlx_addr(prefix, bus);
-        let c = self.fetch(bus);
-        if prefix == XYPrefix::None {
-            self.inc_r();
-        }
-        let r = c & 0x07;
-        let n = (c >> 3) & 0x07;
-        let write = match c & 0b1100_0000 {
-            0x40 => { //BIT n,r
-                let b = self.reg_by_num_addr(prefix, r, bus, addr);
-                let r = b & (1 << n);
-                let mut f = self.f();
-                f = set_flag8(f, FLAG_H, true);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag_szp(f, r);
-                self.set_f(f);
-                false
-            }
-            0x80 => { //RES n,r
-                let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                b = set_flag8(b, 1 << n, false);
-                self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                true
-            }
-            0xc0 => { //SET n,r
-                let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                b = set_flag8(b, 1 << n, true);
-                self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                true
-            }
-            _ => match c & 0b1111_1000 {
-                0x00 => { //RLC r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b7 = flag8(b, 0x80);
-                    b = b.rotate_left(1);
-                    f = set_flag8(f, FLAG_C, b7);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x08 => { //RRC r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b0 = flag8(b, 0x01);
-                    b = b.rotate_right(1);
-                    f = set_flag8(f, FLAG_C, b0);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x10 => { //RL r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b7 = flag8(b, 0x80);
-                    let c = flag8(f, FLAG_C);
-                    b <<= 1;
-                    b = set_flag8(b, 1, c);
-                    f = set_flag8(f, FLAG_C, b7);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x18 => { //RR r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b0 = flag8(b, 0x01);
-                    let c = flag8(f, FLAG_C);
-                    b >>= 1;
-                    b = set_flag8(b, 0x80, c);
-                    f = set_flag8(f, FLAG_C, b0);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x20 => { //SLA r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b7 = flag8(b, 0x80);
-                    b <<= 1;
-                    f = set_flag8(f, FLAG_C, b7);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x28 => { //SRA r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b0 = flag8(b, 0x01);
-                    b = ((b as i8) >> 1) as u8;
-                    f = set_flag8(f, FLAG_C, b0);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x30 => { //SL1 r (undoc)
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b7 = flag8(b, 0x80);
-                    b = (b << 1) | 1;
-                    f = set_flag8(f, FLAG_C, b7);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                0x38 => { //SRL r
-                    let mut b = self.reg_by_num_addr(prefix, r, bus, addr);
-                    let mut f = self.f();
-                    let b0 = flag8(b, 0x01);
-                    b >>= 1;
-                    f = set_flag8(f, FLAG_C, b0);
-                    f = set_flag8(f, FLAG_N, false);
-                    f = set_flag8(f, FLAG_H, false);
-                    f = set_flag_szp(f, b);
-                    self.set_reg_by_num_addr(prefix, r, bus, b, addr);
-                    self.set_f(f);
-                    true
-                }
-                _ => {
-                    log!("unimplemented opcode CB {:02x} pc={:04x}", c, self.pc.as_u16());
-                    false
-                }
-            }
-        };
-        t + if r == 6 { 15 + if write { 3 } else { 0 } } else  { 8 }
-    }
-    fn exec_ed(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
-        let c = self.fetch(bus);
-        if prefix == XYPrefix::None {
-            self.inc_r();
-        }
-        match c {
-            0x40 => { //IN B,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_b(b);
-                self.set_f(f);
-                12
-            }
-            0x41 => { //OUT (C),B
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.b());
-                12
-            }
-            0x42 => { //SBC HL,BC
-                let mut hl = self.hl.as_u16();
-                let bc = self.bc.as_u16();
-                hl = self.sbc16_flags(hl, bc);
-                self.hl.set(hl);
-                15
-            }
-            0x43 => { //LD (nn),BC
-                let addr = self.fetch_u16(bus);
-                bus.poke_u16(addr, self.bc.as_u16());
-                20
-            }
-            0x44 => { //NEG
-                let a = self.a();
-                let a = self.sub_flags(0, a, false);
-                self.set_a(a);
-                8
-            }
-            0x45 => { //RETN
-                let pc = self.pop(bus);
-                self.pc.set(pc);
-                14
-            }
-            0x46 => { // /IM 0
-                self.im = InterruptMode::IM0;
-                8
-            }
-            0x47 => { //LD I,A
-                self.i = self.a();
-                9
-            }
-            0x48 => { //IN C,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_c(b);
-                self.set_f(f);
-                12
-            }
-            0x49 => { //OUT (C),C
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.c());
-                12
-            }
-            0x4a => { //ADC HL,BC
-                let mut hl = self.hl.as_u16();
-                let bc = self.bc.as_u16();
-                hl = self.adc16_flags(hl, bc);
-                self.hl.set(hl);
-                15
-            }
-            0x4b => { //LD BC,(nn)
-                let addr = self.fetch_u16(bus);
-                self.bc.set(bus.peek_u16(addr));
-                20
-            }
-            0x4d => { //RETI
-                let pc = self.pop(bus);
-                self.pc.set(pc);
-                14
-            }
-            0x4f => { //LD R,A
-                let a = self.a();
-                self.set_r(a);
-                9
-            }
-            0x50 => { //IN D,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_d(b);
-                self.set_f(f);
-                12
-            }
-            0x51 => { //OUT (C),D
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.d());
-                12
-            }
-            0x52 => { //SBC HL,DE
-                let mut hl = self.hl.as_u16();
-                let de = self.de.as_u16();
-                hl = self.sbc16_flags(hl, de);
-                self.hl.set(hl);
-                15
-            }
-            0x53 => { //LD (nn),DE
-                let addr = self.fetch_u16(bus);
-                bus.poke_u16(addr, self.de.as_u16());
-                20
-            }
-            0x56 => { //IM 1
-                self.im = InterruptMode::IM1;
-                8
-            }
-            0x57 => { //LD A,I
-                let i = self.i;
-                let mut f = self.f();
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_PV, self.iff1);
-                f = set_flag_sz(f, i);
-                self.set_a(i);
-                self.set_f(f);
-                9
-            }
-            0x58 => { //IN E,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_e(b);
-                self.set_f(f);
-                12
-            }
-            0x59 => { //OUT (C),E
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.e());
-                12
-            }
-            0x5a => { //ADC HL,DE
-                let mut hl = self.hl.as_u16();
-                let de = self.de.as_u16();
-                hl = self.adc16_flags(hl, de);
-                self.hl.set(hl);
-                15
-            }
-            0x5b => { //LD DE,(nn)
-                let addr = self.fetch_u16(bus);
-                self.de.set(bus.peek_u16(addr));
-                20
-            }
-            0x5e => { //IM 2
-                self.im = InterruptMode::IM2;
-                8
-            }
-            0x5f => { //LD A,R
-                let r = self.r();
-                let mut f = self.f();
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_PV, self.iff1);
-                f = set_flag_sz(f, r);
-                self.set_a(r);
-                self.set_f(f);
-                9
-            }
-            0x60 => { //IN H,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_h(b);
-                self.set_f(f);
-                12
-            }
-            0x61 => { //OUT (C),H
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.h());
-                12
-            }
-            0x62 => { //SBC HL,HL
-                let mut hl = self.hl.as_u16();
-                hl = self.sbc16_flags(hl, hl);
-                self.hl.set(hl);
-                15
-            }
-            0x63 => { //LD (nn),HL
-                let addr = self.fetch_u16(bus);
-                bus.poke_u16(addr, self.hl.as_u16());
-                20
-            }
-            0x67 => { //RRD
-                let x = bus.peek(self.hl);
-                let a = self.a();
-                let mut f = self.f();
-                let new_a = (a & 0xf0) | (x & 0x0f);
-                let new_x = ((a & 0x0f) << 4) | ((x & 0xf0) >> 4);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag_szp(f, new_a);
-                self.set_a(new_a);
-                self.set_f(f);
-                bus.poke(self.hl, new_x);
-                18
-            }
-            0x68 => { //IN L,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_l(b);
-                self.set_f(f);
-                12
-            }
-            0x69 => { //OUT (C),L
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.l());
-                12
-            }
-            0x6a => { //ADC HL,HL
-                let mut hl = self.hl.as_u16();
-                hl = self.adc16_flags(hl, hl);
-                self.hl.set(hl);
-                15
-            }
-            0x6b => { //LD HL,(nn)
-                let addr = self.fetch_u16(bus);
-                self.hl.set(bus.peek_u16(addr));
-                20
-            }
-            0x6f => { //RLD
-                let x = bus.peek(self.hl);
-                let a = self.a();
-                let mut f = self.f();
-                let new_a = (a & 0xf0) | ((x & 0xf0) >> 4);
-                let new_x = (a & 0x0f) | ((x & 0x0f) << 4);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag_szp(f, new_a);
-                self.set_a(new_a);
-                self.set_f(f);
-                bus.poke(self.hl, new_x);
-                18
-            }
-            0x70 => { //IN F,(C)
-                let bc = self.bc.as_u16();
-                let b = bus.do_in(bc);
-                self.set_f(b);
-                12
-            }
-            0x71 => { //OUT (C),F
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.f());
-                12
-            }
-            0x72 => { //SBC HL,SP
-                let mut hl = self.hl.as_u16();
-                let sp = self.sp.as_u16();
-                hl = self.sbc16_flags(hl, sp);
-                self.hl.set(hl);
-                15
-            }
-            0x73 => { //LD (nn),SP
-                let addr = self.fetch_u16(bus);
-                bus.poke_u16(addr, self.sp.as_u16());
-                20
-            }
-            0x78 => { //IN A,(C)
-                let bc = self.bc.as_u16();
-                let mut f = self.f();
-                let b = bus.do_in(bc);
-                f = set_flag8(f, FLAG_N, false);
-                f = set_flag8(f, FLAG_H, false);
-                f = set_flag_szp(f, b);
-                self.set_a(b);
-                self.set_f(f);
-                12
-            }
-            0x79 => { //OUT (C),A
-                let bc = self.bc.as_u16();
-                bus.do_out(bc, self.a());
-                12
-            }
-            0x7a => { //ADC HL,SP
-                let mut hl = self.hl.as_u16();
-                let sp = self.sp.as_u16();
-                hl = self.adc16_flags(hl, sp);
-                self.hl.set(hl);
-                15
-            }
-            0x7b => { //LD SP,(nn)
-                let addr = self.fetch_u16(bus);
-                self.sp.set(bus.peek_u16(addr));
-                20
-            }
-            0xa0 => { //LDI
-                self.ldi_ldd(Direction::Inc, bus);
-                16
-            }
-            0xa1 => { //CPI
-                self.cpi_cpd(Direction::Inc, bus);
-                16
-            }
-            0xa2 => { //INI
-                self.ini_ind(Direction::Inc, bus);
-                16
-            }
-            0xa3 => { //OUTI
-                self.outi_outd(Direction::Inc, bus);
-                16
-            }
-            0xa8 => { //LDD
-                self.ldi_ldd(Direction::Dec, bus);
-                16
-            }
-            0xa9 => { //CPD
-                self.cpi_cpd(Direction::Dec, bus);
-                16
-            }
-            0xaa => { //IND
-                self.ini_ind(Direction::Dec, bus);
-                16
-            }
-            0xab => { //OUTD
-                self.outi_outd(Direction::Dec, bus);
-                16
-            }
-            0xb0 => { //LDIR
-                self.ldi_ldd(Direction::Inc, bus);
-                if self.bc.as_u16() != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xb1 => { //CPIR
-                let r = self.cpi_cpd(Direction::Inc, bus);
-                if self.bc.as_u16() != 0 && r != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xb2 => { //INIR
-                let b = self.ini_ind(Direction::Inc, bus);
-                if b != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xb3 => { //OTIR
-                let b = self.outi_outd(Direction::Inc, bus);
-                if b != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xb8 => { //LDDR
-                self.ldi_ldd(Direction::Dec, bus);
-                if self.bc.as_u16() != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xb9 => { //CPDR
-                let r = self.cpi_cpd(Direction::Dec, bus);
-                if self.bc.as_u16() != 0 && r != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xba => { //INDR
-                let b = self.ini_ind(Direction::Dec, bus);
-                if b != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            0xbb => { //OTDR
-                let b = self.outi_outd(Direction::Dec, bus);
-                if b != 0 {
-                    self.pc -= 2;
-                    21
-                } else {
-                    16
-                }
-            }
-            _ => {
-                log!("unimplemented opcode ED {:02x} pc={:04x}", c, self.pc.as_u16());
-                0
-            },
         }
     }
 }
 
 #[cfg(feature="dump_ops")]
-impl Z80 {
-    pub fn dump_add(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                self.set_f(0);
-                let a2 = self.add_flags(a, r, false);
-                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.f() & 0xd7);
-            }
-        }
-    }
-    pub fn dump_adc(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                for f in 0..=0xff {
-                    self.set_f(f);
-                    let a2 = self.add_flags(a, r, true);
-                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.f() & 0xd7);
-                }
-            }
-        }
-    }
-    pub fn dump_sub(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                self.set_f(0);
-                let a2 = self.sub_flags(a, r, false);
-                println!("{:02x} {:02x} {:02x} {:02x}", a, r, a2, self.f() & 0xd7);
-            }
-        }
-    }
-    pub fn dump_sbc(&mut self) {
-        for a in 0..=0xff {
-            for r in 0..=0xff {
-                for f in 0..=0xff {
-                    self.set_f(f);
-                    let a2 = self.sub_flags(a, r, true);
-                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.f() & 0xd7);
-                }
-            }
-        }
-    }
-    pub fn dump_daa(&mut self) {
-        for f in 0..=0xff {
-            for a in 0..=0xff {
-                self.set_a(a);
-                self.set_f(f);
-                self.daa();
-                println!("{:02x} {:02x} {:02x} {:02x}", a, f, self.a(), self.f() & 0xd7);
-            }
-        }
-    }
-}
+mod dumps;
 
