@@ -10,7 +10,6 @@ crate-type=["cdylib"]
 [[bin]]
 name = "console"
 path = "src/main.rs"
-required-features = ["png"]
 
 [[bin]]
 name = "dump_op"
@@ -23,7 +22,6 @@ panic = "abort"
 opt-level = 2
 
 [dependencies]
-png = { version = "*", optional = true }
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
 cfg-if = "*"
 

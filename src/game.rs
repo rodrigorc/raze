@@ -335,6 +335,7 @@ impl Game {
             let mut screen_row = 0;
             while self.ula.time < TIME_TO_INT {
                 let mut t = self.z80.exec(&mut self.ula);
+                //self.z80._dump_regs();
                 //contended memory and IO
                 let delay_m = self.ula.memory.take_delay();
                 let delay_io = self.ula.take_delay();
