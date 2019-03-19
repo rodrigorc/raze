@@ -55,8 +55,8 @@ fn main() -> io::Result<()> {
 
     //game.key_down(0x60);
 
-    for _ in 0..100 {
-        game.draw_frame(false);
+    for _ in 0..1000 {
+        game.draw_frame(true);
     }
 
     Ok(())
