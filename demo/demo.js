@@ -13,6 +13,32 @@ var audio_next = 0;
 var turbo = false;
 var realCanvas = null;
 
+function fetch_with_cors_if_needed(url, callback, error) {
+    let on_ok = resp => {
+        if (resp.ok)
+            resp.arrayBuffer().then(callback);
+        else
+            error();
+    };
+    fetch(url).
+        then(on_ok).
+        catch(_ => {
+            fetch('https://cors-anywhere.herokuapp.com/' + url).
+                then(on_ok).
+                catch (e => {
+                    error(e);
+                });
+        });
+}
+
+
+var g_delayed_funcs = null;
+function call_with_delay(first, other, args) {
+    g_delayed_funcs = [first, other, args];
+}
+
+var g_lastSnapshot = null;
+
 function onDocumentLoad() {
 
     let urlParams = new URLSearchParams(window.location.search);
@@ -95,32 +121,67 @@ function onDocumentLoad() {
                 exports: exports,
                 memory: exports.memory,
             });
-            Module.is128k = true;
-            Module.game = exports.wasm_main(Module.is128k);
             var url = new URL(window.location.href);
+
+            var is128k = url.searchParams.get("48k") === null;
+            Module.is128k = is128k;
+            Module.game = exports.wasm_main(is128k);
+
+            var snapshot = url.searchParams.get("snapshot");
+            console.log("SNAPSHOT=", snapshot);
+            if (snapshot) {
+                fetch_with_cors_if_needed(snapshot,
+                    bytes => {
+                        g_lastSnapshot = bytes;
+                        handleLoadLastSnapshot();
+                    },
+                    error => {
+                        alert("Cannot download file " + snapshot);
+                    }
+                );
+            }
+
             var tape = url.searchParams.get("tape");
+            console.log("TAPE=", tape);
             if (tape) {
-                fetch('https://cors-anywhere.herokuapp.com/' + tape).
-                    then(resp => {
-                        if (resp.ok) {
-                            return resp.arrayBuffer();
-                        } else {
-                            return null;
-                        }
-                    }).
-                    then(bytes => {
+                fetch_with_cors_if_needed(tape,
+                    bytes => {
                         if (bytes) {
-                            console.log("done");
-                            onLoadTape(bytes);
+                            if (is128k) {
+                                call_with_delay(1000, 100, [
+                                    () => Module.exports.wasm_key_down(Module.game, 0x60), //ENTER
+                                    () => Module.exports.wasm_key_up(Module.game, 0x60), //ENTER
+                                    () => onLoadTape(bytes),
+                                ]);
+                            } else {
+                                call_with_delay(2000, 100, [
+                                    () => Module.exports.wasm_key_down(Module.game, 0x63), //J (LOAD)
+                                    () => Module.exports.wasm_key_up(Module.game, 0x63),
+                                    () => Module.exports.wasm_key_down(Module.game, 0x71), //SS
+                                    () => Module.exports.wasm_key_down(Module.game, 0x50), //P (")
+                                    () => Module.exports.wasm_key_up(Module.game, 0x50), //P (")
+                                    () => Module.exports.wasm_key_down(Module.game, 0x50), //P (")
+                                    () => Module.exports.wasm_key_up(Module.game, 0x50), //P (")
+                                    () => Module.exports.wasm_key_up(Module.game, 0x71), //SS
+                                    () => Module.exports.wasm_key_down(Module.game, 0x60), //ENTER
+                                    () => Module.exports.wasm_key_up(Module.game, 0x60), //ENTER
+                                    () => onLoadTape(bytes),
+                                ]);
+                            }
                         }
-                    });
+                    },
+                    error => {
+                        alert("Cannot download file " + tape);
+                    }
+                );
             }
             window.addEventListener('keydown', onKeyDown)
             window.addEventListener('keyup', onKeyUp)
             window.addEventListener('focus', onFocus)
             window.addEventListener('blur', onBlur)
             audio_next = actx.currentTime;
-            onFocus();
+            if (document.hasFocus())
+                onFocus();
         });
 
     document.getElementById('reset_48k').addEventListener('click', handleReset48k, false);
@@ -170,19 +231,32 @@ function onKeyUp(ev) {
 
 var interval = null;
 function onFocus(ev) {
-    Module.exports.wasm_reset_input(Module.game);
+    if (!g_delayed_funcs)
+        Module.exports.wasm_reset_input(Module.game);
     if (interval === null) {
         interval = setInterval(function(){
             if (turbo) {
                 Module.exports.wasm_draw_frame(Module.game, true);
             } else while (audio_next - actx.currentTime < 0.05) {
                 Module.exports.wasm_draw_frame(Module.game, false);
+                if (g_delayed_funcs !== null) {
+                    if ((g_delayed_funcs[0] -= 20) <= 0) {
+                        var f = g_delayed_funcs[2].shift();
+                        if (f) {
+                            f();
+                            g_delayed_funcs[0] = g_delayed_funcs[1];
+                        } else {
+                            g_delayed_funcs = null;
+                        }
+                    }
+                }
             }
         }, 0);
     }
 }
 function onBlur(ev) {
-    Module.exports.wasm_reset_input(Module.game);
+    if (!g_delayed_funcs)
+        Module.exports.wasm_reset_input(Module.game);
     if (interval !== null) {
         clearInterval(interval);
         interval = null;
@@ -410,17 +484,16 @@ function handleStopTape(evt) {
     Module.exports.wasm_tape_stop(Module.game);
 }
 
-var lastSnapshot = null;
 function handleLoadSnapshotSelect(evt) {
     var f = evt.target.files[0];
     console.log("reading " + f.name);
     var reader = new FileReader();
     reader.onload = function(e) {
-        lastSnapshot = this.result;
-        var ptr = Module.exports.wasm_alloc(lastSnapshot.byteLength);
-        var d = new Uint8Array(Module.memory.buffer, ptr, lastSnapshot.byteLength);
-        d.set(new Uint8Array(lastSnapshot));
-        Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
+        g_lastSnapshot = this.result;
+        var ptr = Module.exports.wasm_alloc(g_lastSnapshot.byteLength);
+        var d = new Uint8Array(Module.memory.buffer, ptr, g_lastSnapshot.byteLength);
+        d.set(new Uint8Array(g_lastSnapshot));
+        Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, g_lastSnapshot.byteLength);
     }
     reader.readAsArrayBuffer(f);
 }
@@ -434,13 +507,13 @@ function handleLoadSnapshot(evt) {
 }
 
 function handleLoadLastSnapshot(evt) {
-    if (!lastSnapshot)
+    if (!g_lastSnapshot)
         return;
 
-    var ptr = Module.exports.wasm_alloc(lastSnapshot.length);
-    var d = new Uint8Array(Module.memory.buffer, ptr, lastSnapshot.length);
-    d.set(new Uint8Array(lastSnapshot));
-    Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, lastSnapshot.byteLength);
+    var ptr = Module.exports.wasm_alloc(g_lastSnapshot.byteLength);
+    var d = new Uint8Array(Module.memory.buffer, ptr, g_lastSnapshot.byteLength);
+    d.set(new Uint8Array(g_lastSnapshot));
+    Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, g_lastSnapshot.byteLength);
 }
 
 function handleSnapshot(evt) {
@@ -452,8 +525,8 @@ function handleSnapshot(evt) {
     var blob = new Blob([data], {type: "application/octet-stream"});
     var url = window.URL.createObjectURL(blob);
 
-    lastSnapshot = new Uint8Array(len);
-    lastSnapshot.set(data);
+    g_lastSnapshot = new Uint8Array(len);
+    g_lastSnapshot.set(data);
 
     var a = document.createElement("a");
     a.style = "display: none";
