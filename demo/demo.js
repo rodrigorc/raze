@@ -1,4 +1,5 @@
 'use strict';
+
 let Module = {};
 
 let utfDecoder = new TextDecoder('utf-8');
@@ -131,6 +132,7 @@ function onDocumentLoad() {
     document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
     document.getElementById('turbo').addEventListener('click', handleTurbo, false);
+    document.getElementById('dither').addEventListener('click', function(evt) { handleDither.call(this, evt, gl) }, false);
     document.getElementById('cursor_keys').addEventListener('change', handleCursorKeys, false);
     handleCursorKeys.call(document.getElementById('cursor_keys'));
 }
@@ -473,6 +475,13 @@ function handleFullscreen(evt) {
 
 function handleTurbo(evt) {
     turbo = this.checked;
+}
+
+function handleDither(evt, gl) {
+    if (!gl)
+        return;
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.checked? gl.LINEAR : gl.NEAREST);
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);
