@@ -1,17 +1,17 @@
 'use strict';
 
-let Module = {};
+let g_module = {};
 
-let utfDecoder = new TextDecoder('utf-8');
+let g_utfDecoder = new TextDecoder('utf-8');
 function getStr(ptr, len) {
-    let slice = new Uint8Array(Module.memory.buffer, ptr, len);
-    return utfDecoder.decode(slice);
+    let slice = new Uint8Array(g_module.memory.buffer, ptr, len);
+    return g_utfDecoder.decode(slice);
 };
 
-var actx = new AudioContext();
-var audio_next = 0;
-var turbo = false;
-var realCanvas = null;
+let g_actx = new AudioContext();
+let g_audio_next = 0;
+let g_turbo = false;
+let g_realCanvas = null;
 
 function fetch_with_cors_if_needed(url, callback, error) {
     let on_ok = resp => {
@@ -31,24 +31,41 @@ function fetch_with_cors_if_needed(url, callback, error) {
         });
 }
 
-
-var g_delayed_funcs = null;
+let g_delayed_funcs = null;
 function call_with_delay(first, other, args) {
     g_delayed_funcs = [first, other, args];
 }
 
-var g_lastSnapshot = null;
+let g_lastSnapshot = null;
+if (window.localStorage) {
+    let last = window.localStorage.getItem("lastSnapshot");
+    if (last) {
+        g_lastSnapshot = base64decode(last);
+    }
+}
+
+function boolURLParamDef(urlParams, key, def) {
+    let res = urlParams.get(key);
+    if (res === null)
+        return def;
+    res = res.toLowerCase();
+    if (res == "")
+        return true;
+    let c = res[0];
+    if (c == '0' || c == 'n' || c == 'f')
+        return false;
+    return true;
+}
 
 function onDocumentLoad() {
 
     let urlParams = new URLSearchParams(window.location.search);
-    let webgl = urlParams.get('webgl');
-    webgl = webgl === null || webgl != "false";
+    let webgl = boolURLParamDef(urlParams, 'webgl', true)
 
     let ctx = null, gl = null;
 
-    let canvas3d = document.getElementById('game-layer-3d');
-    let canvas = document.getElementById('game-layer');
+    let canvas3d = document.querySelector('#game-layer-3d');
+    let canvas = document.querySelector('#game-layer');
 
     if (webgl) {
         gl = canvas3d.getContext('webgl');
@@ -56,7 +73,7 @@ function onDocumentLoad() {
 
     if (gl && initMyGL(gl)) {
         console.log("using webgl rendering");
-        realCanvas = canvas3d;
+        g_realCanvas = canvas3d;
     } else {
         if (webgl)
             console.log("webgl initialization failed, falling back to canvas");
@@ -68,7 +85,7 @@ function onDocumentLoad() {
 
         ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = false;
-        realCanvas = canvas;
+        g_realCanvas = canvas;
     }
 
     let imports = {
@@ -77,28 +94,28 @@ function onDocumentLoad() {
             alert: (ptr, len) => alert(getStr(ptr, len)),
             putImageData: (w, h, ptr, len) => {
                 if (gl) {
-                    let data = new Uint8Array(Module.memory.buffer, ptr, len);
+                    let data = new Uint8Array(g_module.memory.buffer, ptr, len);
                     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
                     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                     gl.flush();
                 } else {
-                    let data = new Uint8ClampedArray(Module.memory.buffer, ptr, len);
+                    let data = new Uint8ClampedArray(g_module.memory.buffer, ptr, len);
                     let img = new ImageData(data, w, h);
                     ctx.putImageData(img, 0, 0);
                 }
             },
             putSoundData: (ptr, len) => {
-                let asrc = actx.createBufferSource();
-                let abuf = actx.createBuffer(1, len, Module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+                let asrc = g_actx.createBufferSource();
+                let abuf = g_actx.createBuffer(1, len, g_module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
                 let data = abuf.getChannelData(0);
-                let slice = new Float32Array(Module.memory.buffer, ptr, len);
+                let slice = new Float32Array(g_module.memory.buffer, ptr, len);
                 for (let i = 0; i < len; ++i)
                     data[i] = slice[i];
                 asrc.buffer = abuf;
-                asrc.connect(actx.destination);
+                asrc.connect(g_actx.destination);
 
-                asrc.start(audio_next);
-                audio_next = Math.max(audio_next, actx.currentTime) + abuf.duration;
+                asrc.start(g_audio_next);
+                g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
             },
             onTapeBlock: (index) => {
                 onTapeBlock(index);
@@ -116,23 +133,21 @@ function onDocumentLoad() {
     wasm.
         then(wasm => {
             let exports = wasm.instance.exports;
-            Object.assign(Module, {
+            Object.assign(g_module, {
                 wasm: wasm,
                 exports: exports,
                 memory: exports.memory,
             });
-            var url = new URL(window.location.href);
+            let is128k = !boolURLParamDef(urlParams, '48k', false)
+            g_module.is128k = is128k;
+            g_module.game = exports.wasm_main(is128k);
 
-            var is128k = url.searchParams.get("48k") === null;
-            Module.is128k = is128k;
-            Module.game = exports.wasm_main(is128k);
-
-            var snapshot = url.searchParams.get("snapshot");
-            console.log("SNAPSHOT=", snapshot);
+            let snapshot = urlParams.get("snapshot");
             if (snapshot) {
+                console.log("SNAPSHOT=", snapshot);
                 fetch_with_cors_if_needed(snapshot,
                     bytes => {
-                        g_lastSnapshot = bytes;
+                        saveLastSnapshot(new Uint8Array(bytes));
                         handleLoadLastSnapshot();
                     },
                     error => {
@@ -141,30 +156,30 @@ function onDocumentLoad() {
                 );
             }
 
-            var tape = url.searchParams.get("tape");
-            console.log("TAPE=", tape);
+            let tape = urlParams.get("tape");
             if (tape) {
+                console.log("TAPE=", tape);
                 fetch_with_cors_if_needed(tape,
                     bytes => {
                         if (bytes) {
                             if (is128k) {
                                 call_with_delay(1000, 100, [
-                                    () => Module.exports.wasm_key_down(Module.game, 0x60), //ENTER
-                                    () => Module.exports.wasm_key_up(Module.game, 0x60), //ENTER
+                                    () => g_module.exports.wasm_key_down(g_module.game, 0x60), //ENTER
+                                    () => g_module.exports.wasm_key_up(g_module.game, 0x60), //ENTER
                                     () => onLoadTape(bytes),
                                 ]);
                             } else {
                                 call_with_delay(2000, 100, [
-                                    () => Module.exports.wasm_key_down(Module.game, 0x63), //J (LOAD)
-                                    () => Module.exports.wasm_key_up(Module.game, 0x63),
-                                    () => Module.exports.wasm_key_down(Module.game, 0x71), //SS
-                                    () => Module.exports.wasm_key_down(Module.game, 0x50), //P (")
-                                    () => Module.exports.wasm_key_up(Module.game, 0x50), //P (")
-                                    () => Module.exports.wasm_key_down(Module.game, 0x50), //P (")
-                                    () => Module.exports.wasm_key_up(Module.game, 0x50), //P (")
-                                    () => Module.exports.wasm_key_up(Module.game, 0x71), //SS
-                                    () => Module.exports.wasm_key_down(Module.game, 0x60), //ENTER
-                                    () => Module.exports.wasm_key_up(Module.game, 0x60), //ENTER
+                                    () => g_module.exports.wasm_key_down(g_module.game, 0x63), //J (LOAD)
+                                    () => g_module.exports.wasm_key_up(g_module.game, 0x63),
+                                    () => g_module.exports.wasm_key_down(g_module.game, 0x71), //SS
+                                    () => g_module.exports.wasm_key_down(g_module.game, 0x50), //P (")
+                                    () => g_module.exports.wasm_key_up(g_module.game, 0x50), //P (")
+                                    () => g_module.exports.wasm_key_down(g_module.game, 0x50), //P (")
+                                    () => g_module.exports.wasm_key_up(g_module.game, 0x50), //P (")
+                                    () => g_module.exports.wasm_key_up(g_module.game, 0x71), //SS
+                                    () => g_module.exports.wasm_key_down(g_module.game, 0x60), //ENTER
+                                    () => g_module.exports.wasm_key_up(g_module.game, 0x60), //ENTER
                                     () => onLoadTape(bytes),
                                 ]);
                             }
@@ -179,23 +194,32 @@ function onDocumentLoad() {
             window.addEventListener('keyup', onKeyUp)
             window.addEventListener('focus', onFocus)
             window.addEventListener('blur', onBlur)
-            audio_next = actx.currentTime;
+            g_audio_next = g_actx.currentTime;
             if (document.hasFocus())
                 onFocus();
         });
 
-    document.getElementById('reset_48k').addEventListener('click', handleReset48k, false);
-    document.getElementById('reset_128k').addEventListener('click', handleReset128k, false);
-    document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
-    document.getElementById('stop_tape').addEventListener('click', handleStopTape, false);
-    document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
-    document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
-    document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
-    document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
-    document.getElementById('turbo').addEventListener('click', handleTurbo, false);
-    document.getElementById('dither').addEventListener('click', function(evt) { handleDither.call(this, evt, gl) }, false);
-    document.getElementById('cursor_keys').addEventListener('change', handleCursorKeys, false);
-    handleCursorKeys.call(document.getElementById('cursor_keys'));
+    document.querySelector('#reset_48k').addEventListener('click', handleReset48k, false);
+    document.querySelector('#reset_128k').addEventListener('click', handleReset128k, false);
+    document.querySelector('#load_tape').addEventListener('click', handleLoadTape, false);
+    document.querySelector('#stop_tape').addEventListener('click', handleStopTape, false);
+    document.querySelector('#snapshot').addEventListener('click', handleSnapshot, false);
+    document.querySelector('#load_snapshot').addEventListener('click', handleLoadSnapshot, false);
+    document.querySelector('#load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
+    document.querySelector('#fullscreen').addEventListener('click', handleFullscreen, false);
+    document.querySelector('#turbo').addEventListener('click', handleTurbo, false);
+    let dither = document.querySelector('#dither');
+    dither.addEventListener('click', function(evt) { handleDither.call(this, evt, gl) }, false);
+    handleDither.call(dither, null, gl)
+
+    let cursorKeys = document.querySelector('#cursor_keys');
+    cursorKeys.addEventListener('change', handleCursorKeys, false);
+    if (window.localStorage) {
+        let cursorSel = parseInt(window.localStorage.getItem("cursorKeys"));
+        if (!isNaN(cursorSel))
+            cursorKeys.selectedIndex = cursorSel;
+    }
+    handleCursorKeys.call(cursorKeys, null);
 }
 
 function onKeyDown(ev) {
@@ -207,41 +231,52 @@ function onKeyDown(ev) {
         return;
     case "F9":
         handleLoadLastSnapshot(ev);
-        ev.preventDefault(ev);
+        ev.preventDefault();
+        return;
+    case "F10":
+        document.querySelector('#turbo').checked = g_turbo = true;
+        ev.preventDefault();
         return;
     case "F11":
         handleFullscreen(ev);
-        ev.preventDefault(ev);
+        ev.preventDefault();
         return;
     }
 
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    Module.exports.wasm_key_down(Module.game, key);
+    g_module.exports.wasm_key_down(g_module.game, key);
     ev.preventDefault();
 }
 function onKeyUp(ev) {
+    switch (ev.code) {
+    case "F10":
+        document.querySelector('#turbo').checked = g_turbo = false;
+        ev.preventDefault();
+        return;
+    }
+
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    Module.exports.wasm_key_up(Module.game, key);
+    g_module.exports.wasm_key_up(g_module.game, key);
     ev.preventDefault();
 }
 
-var interval = null;
+let g_interval = null;
 function onFocus(ev) {
     if (!g_delayed_funcs)
-        Module.exports.wasm_reset_input(Module.game);
-    if (interval === null) {
-        interval = setInterval(function(){
-            if (turbo) {
-                Module.exports.wasm_draw_frame(Module.game, true);
-            } else while (audio_next - actx.currentTime < 0.05) {
-                Module.exports.wasm_draw_frame(Module.game, false);
+        g_module.exports.wasm_reset_input(g_module.game);
+    if (g_interval === null) {
+        g_interval = setInterval(function(){
+            if (g_turbo) {
+                g_module.exports.wasm_draw_frame(g_module.game, true);
+            } else while (g_audio_next - g_actx.currentTime < 0.05) {
+                g_module.exports.wasm_draw_frame(g_module.game, false);
                 if (g_delayed_funcs !== null) {
                     if ((g_delayed_funcs[0] -= 20) <= 0) {
-                        var f = g_delayed_funcs[2].shift();
+                        let f = g_delayed_funcs[2].shift();
                         if (f) {
                             f();
                             g_delayed_funcs[0] = g_delayed_funcs[1];
@@ -256,34 +291,23 @@ function onFocus(ev) {
 }
 function onBlur(ev) {
     if (!g_delayed_funcs)
-        Module.exports.wasm_reset_input(Module.game);
-    if (interval !== null) {
-        clearInterval(interval);
-        interval = null;
+        g_module.exports.wasm_reset_input(g_module.game);
+    if (g_interval !== null) {
+        clearInterval(g_interval);
+        g_interval = null;
     }
 }
 
-var cursorKeys = null;
+let g_cursorKeys = null;
 
 function handleCursorKeys(evt) {
-    var sel;
-    switch (this.value) {
-        default:
-        case "cursorkeys":
-            sel = 0;
-            break;
-        case "kempston":
-            sel = 1;
-            break;
-        case "sinclair":
-            sel = 2;
-            break;
-        case "cursorjoy":
-            sel = 3;
-            break;
-    }
-    cursorKeys = CURSOR_KEYS[sel];
+    let sel = this.selectedIndex;
+    if (window.localStorage)
+        window.localStorage.setItem("cursorKeys", sel);
+    g_cursorKeys = CURSOR_KEYS[sel];
     this.blur();
+    if (g_module.exports)
+        g_module.exports.wasm_reset_input(g_module.game);
 }
 
 const CURSOR_KEYS = [
@@ -300,15 +324,15 @@ const CURSOR_KEYS = [
 function getKeyCode(ev) {
     switch (ev.code) {
     case "ArrowLeft":
-        return cursorKeys[0];
+        return g_cursorKeys[0];
     case "ArrowRight":
-        return cursorKeys[1];
+        return g_cursorKeys[1];
     case "ArrowDown":
-        return cursorKeys[2];
+        return g_cursorKeys[2];
     case "ArrowUp":
-        return cursorKeys[3];
+        return g_cursorKeys[3];
     case "ControlLeft":
-        return cursorKeys[4];
+        return g_cursorKeys[4];
 
     case "ShiftLeft":
     case "ShiftRight":
@@ -399,7 +423,7 @@ function getKeyCode(ev) {
 }
 
 function resetTape() {
-    var xTape = document.getElementById("tape");
+    let xTape = document.getElementById("tape");
     while (xTape.firstChild)
         xTape.removeChild(xTape.firstChild);
     return xTape;
@@ -407,9 +431,9 @@ function resetTape() {
 
 function onTapeBlock(index) {
     console.log("Block", index);
-    var xTape = document.getElementById("tape");
-    for (var i = 0; i < xTape.children.length; ++i) {
-        var btn = xTape.children[i];
+    let xTape = document.getElementById("tape");
+    for (let i = 0; i < xTape.children.length; ++i) {
+        let btn = xTape.children[i];
         if (btn['data-index'] == index)
             btn.classList.add('selected');
         else
@@ -420,16 +444,16 @@ function onTapeBlock(index) {
 function onLoadTape(data) {
     console.log("data " + data.byteLength);
     console.log(data);
-    var ptr = Module.exports.wasm_alloc(data.byteLength);
-    var d = new Uint8Array(Module.memory.buffer, ptr, data.byteLength);
+    let ptr = g_module.exports.wasm_alloc(data.byteLength);
+    let d = new Uint8Array(g_module.memory.buffer, ptr, data.byteLength);
     d.set(new Uint8Array(data));
-    let tape_len = Module.exports.wasm_load_tape(Module.game, ptr, data.byteLength);
-    var xTape = resetTape();
+    let tape_len = g_module.exports.wasm_load_tape(g_module.game, ptr, data.byteLength);
+    let xTape = resetTape();
 
     for (let i = 0; i < tape_len; ++i) {
-        let tape_ptr = Module.exports.wasm_tape_name(Module.game, i);
-        let tape_ptr_len = Module.exports.wasm_tape_name_len(Module.game, i);
-        let selectable = Module.exports.wasm_tape_selectable(Module.game, i);
+        let tape_ptr = g_module.exports.wasm_tape_name(g_module.game, i);
+        let tape_ptr_len = g_module.exports.wasm_tape_name_len(g_module.game, i);
+        let selectable = g_module.exports.wasm_tape_selectable(g_module.game, i);
         let tape_name = getStr(tape_ptr, tape_ptr_len);
         console.log("Tape ", i, tape_name);
         if (selectable) {
@@ -444,36 +468,36 @@ function onLoadTape(data) {
 }
 
 function handleTapeSelect(evt) {
-    var f = evt.target.files[0];
+    let f = evt.target.files[0];
     console.log("reading " + f.name);
-    var reader = new FileReader();
+    let reader = new FileReader();
     reader.onload = function(e) { onLoadTape(this.result); };
     reader.readAsArrayBuffer(f);
 }
 
 function handleTapeBlock(evt) {
-    var btn = evt.target;
-    var index = btn['data-index'];
+    let btn = evt.target;
+    let index = btn['data-index'];
     //evt.target.classList.add('playing');
-    Module.exports.wasm_tape_seek(Module.game, index);
+    g_module.exports.wasm_tape_seek(g_module.game, index);
 }
 
 function handleReset48k(evt) {
     resetTape();
-    Module.exports.wasm_drop(Module.game);
-    Module.is128k = false;
-    Module.game = Module.exports.wasm_main(Module.is128k);
+    g_module.exports.wasm_drop(g_module.game);
+    g_module.is128k = false;
+    g_module.game = g_module.exports.wasm_main(g_module.is128k);
 }
 
 function handleReset128k(evt) {
     resetTape();
-    Module.exports.wasm_drop(Module.game);
-    Module.is128k = true;
-    Module.game = Module.exports.wasm_main(Module.is128k);
+    g_module.exports.wasm_drop(g_module.game);
+    g_module.is128k = true;
+    g_module.game = g_module.exports.wasm_main(g_module.is128k);
 }
 
 function handleLoadTape(evt) {
-    var x = document.createElement("input");
+    let x = document.createElement("input");
     x.type = "file";
     x.accept = [".tap", ".tzx", ".zip"];
     x.addEventListener('change', handleTapeSelect, false);
@@ -481,54 +505,58 @@ function handleLoadTape(evt) {
 }
 
 function handleStopTape(evt) {
-    Module.exports.wasm_tape_stop(Module.game);
+    g_module.exports.wasm_tape_stop(g_module.game);
 }
 
 function handleLoadSnapshotSelect(evt) {
-    var f = evt.target.files[0];
+    let f = evt.target.files[0];
     console.log("reading " + f.name);
-    var reader = new FileReader();
+    let reader = new FileReader();
     reader.onload = function(e) {
-        g_lastSnapshot = this.result;
-        var ptr = Module.exports.wasm_alloc(g_lastSnapshot.byteLength);
-        var d = new Uint8Array(Module.memory.buffer, ptr, g_lastSnapshot.byteLength);
-        d.set(new Uint8Array(g_lastSnapshot));
-        Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, g_lastSnapshot.byteLength);
+        saveLastSnapshot(new Uint8Array(this.result));
+        handleLoadLastSnapshot();
     }
     reader.readAsArrayBuffer(f);
 }
 
 function handleLoadSnapshot(evt) {
-    var x = document.createElement("input");
+    let x = document.createElement("input");
     x.type = "file";
     x.accept = [".z80", ".zip"];
     x.addEventListener('change', handleLoadSnapshotSelect, false);
     x.click();
 }
 
+function saveLastSnapshot(data) {
+    g_lastSnapshot = data;
+    if (g_lastSnapshot && window.localStorage) {
+        window.localStorage.setItem("lastSnapshot", base64encode(g_lastSnapshot));
+    }
+}
+
 function handleLoadLastSnapshot(evt) {
     if (!g_lastSnapshot)
         return;
 
-    var ptr = Module.exports.wasm_alloc(g_lastSnapshot.byteLength);
-    var d = new Uint8Array(Module.memory.buffer, ptr, g_lastSnapshot.byteLength);
-    d.set(new Uint8Array(g_lastSnapshot));
-    Module.is128k = Module.exports.wasm_load_snapshot(Module.game, ptr, g_lastSnapshot.byteLength);
+    let ptr = g_module.exports.wasm_alloc(g_lastSnapshot.byteLength);
+    let d = new Uint8Array(g_module.memory.buffer, ptr, g_lastSnapshot.byteLength);
+    d.set(g_lastSnapshot);
+    g_module.is128k = g_module.exports.wasm_load_snapshot(g_module.game, ptr, g_lastSnapshot.byteLength);
 }
 
 function handleSnapshot(evt) {
     console.log("snapshot");
-    let snapshot = Module.exports.wasm_snapshot(Module.game);
-    let ptr = Module.exports.wasm_buffer_ptr(snapshot);
-    let len = Module.exports.wasm_buffer_len(snapshot);
-    var data = new Uint8Array(Module.memory.buffer, ptr, len);
-    var blob = new Blob([data], {type: "application/octet-stream"});
-    var url = window.URL.createObjectURL(blob);
+    let snapshot = g_module.exports.wasm_snapshot(g_module.game);
+    let ptr = g_module.exports.wasm_buffer_ptr(snapshot);
+    let len = g_module.exports.wasm_buffer_len(snapshot);
+    //copy the data because it will be freed at the end
+    let data = new Uint8Array(new Uint8Array(g_module.memory.buffer, ptr, len));
+    let blob = new Blob([data], {type: "application/octet-stream"});
+    let url = window.URL.createObjectURL(blob);
 
-    g_lastSnapshot = new Uint8Array(len);
-    g_lastSnapshot.set(data);
+    saveLastSnapshot(data);
 
-    var a = document.createElement("a");
+    let a = document.createElement("a");
     a.style = "display: none";
     a.href = url;
     a.download = "snapshot.z80";
@@ -536,25 +564,30 @@ function handleSnapshot(evt) {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    Module.exports.wasm_buffer_free(snapshot);
+    g_module.exports.wasm_buffer_free(snapshot);
 }
 function handleFullscreen(evt) {
     console.log("fullscreen");
-    var canvas = realCanvas;
-    var fs = canvas.requestFullscreen || canvas.mozRequestFullScreen || canvas.webkitRequestFullScreen || canvas.msRequestFullscreen;
+    let canvas = g_realCanvas;
+    let fs = canvas.requestFullscreen || canvas.mozRequestFullScreen || canvas.webkitRequestFullScreen || canvas.msRequestFullscreen;
     if (fs)
         fs.call(canvas);
 }
 
 function handleTurbo(evt) {
-    turbo = this.checked;
+    g_turbo = this.checked;
 }
 
-function handleDither(evt, gl) {
-    if (!gl)
-        return;
-
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.checked? gl.LINEAR : gl.NEAREST);
+function handleDither(evt, gl, ctx) {
+    if (gl) {
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.checked? gl.LINEAR : gl.NEAREST);
+    } else {
+        let canvas = document.querySelector('#game-layer');
+        if (this.checked)
+            canvas.classList.remove('pixelated');
+        else
+            canvas.classList.add('pixelated');
+    }
 }
 
 document.addEventListener("DOMContentLoaded", onDocumentLoad);
@@ -679,3 +712,4 @@ function initMyGL(gl) {
     }
     return true;
 }
+
