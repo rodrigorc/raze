@@ -13,6 +13,14 @@ let g_audio_next = 0;
 let g_turbo = false;
 let g_realCanvas = null;
 
+function ensureAudioRunning() {
+    //autoplay policy in chrome requires this
+    if (g_actx.state == "suspended") {
+        console.log("Resume AutoPlay");
+        g_actx.resume();
+    }
+}
+
 function fetch_with_cors_if_needed(url, callback, error) {
     let on_ok = resp => {
         if (resp.ok)
@@ -194,11 +202,14 @@ function onDocumentLoad() {
             window.addEventListener('keyup', onKeyUp)
             window.addEventListener('focus', onFocus)
             window.addEventListener('blur', onBlur)
+            window.addEventListener("gamepadconnected", onGamepadConnected);
+            window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
             g_audio_next = g_actx.currentTime;
             if (document.hasFocus())
                 onFocus();
         });
 
+    document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
     document.querySelector('#reset_48k').addEventListener('click', handleReset48k, false);
     document.querySelector('#reset_128k').addEventListener('click', handleReset128k, false);
     document.querySelector('#load_tape').addEventListener('click', handleLoadTape, false);
@@ -224,6 +235,7 @@ function onDocumentLoad() {
 
 function onKeyDown(ev) {
     //console.log(ev.code);
+    ensureAudioRunning();
     switch (ev.code) {
     case "F6":
         handleSnapshot(ev);
@@ -270,6 +282,7 @@ function onFocus(ev) {
         g_module.exports.wasm_reset_input(g_module.game);
     if (g_interval === null) {
         g_interval = setInterval(function(){
+            inputGamepad();
             if (g_turbo) {
                 g_module.exports.wasm_draw_frame(g_module.game, true);
             } else while (g_audio_next - g_actx.currentTime < 0.05) {
@@ -296,6 +309,44 @@ function onBlur(ev) {
         clearInterval(g_interval);
         g_interval = null;
     }
+}
+
+let g_gamepad = null;
+let g_gamepadStatus = { fire: false, x: 0, y: 0 };
+
+function onGamepadConnected(ev, connecting) {
+    if (!g_gamepad) {
+        g_gamepad = ev.gamepad.index;
+        console.log("Using gamepad " + ev.gamepad.id);
+    }
+}
+function onGamepadDisconnected(ev) {
+    if (g_gamepad == ev.gamepad.index) {
+        console.log("Removing gamepad");
+        g_gamepad = null;
+    }
+}
+
+function inputGamepad() {
+    if (g_gamepad === null)
+        return;
+    let gamepad = navigator.getGamepads()[g_gamepad];
+    let fire = false;
+    for (let i = 0; i < 3 && i < gamepad.buttons.length && !fire; ++i)
+        fire |= gamepad.buttons[i].pressed;
+    let x = gamepad.axes[0];
+    let y = gamepad.axes[1];
+    if (x != g_gamepadStatus.x) {
+        (x < -0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x81);
+        (x > 0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x80);
+    }
+    if (y != g_gamepadStatus.y) {
+        (y > 0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x82);
+        (y < -0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x83);
+    }
+    if (fire != g_gamepadStatus.fire)
+        (fire? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x84);
+    g_gamepadStatus = { fire: fire, x: x, y: y };
 }
 
 let g_cursorKeys = null;
