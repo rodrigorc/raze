@@ -1,13 +1,6 @@
 'use strict';
 
 let g_module = {};
-
-let g_utfDecoder = new TextDecoder('utf-8');
-function getStr(ptr, len) {
-    let slice = new Uint8Array(g_module.memory.buffer, ptr, len);
-    return g_utfDecoder.decode(slice);
-};
-
 let g_actx = new AudioContext();
 let g_audio_next = 0;
 let g_turbo = false;
@@ -96,59 +89,36 @@ function onDocumentLoad() {
         g_realCanvas = canvas;
     }
 
-    let imports = {
-        env: {
-            consolelog: (ptr, len) => console.log(getStr(ptr, len)),
-            alert: (ptr, len) => alert(getStr(ptr, len)),
-            putImageData: (w, h, ptr, len) => {
-                if (gl) {
-                    let data = new Uint8Array(g_module.memory.buffer, ptr, len);
-                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-                    gl.flush();
-                } else {
-                    let data = new Uint8ClampedArray(g_module.memory.buffer, ptr, len);
-                    let img = new ImageData(data, w, h);
-                    ctx.putImageData(img, 0, 0);
-                }
-            },
-            putSoundData: (ptr, len) => {
-                let asrc = g_actx.createBufferSource();
-                let abuf = g_actx.createBuffer(1, len, g_module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
-                let data = abuf.getChannelData(0);
-                let slice = new Float32Array(g_module.memory.buffer, ptr, len);
-                for (let i = 0; i < len; ++i)
-                    data[i] = slice[i];
-                asrc.buffer = abuf;
-                asrc.connect(g_actx.destination);
+    Object.assign(exports, {
+        putImageData: function(w, h, data) {
+            if (gl) {
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                gl.flush();
+            } else {
+                let img = new ImageData(data, w, h);
+                ctx.putImageData(img, 0, 0);
+            }
+        },
+        putSoundData: function(slice) {
+            let asrc = g_actx.createBufferSource();
+            let abuf = g_actx.createBuffer(1, slice.length, g_module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+            let data = abuf.getChannelData(0);
+            for (let i = 0; i < slice.length; ++i)
+                data[i] = slice[i];
+            asrc.buffer = abuf;
+            asrc.connect(g_actx.destination);
 
-                asrc.start(g_audio_next);
-                g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
-            },
-            onTapeBlock: (index) => {
-                onTapeBlock(index);
-            },
-        }
-    };
-    let wasm = '/target/wasm32-unknown-unknown/release/raze.wasm';
-    if (WebAssembly.instantiateStreaming) {
-        wasm = WebAssembly.instantiateStreaming(fetch(wasm), imports);
-    } else {
-        wasm = fetch(wasm).
-                then(resp => resp.arrayBuffer()).
-                then(bytes => WebAssembly.instantiate(bytes, imports));
-    }
-    wasm.
+            asrc.start(g_audio_next);
+            g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
+        },
+    });
+
+    wasm_bindgen('/pkg/raze_bg.wasm').
         then(wasm => {
-            let exports = wasm.instance.exports;
-            Object.assign(g_module, {
-                wasm: wasm,
-                exports: exports,
-                memory: exports.memory,
-            });
             let is128k = !boolURLParamDef(urlParams, '48k', false)
             g_module.is128k = is128k;
-            g_module.game = exports.wasm_main(is128k);
+            g_module.game = wasm_bindgen.wasm_main(is128k);
 
             let snapshot = urlParams.get("snapshot");
             if (snapshot) {
@@ -172,22 +142,22 @@ function onDocumentLoad() {
                         if (bytes) {
                             if (is128k) {
                                 call_with_delay(1000, 100, [
-                                    () => g_module.exports.wasm_key_down(g_module.game, 0x60), //ENTER
-                                    () => g_module.exports.wasm_key_up(g_module.game, 0x60), //ENTER
+                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
+                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
                                     () => onLoadTape(bytes),
                                 ]);
                             } else {
                                 call_with_delay(2000, 100, [
-                                    () => g_module.exports.wasm_key_down(g_module.game, 0x63), //J (LOAD)
-                                    () => g_module.exports.wasm_key_up(g_module.game, 0x63),
-                                    () => g_module.exports.wasm_key_down(g_module.game, 0x71), //SS
-                                    () => g_module.exports.wasm_key_down(g_module.game, 0x50), //P (")
-                                    () => g_module.exports.wasm_key_up(g_module.game, 0x50), //P (")
-                                    () => g_module.exports.wasm_key_down(g_module.game, 0x50), //P (")
-                                    () => g_module.exports.wasm_key_up(g_module.game, 0x50), //P (")
-                                    () => g_module.exports.wasm_key_up(g_module.game, 0x71), //SS
-                                    () => g_module.exports.wasm_key_down(g_module.game, 0x60), //ENTER
-                                    () => g_module.exports.wasm_key_up(g_module.game, 0x60), //ENTER
+                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x63), //J (LOAD)
+                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x63),
+                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x71), //SS
+                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
+                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
+                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
+                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
+                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x71), //SS
+                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
+                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
                                     () => onLoadTape(bytes),
                                 ]);
                             }
@@ -258,7 +228,7 @@ function onKeyDown(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    g_module.exports.wasm_key_down(g_module.game, key);
+    wasm_bindgen.wasm_key_down(g_module.game, key);
     ev.preventDefault();
 }
 function onKeyUp(ev) {
@@ -272,21 +242,21 @@ function onKeyUp(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    g_module.exports.wasm_key_up(g_module.game, key);
+    wasm_bindgen.wasm_key_up(g_module.game, key);
     ev.preventDefault();
 }
 
 let g_interval = null;
 function onFocus(ev) {
     if (!g_delayed_funcs)
-        g_module.exports.wasm_reset_input(g_module.game);
+        wasm_bindgen.wasm_reset_input(g_module.game);
     if (g_interval === null) {
         g_interval = setInterval(function(){
             inputGamepad();
             if (g_turbo) {
-                g_module.exports.wasm_draw_frame(g_module.game, true);
+                wasm_bindgen.wasm_draw_frame(g_module.game, true);
             } else while (g_audio_next - g_actx.currentTime < 0.05) {
-                g_module.exports.wasm_draw_frame(g_module.game, false);
+                wasm_bindgen.wasm_draw_frame(g_module.game, false);
                 if (g_delayed_funcs !== null) {
                     if ((g_delayed_funcs[0] -= 20) <= 0) {
                         let f = g_delayed_funcs[2].shift();
@@ -304,7 +274,7 @@ function onFocus(ev) {
 }
 function onBlur(ev) {
     if (!g_delayed_funcs)
-        g_module.exports.wasm_reset_input(g_module.game);
+        wasm_bindgen.wasm_reset_input(g_module.game);
     if (g_interval !== null) {
         clearInterval(g_interval);
         g_interval = null;
@@ -337,15 +307,15 @@ function inputGamepad() {
     let x = gamepad.axes[0];
     let y = gamepad.axes[1];
     if (x != g_gamepadStatus.x) {
-        (x < -0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x81);
-        (x > 0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x80);
+        (x < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x81);
+        (x > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x80);
     }
     if (y != g_gamepadStatus.y) {
-        (y > 0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x82);
-        (y < -0.3? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x83);
+        (y > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x82);
+        (y < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x83);
     }
     if (fire != g_gamepadStatus.fire)
-        (fire? g_module.exports.wasm_key_down : g_module.exports.wasm_key_up)(g_module.game, 0x84);
+        (fire? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x84);
     g_gamepadStatus = { fire: fire, x: x, y: y };
 }
 
@@ -357,8 +327,8 @@ function handleCursorKeys(evt) {
         window.localStorage.setItem("cursorKeys", sel);
     g_cursorKeys = CURSOR_KEYS[sel];
     this.blur();
-    if (g_module.exports)
-        g_module.exports.wasm_reset_input(g_module.game);
+    if (g_module.game)
+        wasm_bindgen.wasm_reset_input(g_module.game);
 }
 
 const CURSOR_KEYS = [
@@ -480,32 +450,28 @@ function resetTape() {
     return xTape;
 }
 
-function onTapeBlock(index) {
-    console.log("Block", index);
-    let xTape = document.getElementById("tape");
-    for (let i = 0; i < xTape.children.length; ++i) {
-        let btn = xTape.children[i];
-        if (btn['data-index'] == index)
-            btn.classList.add('selected');
-        else
-            btn.classList.remove('selected');
+//export to Rust
+let exports = {
+    onTapeBlock: function(index) {
+        console.log("Block", index);
+        let xTape = document.getElementById("tape");
+        for (let i = 0; i < xTape.children.length; ++i) {
+            let btn = xTape.children[i];
+            if (btn['data-index'] == index)
+                btn.classList.add('selected');
+            else
+                btn.classList.remove('selected');
+        }
     }
 }
 
 function onLoadTape(data) {
-    console.log("data " + data.byteLength);
-    console.log(data);
-    let ptr = g_module.exports.wasm_alloc(data.byteLength);
-    let d = new Uint8Array(g_module.memory.buffer, ptr, data.byteLength);
-    d.set(new Uint8Array(data));
-    let tape_len = g_module.exports.wasm_load_tape(g_module.game, ptr, data.byteLength);
+    let tape_len = wasm_bindgen.wasm_load_tape(g_module.game, new Uint8Array(data));
     let xTape = resetTape();
 
     for (let i = 0; i < tape_len; ++i) {
-        let tape_ptr = g_module.exports.wasm_tape_name(g_module.game, i);
-        let tape_ptr_len = g_module.exports.wasm_tape_name_len(g_module.game, i);
-        let selectable = g_module.exports.wasm_tape_selectable(g_module.game, i);
-        let tape_name = getStr(tape_ptr, tape_ptr_len);
+        let selectable = wasm_bindgen.wasm_tape_selectable(g_module.game, i);
+        let tape_name = wasm_bindgen.wasm_tape_name(g_module.game, i);
         console.log("Tape ", i, tape_name);
         if (selectable) {
             let btn = document.createElement("button");
@@ -530,21 +496,21 @@ function handleTapeBlock(evt) {
     let btn = evt.target;
     let index = btn['data-index'];
     //evt.target.classList.add('playing');
-    g_module.exports.wasm_tape_seek(g_module.game, index);
+    wasm_bindgen.wasm_tape_seek(g_module.game, index);
 }
 
 function handleReset48k(evt) {
     resetTape();
-    g_module.exports.wasm_drop(g_module.game);
+    wasm_bindgen.wasm_drop(g_module.game);
     g_module.is128k = false;
-    g_module.game = g_module.exports.wasm_main(g_module.is128k);
+    g_module.game = wasm_bindgen.wasm_main(g_module.is128k);
 }
 
 function handleReset128k(evt) {
     resetTape();
-    g_module.exports.wasm_drop(g_module.game);
+    wasm_bindgen.wasm_drop(g_module.game);
     g_module.is128k = true;
-    g_module.game = g_module.exports.wasm_main(g_module.is128k);
+    g_module.game = wasm_bindgen.wasm_main(g_module.is128k);
 }
 
 function handleLoadTape(evt) {
@@ -556,7 +522,7 @@ function handleLoadTape(evt) {
 }
 
 function handleStopTape(evt) {
-    g_module.exports.wasm_tape_stop(g_module.game);
+    wasm_bindgen.wasm_tape_stop(g_module.game);
 }
 
 function handleLoadSnapshotSelect(evt) {
@@ -588,20 +554,12 @@ function saveLastSnapshot(data) {
 function handleLoadLastSnapshot(evt) {
     if (!g_lastSnapshot)
         return;
-
-    let ptr = g_module.exports.wasm_alloc(g_lastSnapshot.byteLength);
-    let d = new Uint8Array(g_module.memory.buffer, ptr, g_lastSnapshot.byteLength);
-    d.set(g_lastSnapshot);
-    g_module.is128k = g_module.exports.wasm_load_snapshot(g_module.game, ptr, g_lastSnapshot.byteLength);
+    g_module.is128k = wasm_bindgen.wasm_load_snapshot(g_module.game, g_lastSnapshot);
 }
 
 function handleSnapshot(evt) {
     console.log("snapshot");
-    let snapshot = g_module.exports.wasm_snapshot(g_module.game);
-    let ptr = g_module.exports.wasm_buffer_ptr(snapshot);
-    let len = g_module.exports.wasm_buffer_len(snapshot);
-    //copy the data because it will be freed at the end
-    let data = new Uint8Array(new Uint8Array(g_module.memory.buffer, ptr, len));
+    let data = wasm_bindgen.wasm_snapshot(g_module.game);
     let blob = new Blob([data], {type: "application/octet-stream"});
     let url = window.URL.createObjectURL(blob);
 
@@ -615,8 +573,8 @@ function handleSnapshot(evt) {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    g_module.exports.wasm_buffer_free(snapshot);
 }
+
 function handleFullscreen(evt) {
     console.log("fullscreen");
     let canvas = g_realCanvas;
