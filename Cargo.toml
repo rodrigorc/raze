@@ -19,7 +19,7 @@ required-features = ["dump_ops"]
 [profile.release]
 lto = true
 panic = "abort"
-opt-level = 2
+opt-level = 3
 
 [dependencies]
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }

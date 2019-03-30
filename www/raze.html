@@ -4,6 +4,13 @@
 <title>R.A.Z.E. A Spectrum Emulator</title>
 <meta charset="utf-8" />
 <style>
+* {
+    font-family: monospace;
+}
+h1 {
+   text-align: center;
+   margin: 0 0 5px;
+}
 #stage {
     width: 798px;
     height: 600px;
@@ -35,16 +42,12 @@ canvas.pixelated {
 #tape button.selected {
     background: lightblue;
 }
-* {
-    font-family: monospace;
-}
 </style>
 </head>
 <body>
-
-
 <div id="row">
 <div id="stage">
+<h1>R.A.Z.E. A ZX Spectrum Emulator</h1>
   <canvas id="game-layer-3d" width="798" height="600"></canvas>
   <canvas id="game-layer" width="266" height="200" style="display:none" class="pixelated"></canvas>
 </div>
@@ -54,11 +57,11 @@ canvas.pixelated {
   <div><button id="load_tape">Load Tape</button><button id="stop_tape">Pause</button></div>&nbsp;&nbsp;<div id="tape"></div><br>
   <button id="snapshot">Save Snapshot (F6)</button><button id="load_last_snapshot">Reload Last (F9)</button><button id="load_snapshot">Load Snapshot</button><br>
   <button id="fullscreen">Fullscreen (F11)</button>
-  <label for="cursor_keys">Cursor keys: </label><select id="cursor_keys" name="cursor_keys">
+  <label for="cursor_keys">Cursor keys &amp; LCtrl: </label><select id="cursor_keys" name="cursor_keys">
     <option value="cursorkeys">Cursor keys</option>
     <option value="kempston">Kempston</option>
     <option value="sinclair">Sinclair</option>
-    <option value="cursorjoy">Cursor joystick</option>
+    <option value="protek">Protek/Cursor</option>
   </select>
 </div>
 </div>
