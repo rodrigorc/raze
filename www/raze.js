@@ -210,6 +210,9 @@ function onKeyDown(ev) {
         handleSnapshot(ev);
         ev.preventDefault();
         return;
+    case "F8":
+        document.querySelector('#dither').click();
+        return;
     case "F9":
         handleLoadLastSnapshot(ev);
         ev.preventDefault();
