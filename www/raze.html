@@ -4,6 +4,9 @@
 <title>R.A.Z.E. A Spectrum Emulator</title>
 <meta charset="utf-8" />
 <style>
+body {
+    background: gray;
+}
 * {
     font-family: monospace;
 }
@@ -14,6 +17,11 @@ h1 {
 #stage {
     width: 798px;
     height: 600px;
+    position: relative;
+    margin: 0 auto;
+}
+#controls {
+    width: 798px;
     position: relative;
     margin: 0 auto;
 }
@@ -45,16 +53,14 @@ canvas.pixelated {
 </style>
 </head>
 <body>
-<div id="row">
-<div id="stage">
 <h1>R.A.Z.E. A ZX Spectrum Emulator</h1>
+<div id="stage">
   <canvas id="game-layer-3d" width="798" height="600"></canvas>
   <canvas id="game-layer" width="266" height="200" style="display:none" class="pixelated"></canvas>
 </div>
 <p>
 <div id="controls">
   <button id="reset_128k">Reset 128k</button><button id="reset_48k">Reset 48k</button><input id="turbo" name="turbo" type="checkbox">Turbo (F10)</input>&nbsp;&nbsp;<input id="dither" name="dither" type="checkbox">Dither</input><br>
-  <div><button id="load_tape">Load Tape</button><button id="stop_tape">Pause</button></div>&nbsp;&nbsp;<div id="tape"></div><br>
   <button id="snapshot">Save Snapshot (F6)</button><button id="load_last_snapshot">Reload Last (F9)</button><button id="load_snapshot">Load Snapshot</button><br>
   <button id="fullscreen">Fullscreen (F11)</button>
   <label for="cursor_keys">Cursor keys &amp; LCtrl: </label><select id="cursor_keys" name="cursor_keys">
@@ -62,8 +68,9 @@ canvas.pixelated {
     <option value="kempston">Kempston</option>
     <option value="sinclair">Sinclair</option>
     <option value="protek">Protek/Cursor</option>
-  </select>
-</div>
+  </select><br>
+  <div><button id="load_tape">Load Tape</button><button id="stop_tape">Pause</button></div><br>
+  <div id="tape"></div>
 </div>
 
 <script src="/pkg/raze.js"></script>
