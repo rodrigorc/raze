@@ -14,22 +14,21 @@ function ensureAudioRunning() {
     }
 }
 
-function fetch_with_cors_if_needed(url, callback, error) {
-    let on_ok = resp => {
+async function fetch_with_cors_if_needed(url, callback, error) {
+    try {
+        let resp;
+        try {
+            resp = await fetch(url);
+        } catch (_) {
+            resp = await fetch('https://cors-anywhere.herokuapp.com/' + url);
+        }
         if (resp.ok)
-            resp.arrayBuffer().then(callback);
+            callback(await resp.arrayBuffer());
         else
             error();
-    };
-    fetch(url).
-        then(on_ok).
-        catch(_ => {
-            fetch('https://cors-anywhere.herokuapp.com/' + url).
-                then(on_ok).
-                catch (e => {
-                    error(e);
-                });
-        });
+    } catch (e) {
+        error();
+    }
 }
 
 let g_delayed_funcs = null;
@@ -58,7 +57,7 @@ function boolURLParamDef(urlParams, key, def) {
     return true;
 }
 
-function onDocumentLoad() {
+async function onDocumentLoad() {
 
     let urlParams = new URLSearchParams(window.location.search);
     let webgl = boolURLParamDef(urlParams, 'webgl', true)
@@ -114,70 +113,70 @@ function onDocumentLoad() {
         },
     });
 
-    wasm_bindgen('/pkg/raze_bg.wasm').
-        then(wasm => {
-            let is128k = !boolURLParamDef(urlParams, '48k', false)
-            g_module.is128k = is128k;
-            g_module.game = wasm_bindgen.wasm_main(is128k);
+    let wasm = await wasm_bindgen('/pkg/raze_bg.wasm');
 
-            let snapshot = urlParams.get("snapshot");
-            if (snapshot) {
-                console.log("SNAPSHOT=", snapshot);
-                fetch_with_cors_if_needed(snapshot,
-                    bytes => {
-                        saveLastSnapshot(new Uint8Array(bytes));
-                        handleLoadLastSnapshot();
-                    },
-                    error => {
-                        alert("Cannot download file " + snapshot);
-                    }
-                );
-            }
+    let is128k = !boolURLParamDef(urlParams, '48k', false)
+    g_module.is128k = is128k;
+    g_module.game = wasm_bindgen.wasm_main(is128k);
 
-            let tape = urlParams.get("tape");
-            if (tape) {
-                console.log("TAPE=", tape);
-                fetch_with_cors_if_needed(tape,
-                    bytes => {
-                        if (bytes) {
-                            if (is128k) {
-                                call_with_delay(1000, 100, [
-                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
-                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
-                                    () => onLoadTape(bytes),
-                                ]);
-                            } else {
-                                call_with_delay(2000, 100, [
-                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x63), //J (LOAD)
-                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x63),
-                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x71), //SS
-                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
-                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
-                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
-                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
-                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x71), //SS
-                                    () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
-                                    () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
-                                    () => onLoadTape(bytes),
-                                ]);
-                            }
-                        }
-                    },
-                    error => {
-                        alert("Cannot download file " + tape);
-                    }
-                );
+    let snapshot = urlParams.get("snapshot");
+    if (snapshot) {
+        console.log("SNAPSHOT=", snapshot);
+        await fetch_with_cors_if_needed(snapshot,
+            bytes => {
+                saveLastSnapshot(new Uint8Array(bytes));
+                handleLoadLastSnapshot();
+            },
+            error => {
+                alert("Cannot download file " + snapshot);
             }
-            window.addEventListener('keydown', onKeyDown)
-            window.addEventListener('keyup', onKeyUp)
-            window.addEventListener('focus', onFocus)
-            window.addEventListener('blur', onBlur)
-            window.addEventListener("gamepadconnected", onGamepadConnected);
-            window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
-            g_audio_next = g_actx.currentTime;
-            if (document.hasFocus())
-                onFocus();
-        });
+        );
+    }
+
+    let tape = urlParams.get("tape");
+    if (tape) {
+        console.log("TAPE=", tape);
+        await fetch_with_cors_if_needed(tape,
+            bytes => {
+                console.log(bytes);
+                if (bytes) {
+                    if (is128k) {
+                        call_with_delay(1500, 100, [
+                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
+                            () => onLoadTape(bytes),
+                        ]);
+                    } else {
+                        call_with_delay(2000, 100, [
+                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x63), //J (LOAD)
+                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x63),
+                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x71), //SS
+                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x71), //SS
+                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
+                            () => onLoadTape(bytes),
+                        ]);
+                    }
+                }
+            },
+            error => {
+                alert("Cannot download file " + tape);
+            }
+        );
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener("gamepadconnected", onGamepadConnected);
+    window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
+    g_audio_next = g_actx.currentTime;
+    if (document.hasFocus())
+        onFocus();
 
     document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
     document.querySelector('#reset_48k').addEventListener('click', handleReset48k, false);
