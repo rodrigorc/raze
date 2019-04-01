@@ -492,6 +492,40 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
     Ok(parser.blocks)
 }
 
+static SPECTRUM_ENCODING : [&str; 0x100] = [
+/* 0 */ "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+/* 1 */ "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+/* 2 */ " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
+/* 3 */ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?",
+/* 4 */ "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
+/* 5 */ "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "↑", "_",
+/* 6 */ "£", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
+/* 7 */ "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "©",
+/* 8 */ " ", "▝", "▘", "▀", "▗", "▐", "▚", "▜", "▖", "▞", "▌", "▛", "▄", "▟", "▙", "█",
+/* 9 */ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
+/* A */ "Q", "R", "S", "T", "U", "RND", "INKEY$", "PI",
+        "FN", "POINT", "SCREEN$", "ATTR", "AT", "TAB", "VAL$", "CODE",
+/* B */ "VAL", "LEN", "SIN", "COS", "TAN", "ASN", "ACS", "ATN",
+        "LN", "EXP", "INT", "SQR", "SGN", "ABS", "PEEK", "IN",
+/* C */ "USR", "STR$", "CHR$", "NOT", "BIN", "OR", "AND", "<=",
+        ">=", "<>", "LINE", "THEN", "TO", "STEP", "DEF FN", "CAT",
+/* D */ "FORMAT", "MOVE", "ERASE", "OPEN #", "CLOSE #", "MERGE", "VERIFY", "BEEP",
+        "CIRCLE", "INK", "PAPER", "FLASH", "BRIGHT", "INVERSE", "OVER", "OUT",
+/* E */ "LPRINT", "LLIST", "STOP", "READ", "DATA", "RESTORE", "NEW", "BORDER",
+        "CONTINUE", "DIM", "REM", "FOR", "GO TO", "GO SUB", "INPUT", "LOAD",
+/* F */ "LIST", "LET", "PAUSE", "NEXT", "POKE", "PRINT", "PLOT", "RUN",
+        "SAVE", "RANDOMIZE", "IF", "CLS", "DRAW", "CLEAR", "RETURN", "COPY",
+];
+
+fn string_from_zx(bs: &[u8]) -> String {
+    let mut s = String::new();
+    log!("{:?}", bs);
+    for &b in bs {
+        s += SPECTRUM_ENCODING[usize::from(b)];
+    }
+    s
+}
+
 impl Tape {
     pub fn new<R: Read + Seek>(mut tap: R, is128k: bool) -> io::Result<Tape> {
         let start_pos = tap.seek(io::SeekFrom::Current(0))?;
@@ -516,7 +550,7 @@ impl Tape {
                     3 => Cow::Borrowed("Bytes"),
                     x => Cow::Owned(format!("Type {}", x)),
                 };
-                let block_name = String::from_utf8_lossy(&block.data[2..12]);
+                let block_name = string_from_zx(&block.data[2..12]);
                 prefixed = true;
                 Some(format!("{}: {}", block_type, block_name))
             } else {
