@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>R.A.Z.E. A Spectrum Emulator</title>
+<meta charset="utf-8" />
+<style>
+body {
+    background: gray;
+}
+* {
+    font-family: monospace;
+}
+h1 {
+   text-align: center;
+   margin: 0 0 5px;
+}
+#stage {
+    width: 798px;
+    height: 600px;
+    position: relative;
+    margin: 0 auto;
+}
+#controls {
+    width: 798px;
+    position: relative;
+    margin: 0 auto;
+}
+#stage canvas {
+    width: 798px;
+    height: 600px;
+    border: 2px solid black;
+    cursor: none;
+}
+
+canvas.pixelated {
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+#controls div {
+    display: inline;
+}
+#tape button {
+    border: 1px solid black;
+    padding: 2px;
+    margin: 2px;
+    font-size: small;
+}
+#tape button.selected {
+    background: lightblue;
+}
+</style>
+</head>
+<body>
+<style>#forkongithub a{background:#000;color:#fff;text-decoration:none;font-family:arial,sans-serif;text-align:center;font-weight:bold;padding:5px 40px;font-size:1rem;line-height:2rem;position:relative;transition:0.5s;}#forkongithub a:hover{background:#c11;color:#fff;}#forkongithub a::before,#forkongithub a::after{content:"";width:100%;display:block;position:absolute;top:1px;left:0;height:1px;background:#fff;}#forkongithub a::after{bottom:1px;top:auto;}@media screen and (min-width:800px){#forkongithub{position:absolute;display:block;top:0;right:0;width:200px;overflow:hidden;height:200px;z-index:9999;}#forkongithub a{width:200px;position:absolute;top:60px;right:-60px;transform:rotate(45deg);-webkit-transform:rotate(45deg);-ms-transform:rotate(45deg);-moz-transform:rotate(45deg);-o-transform:rotate(45deg);box-shadow:4px 4px 10px rgba(0,0,0,0.8);}}</style><span id="forkongithub"><a href="https://github.com/rodrigorc/raze">Fork me on GitHub</a></span>
+<h1>R.A.Z.E. A ZX Spectrum Emulator</h1>
+<div id="stage">
+  <canvas id="game-layer-3d" width="798" height="600"></canvas>
+  <canvas id="game-layer" width="266" height="200" style="display:none" class="pixelated"></canvas>
+</div>
+<p>
+<div id="controls">
+  <button id="reset_128k">Reset 128k</button><button id="reset_48k">Reset 48k</button><input id="turbo" name="turbo" type="checkbox">Turbo (F10)</input>&nbsp;&nbsp;<input id="dither" name="dither" type="checkbox">Dither (F8)</input><br>
+  <button id="snapshot">Save Snapshot (F6)</button><button id="load_last_snapshot">Reload Last (F9)</button><button id="load_snapshot">Load Snapshot</button><br>
+  <button id="fullscreen">Fullscreen (F11)</button>
+  <label for="cursor_keys">Cursor keys &amp; LCtrl: </label><select id="cursor_keys" name="cursor_keys">
+    <option value="cursorkeys">Cursor keys</option>
+    <option value="kempston">Kempston</option>
+    <option value="sinclair">Sinclair</option>
+    <option value="protek">Protek/Cursor</option>
+  </select><br>
+  <div><button id="load_tape">Load Tape</button><button id="stop_tape">Pause</button></div><br>
+  <div id="tape"></div>
+</div>
+
+<script src="pkg/raze.js"></script>
+<script src="base64.js"></script>
+<script src="raze.js"></script>
+</body>
