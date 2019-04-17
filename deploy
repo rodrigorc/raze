@@ -3,3 +3,4 @@
 sed -f www/deploy.sed www/raze.js > DEMO/raze.js
 sed -f www/deploy.sed www/index.html > DEMO/index.html
 cp pkg/raze_bg.wasm pkg/raze.js DEMO/pkg/
+cp www/raze.css DEMO/raze.css

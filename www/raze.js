@@ -200,6 +200,185 @@ async function onDocumentLoad() {
             cursorKeys.selectedIndex = cursorSel;
     }
     handleCursorKeys.call(cursorKeys, null);
+
+    let keyboard = document.querySelector('#keyboard');
+    if ('ontouchstart' in keyboard) {
+        let joyBtns = document.querySelector('#joy-btns');
+        let joyBtnsCtx = joyBtns.getContext('2d');
+        drawJoystickBtns(joyBtnsCtx, false, false, false, false);
+        let joyFire = document.querySelector('#joy-fire');
+        let joyFireCtx = joyFire.getContext('2d');
+        drawJoystickFire(joyFireCtx, false);
+
+        keyboard.style.display = 'block';
+        //keyboard
+        keyboard.querySelectorAll('.key').forEach(key => {
+            key.addEventListener('touchstart', onOSKeyDown, false);
+            key.addEventListener('touchend', onOSKeyUp, false);
+        });
+        //joystick
+        joyBtns.addEventListener('touchstart', onOSJoyDown.bind(joyBtnsCtx), false);
+        joyBtns.addEventListener('touchmove', onOSJoyDown.bind(joyBtnsCtx), false);
+        joyBtns.addEventListener('touchend', onOSJoyUp.bind(joyBtnsCtx), false);
+        //joystick fire
+        joyFire.addEventListener('touchstart', ev => {
+            ev.preventDefault();
+            drawJoystickFire(joyFireCtx, true);
+            wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[4]);
+        }, false);
+        joyFire.addEventListener('touchend', ev => {
+            ev.preventDefault();
+            drawJoystickFire(joyFireCtx, false);
+            wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[4]);
+        }, false);
+        //disable scroll/zoom
+        keyboard.addEventListener('touchstart', ev => {
+            ev.preventDefault();
+        }, false);
+        keyboard.addEventListener('touchend', ev => {
+            ev.preventDefault();
+        }, false);
+    }
+}
+
+function drawJoystickBtns(ctx, t, l, r, b) {
+    let w = ctx.canvas.width;
+    let h = ctx.canvas.height;
+    let rad = 0.45 * Math.min(w, h);
+    ctx.lineWidth = 5;
+    var grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, rad);
+    grd.addColorStop(0, 'red');
+    grd.addColorStop(1, 'black');
+
+    for (let i = 0; i < 4; ++i) {
+        ctx.beginPath();
+        ctx.moveTo(w/2, h/2);
+        ctx.arc(w/2, h/2, rad, i/2 * Math.PI + Math.PI/4, (i+1)/2 * Math.PI + Math.PI/4);
+        let x;
+        switch (i) {
+        case 0: x = b; break;
+        case 1: x = l; break;
+        case 2: x = t; break;
+        case 3: x = r; break;
+        }
+        ctx.fillStyle = x ? grd : 'white';
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(w/2, h/2, rad, 0, 2 * Math.PI);
+    ctx.stroke();
+}
+function drawJoystickFire(ctx, f) {
+    let w = ctx.canvas.width;
+    let h = ctx.canvas.height;
+    let rad = 0.45 * Math.min(w, h);
+    ctx.lineWidth = 5;
+
+    if (f) {
+        var grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, rad);
+        grd.addColorStop(0, 'red');
+        grd.addColorStop(1, 'black');
+        ctx.fillStyle = grd;
+    } else {
+        ctx.fillStyle = 'white';
+    }
+
+    ctx.beginPath();
+    ctx.arc(w/2, h/2, rad, 0, 2*Math.PI);
+    ctx.fill();
+    ctx.stroke();
+}
+
+let g_joyTouchIdentifier = null;
+
+function onOSJoyDown(ev) {
+    ev.preventDefault();
+    let t = null;
+    for (let i = 0; i < ev.changedTouches.length; ++i)
+        if (g_joyTouchIdentifier == null || g_joyTouchIdentifier == ev.changedTouches[i].identifier) {
+            t = ev.changedTouches[i];
+            break;
+        }
+    if (t === null)
+        return;
+    g_joyTouchIdentifier = t.identifier;
+
+    var rect = this.canvas.getBoundingClientRect();
+    let x = t.clientX - rect.left - rect.width / 2;
+    let y = t.clientY - rect.top - rect.height / 2;
+    let rad = 0.45 * Math.min(rect.width, rect.height);
+    let ang = Math.atan2(y, x);
+    let hyp = Math.hypot(x, y);
+
+    let up, down, left, right;
+    if (hyp < rad * 0.3) {
+        up = down = left = right = false;
+    } else {
+        let piece = ang / (Math.PI / 8);
+/* Piece is more or less like this (negative on the top):
+    8         0
+    7         1
+     6       2
+       5 4 3
+*/
+        right = -2.5 < piece && piece < 2.5;
+        left = piece > 5.5 || piece < -5.5;
+        down = 1.5 < piece  && piece < 6.5;
+        up = -6.5 < piece && piece < -1.5;
+    }
+
+    drawJoystickBtns(this, up, left, right, down);
+
+    //first do the key_up, then the key_down, in case "cursor" mode is used
+    //so that the shift key is properly pressed
+    if (!left)
+        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[0]);
+    if (!right)
+        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[1]);
+    if (!down)
+        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[2]);
+    if (!up)
+        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[3]);
+    if (left)
+        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[0]);
+    if (right)
+        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[1]);
+    if (down)
+        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[2]);
+    if (up)
+        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[3]);
+}
+
+function onOSJoyUp(ev) {
+    ev.preventDefault();
+    let t = null;
+    for (let i = 0; i < ev.changedTouches.length; ++i)
+        if (g_joyTouchIdentifier == ev.changedTouches[i].identifier) {
+            t = ev.changedTouches[i];
+            break;
+        }
+    if (t === null)
+        return;
+    g_joyTouchIdentifier = null;
+    drawJoystickBtns(this, false, false, false, false);
+    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[0]);
+    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[1]);
+    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[2]);
+    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[3]);
+}
+
+function onOSKeyDown(ev) {
+    this.classList.add('pressed');
+    ev.preventDefault();
+    let key = parseInt(this.dataset.code);
+    wasm_bindgen.wasm_key_down(g_module.game, key);
+}
+
+function onOSKeyUp(ev) {
+    this.classList.remove('pressed');
+    ev.preventDefault();
+    let key = parseInt(this.dataset.code);
+    wasm_bindgen.wasm_key_up(g_module.game, key);
 }
 
 function onKeyDown(ev) {
@@ -687,7 +866,7 @@ function initMyGL(gl) {
     gl.bufferData(gl.ARRAY_BUFFER,
         new Float32Array(positionsT),
         gl.STATIC_DRAW);
-    
+
     //let buffers = { vertex: bufferV, texture: bufferT };
 
     gl.clearColor(0.0,0.0,0.0,1);
@@ -703,7 +882,7 @@ function initMyGL(gl) {
     let aTex = gl.getAttribLocation(program, 'aTex');
     gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(aTex);
-    
+
     const texture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
