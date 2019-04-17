@@ -1,0 +1,100 @@
+body {
+    background: gray;
+}
+* {
+    font-family: monospace;
+}
+h1 {
+   text-align: center;
+   margin: 0 0 5px;
+}
+#stage {
+    width: 798px;
+    height: 600px;
+    position: relative;
+    margin: 0 auto;
+}
+#controls {
+    width: 798px;
+    position: relative;
+    margin: 0 auto;
+}
+#stage canvas {
+    width: 798px;
+    height: 600px;
+    border: 2px solid black;
+    cursor: none;
+}
+
+canvas.pixelated {
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+#tape button {
+    border: 1px solid black;
+    padding: 2px;
+    margin: 2px;
+    font-size: small;
+}
+#tape button.selected {
+    background: lightblue;
+}
+#keyboard {
+    display: none;
+    height: 600px;
+}
+#keys {
+    display: grid;
+    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    grid-gap: 2% 1%;
+}
+.key {
+    background-color: black;
+    color: white;
+    text-align: center;
+    padding: 15px 0;
+    font-size: 20px;
+    cursor: default;
+}
+.key.small {
+    font-size: 15px;
+    padding: 10px 0;
+}
+.key.pressed {
+    background-color: white;
+    color: black;
+}
+.row1 {
+    grid-row-start: 1;
+    grid-row-end: 2;
+}
+.row2 {
+    grid-row-start: 2;
+    grid-row-end: 3;
+}
+.row3 {
+    grid-row-start: 3;
+    grid-row-end: 4;
+}
+.row4 {
+    grid-row-start: 4;
+    grid-row-end: 5;
+}
+#joystick {
+    display: grid;
+    padding-top: 25px;
+    align-items: center;
+    justify-items: center;
+}
+#joy-btns {
+    grid-column-start: 1;
+    grid-column-end: 2;
+    align-content: center;
+}
+#joy-fire {
+    grid-column-start: 2;
+    grid-column-end: 3;
+    align-content: center;
+}

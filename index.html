@@ -12,54 +12,8 @@
 
 <title>R.A.Z.E. A Spectrum Emulator</title>
 <meta charset="utf-8" />
-<style>
-body {
-    background: gray;
-}
-* {
-    font-family: monospace;
-}
-h1 {
-   text-align: center;
-   margin: 0 0 5px;
-}
-#stage {
-    width: 798px;
-    height: 600px;
-    position: relative;
-    margin: 0 auto;
-}
-#controls {
-    width: 798px;
-    position: relative;
-    margin: 0 auto;
-}
-#stage canvas {
-    width: 798px;
-    height: 600px;
-    border: 2px solid black;
-    cursor: none;
-}
-
-canvas.pixelated {
-    image-rendering: -moz-crisp-edges;
-    image-rendering: -webkit-crisp-edges;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-}
-#controls div {
-    display: inline;
-}
-#tape button {
-    border: 1px solid black;
-    padding: 2px;
-    margin: 2px;
-    font-size: small;
-}
-#tape button.selected {
-    background: lightblue;
-}
-</style>
+<link rel="stylesheet" type="text/css" href="raze.css" >
+<link rel="icon" href="favicon.png">
 </head>
 <body>
 <style>#forkongithub a{background:#000;color:#fff;text-decoration:none;font-family:arial,sans-serif;text-align:center;font-weight:bold;padding:5px 40px;font-size:1rem;line-height:2rem;position:relative;transition:0.5s;}#forkongithub a:hover{background:#c11;color:#fff;}#forkongithub a::before,#forkongithub a::after{content:"";width:100%;display:block;position:absolute;top:1px;left:0;height:1px;background:#fff;}#forkongithub a::after{bottom:1px;top:auto;}@media screen and (min-width:800px){#forkongithub{position:absolute;display:block;top:0;right:0;width:200px;overflow:hidden;height:200px;z-index:9999;}#forkongithub a{width:200px;position:absolute;top:60px;right:-60px;transform:rotate(45deg);-webkit-transform:rotate(45deg);-ms-transform:rotate(45deg);-moz-transform:rotate(45deg);-o-transform:rotate(45deg);box-shadow:4px 4px 10px rgba(0,0,0,0.8);}}</style><span id="forkongithub"><a href="https://github.com/rodrigorc/raze">Fork me on GitHub</a></span>
@@ -81,6 +35,54 @@ canvas.pixelated {
   </select><br>
   <div><button id="load_tape">Load Tape</button><button id="stop_tape">Pause</button></div><br>
   <div id="tape"></div>
+  <div id="keyboard">
+      <div id="keys">
+          <div class="key row1" data-code="0x30">1</div>
+          <div class="key row1" data-code="0x31">2</div>
+          <div class="key row1" data-code="0x32">3</div>
+          <div class="key row1" data-code="0x33">4</div>
+          <div class="key row1" data-code="0x34">5</div>
+          <div class="key row1" data-code="0x44">6</div>
+          <div class="key row1" data-code="0x43">7</div>
+          <div class="key row1" data-code="0x42">8</div>
+          <div class="key row1" data-code="0x41">9</div>
+          <div class="key row1" data-code="0x40">0</div>
+          <div class="key row2" data-code="0x20">Q</div>
+          <div class="key row2" data-code="0x21">W</div>
+          <div class="key row2" data-code="0x22">E</div>
+          <div class="key row2" data-code="0x23">R</div>
+          <div class="key row2" data-code="0x24">T</div>
+          <div class="key row2" data-code="0x54">Y</div>
+          <div class="key row2" data-code="0x53">U</div>
+          <div class="key row2" data-code="0x52">I</div>
+          <div class="key row2" data-code="0x51">O</div>
+          <div class="key row2" data-code="0x50">P</div>
+          <div class="key row3" data-code="0x10">A</div>
+          <div class="key row3" data-code="0x11">S</div>
+          <div class="key row3" data-code="0x12">D</div>
+          <div class="key row3" data-code="0x13">F</div>
+          <div class="key row3" data-code="0x14">G</div>
+          <div class="key row3" data-code="0x64">H</div>
+          <div class="key row3" data-code="0x63">J</div>
+          <div class="key row3" data-code="0x62">K</div>
+          <div class="key row3" data-code="0x61">L</div>
+          <div class="key row3" data-code="0x60">ENTER</div>
+          <div class="key row4 small" data-code="0xf0">CAPS<br>SHIFT</div>
+          <div class="key row4" data-code="0x01">Z</div>
+          <div class="key row4" data-code="0x02">X</div>
+          <div class="key row4" data-code="0x03">C</div>
+          <div class="key row4" data-code="0x04">V</div>
+          <div class="key row4" data-code="0x74">B</div>
+          <div class="key row4" data-code="0x73">N</div>
+          <div class="key row4" data-code="0x72">M</div>
+          <div class="key row4 small" data-code="0x71">SYMBOL<br>SHIFT</div>
+          <div class="key row4 small" data-code="0x70">BREAK<br>SPACE</div>
+      </div>
+      <div id="joystick">
+          <canvas id="joy-btns" width="400" height="400" style="left: 50px; top: 50px;"></canvas>
+          <canvas id="joy-fire" width="300" height="300" style="left: 500px; top: 100px"></div>
+      </div>
+  </div>
 </div>
 
 <script src="pkg/raze.js"></script>

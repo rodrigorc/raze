@@ -53,7 +53,7 @@
     };
 
     __exports.__wbg_onTapeBlock_edf70fa958be9ca2 = function(arg0) {
-        exports.onTapeBlock(arg0);
+        exports.onTapeBlock(arg0 >>> 0);
     };
     /**
     * @param {boolean} is128k
@@ -104,7 +104,7 @@
     __exports.wasm_load_tape = function(game, data) {
         const ptr1 = passArray8ToWasm(data);
         const len1 = WASM_VECTOR_LEN;
-        return wasm.wasm_load_tape(game, ptr1, len1);
+        return wasm.wasm_load_tape(game, ptr1, len1) >>> 0;
     };
 
     let cachedGlobalArgumentPtr = null;
@@ -243,12 +243,12 @@
 
     __exports.__wbindgen_object_drop_ref = function(i) { dropObject(i); };
 
-    function init(module_or_path, maybe_memory) {
+    function init(module) {
         let result;
         const imports = { './raze': __exports };
-        if (module_or_path instanceof URL || typeof module_or_path === 'string' || module_or_path instanceof Request) {
+        if (module instanceof URL || typeof module === 'string' || module instanceof Request) {
 
-            const response = fetch(module_or_path);
+            const response = fetch(module);
             if (typeof WebAssembly.instantiateStreaming === 'function') {
                 result = WebAssembly.instantiateStreaming(response, imports)
                 .catch(e => {
@@ -264,9 +264,13 @@
             }
         } else {
 
-            result = WebAssembly.instantiate(module_or_path, imports)
-            .then(instance => {
-                return { instance, module: module_or_path };
+            result = WebAssembly.instantiate(module, imports)
+            .then(result => {
+                if (result instanceof WebAssembly.Instance) {
+                    return { instance: result, module };
+                } else {
+                    return result;
+                }
             });
         }
         return result.then(({instance, module}) => {
