@@ -514,7 +514,7 @@ function handleCursorKeys(evt) {
 
 const CURSOR_KEYS = [
     //cursorkeys
-    [0xf034, 0xf042, 0xf044, 0xf043, 0x71], //Shift+{5,8,6,7}, SymbolShift
+    [0x0834, 0x0842, 0x0844, 0x0843, 0x71], //Shift+{5,8,6,7}, SymbolShift
     //kempston
     [0x81, 0x80, 0x82, 0x83, 0x84],
     //sinclair
@@ -538,7 +538,7 @@ function getKeyCode(ev) {
 
     case "ShiftLeft":
     case "ShiftRight":
-        return 0xf0; //just like 0x00, but 0x00 is ignored by game code
+        return 0x08; //just like 0x00, but 0x00 is ignored by game code
     case "KeyZ":
         return 0x01;
     case "KeyX":
@@ -618,7 +618,7 @@ function getKeyCode(ev) {
     case "KeyB":
         return 0x74;
     case "Backspace":
-        return 0xf040; //Shift+0
+        return 0x0840; //Shift+0
     default:
         return null;
     }

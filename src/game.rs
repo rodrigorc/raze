@@ -30,7 +30,7 @@ const BY1: usize = 4;
 
 struct ULA {
     memory: Memory,
-    keys: [[bool; 5]; 9], //8 semirows plus joystick
+    keys: [u8; 9], //8 semirows plus joystick
     delay: u32,
     frame_counter: u32,
     time: i32,
@@ -98,14 +98,9 @@ impl Bus for ULA {
             }
             for i in 0..8 { //half row keyboard
                 if hi & (1 << i) == 0 {
-                    for j in 0..5 { //keys
-                        if self.keys[i][j] {
-                            r &= !(1 << j);
-                        }
-                    }
+                    r &= !self.keys[i];
                 }
             }
-
             if let Some((_, Some(pos))) = &self.tape {
                 if pos.mic() {
                     r &= 0b1011_1111;
@@ -141,13 +136,7 @@ impl Bus for ULA {
                     }
                 }
                 x if x & 0x20 == 0 => { //kempston joystick (0x1f | 0xdf ...)
-                    let joy = &self.keys[8];
-                    r = 0;
-                    for (j, jj) in joy.iter().enumerate() {
-                        if *jj {
-                            r |= 1 << j;
-                        }
-                    }
+                    r = self.keys[8];
                 }
                 _ => {
                     //log!("IN {:04x}, {:02x}", port, r);
@@ -387,34 +376,29 @@ impl Game {
         }
         js::putImageData((BX0 + 256 + BX1) as i32, (BY0 + 192 + BY1) as i32, &self.image);
     }
-    pub fn key_up(&mut self, mut key: usize) {
-        while key != 0 {
-            let k = key & 0x07;
-            let r = match (key >> 4) & 0x0f {
-                0x0f => 0,
-                r => r
-            };
-            self.ula.keys[r][k] = false;
-            key >>= 8;
+    //Every byte in key is a key pressed:
+    //  * low nibble: key number (0..5)
+    //  * high nibble: row number (0..7, 8 = kempston)
+    //A byte 0x00 means no key. To refer to key 0 in row 0 use 0x08, because that bit is ignored
+    pub fn key_up(&mut self, mut keys: usize) {
+        while keys != 0 {
+            let k = keys & 0x07;
+            let r = (keys >> 4) & 0x0f;
+            self.ula.keys[r] &= !(1 << k);
+            keys >>= 8;
         }
     }
-    pub fn key_down(&mut self, mut key: usize) {
-        while key != 0 {
-            let k = key & 0x07;
-            let r = match (key >> 4) & 0x0f {
-                0x0f => 0,
-                r => r
-            };
-            self.ula.keys[r][k] = true;
-            key >>= 8;
+    //Same as key_up
+    pub fn key_down(&mut self, mut keys: usize) {
+        while keys != 0 {
+            let k = keys & 0x07;
+            let r = (keys >> 4) & 0x0f;
+            self.ula.keys[r] |= 1 << k;
+            keys >>= 8;
         }
     }
     pub fn reset_input(&mut self) {
-        for r in self.ula.keys.iter_mut() {
-            for k in r.iter_mut() {
-                *k = false;
-            }
-        }
+        self.ula.keys = Default::default();
     }
     pub fn tape_load(&mut self, data: Vec<u8>) -> usize {
         match Tape::new(Cursor::new(data), self.is128k) {
