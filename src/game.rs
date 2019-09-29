@@ -113,6 +113,7 @@ impl Bus for ULA {
             match lo {
                 0xfd => { //Programmable Sound Generator
                     if let Some(psg) = &self.psg {
+                        #[allow(clippy::single_match)]
                         match hi {
                             0xff => {
                                 r = psg.read_reg();
@@ -164,6 +165,7 @@ impl Bus for ULA {
             if port >= 0x4000 && port < 0x8000 {
                 self.delay += 4;
             }
+            #[allow(clippy::single_match)]
             match lo {
                 0xfd => { //128 stuff
                     match hi {

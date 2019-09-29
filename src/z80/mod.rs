@@ -1,4 +1,4 @@
-#![allow(clippy::many_single_char_names)]
+#![allow(clippy::many_single_char_names, clippy::verbose_bit_mask, clippy::cognitive_complexity)]
 
 use std::mem;
 
@@ -113,8 +113,7 @@ fn set_flag_sz(f: u8, r: u8) -> u8 {
 #[inline] #[must_use]
 fn set_flag_szp(f: u8, r: u8) -> u8 {
     let f = set_flag8(f, FLAG_PV, parity(r));
-    let f = set_flag_sz(f, r);
-    f
+    set_flag_sz(f, r)
 }
 
 #[inline] #[must_use]

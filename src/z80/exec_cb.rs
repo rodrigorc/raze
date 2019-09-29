@@ -1,6 +1,7 @@
 use super::*;
 
 impl Z80 {
+    #[allow(clippy::identity_op)]
     pub(super) fn exec_cb(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
         let (addr, t) = self.hlx_addr(prefix, bus);
         let c = self.fetch(bus);
