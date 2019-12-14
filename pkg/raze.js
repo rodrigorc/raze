@@ -2,7 +2,38 @@
     const __exports = {};
     let wasm;
 
-    let cachedTextDecoder = new TextDecoder('utf-8');
+    /**
+    * @param {boolean} is128k
+    * @returns {number}
+    */
+    __exports.wasm_main = function(is128k) {
+        const ret = wasm.wasm_main(is128k);
+        return ret;
+    };
+
+    /**
+    * @param {number} game
+    */
+    __exports.wasm_drop = function(game) {
+        wasm.wasm_drop(game);
+    };
+
+    /**
+    * @param {number} size
+    * @returns {number}
+    */
+    __exports.wasm_alloc = function(size) {
+        const ret = wasm.wasm_alloc(size);
+        return ret;
+    };
+
+    /**
+    * @param {number} game
+    * @param {boolean} turbo
+    */
+    __exports.wasm_draw_frame = function(game, turbo) {
+        wasm.wasm_draw_frame(game, turbo);
+    };
 
     let cachegetUint8Memory = null;
     function getUint8Memory() {
@@ -11,82 +42,6 @@
         }
         return cachegetUint8Memory;
     }
-
-    function getStringFromWasm(ptr, len) {
-        return cachedTextDecoder.decode(getUint8Memory().subarray(ptr, ptr + len));
-    }
-
-    __exports.__wbg_log_ee5ef086d9ee97e1 = function(arg0, arg1) {
-        let varg0 = getStringFromWasm(arg0, arg1);
-        console.log(varg0);
-    };
-
-    __exports.__wbg_alert_91462df3c2071dfb = function(arg0, arg1) {
-        let varg0 = getStringFromWasm(arg0, arg1);
-        alert(varg0);
-    };
-
-    function getArrayU8FromWasm(ptr, len) {
-        return getUint8Memory().subarray(ptr / 1, ptr / 1 + len);
-    }
-
-    __exports.__wbg_putImageData_b10a4ab0f43ddaa1 = function(arg0, arg1, arg2, arg3) {
-        let varg2 = getArrayU8FromWasm(arg2, arg3);
-        exports.putImageData(arg0, arg1, varg2);
-    };
-
-    let cachegetFloat32Memory = null;
-    function getFloat32Memory() {
-        if (cachegetFloat32Memory === null || cachegetFloat32Memory.buffer !== wasm.memory.buffer) {
-            cachegetFloat32Memory = new Float32Array(wasm.memory.buffer);
-        }
-        return cachegetFloat32Memory;
-    }
-
-    function getArrayF32FromWasm(ptr, len) {
-        return getFloat32Memory().subarray(ptr / 4, ptr / 4 + len);
-    }
-
-    __exports.__wbg_putSoundData_8bb1346d8a1c3815 = function(arg0, arg1) {
-        let varg0 = getArrayF32FromWasm(arg0, arg1);
-        exports.putSoundData(varg0);
-    };
-
-    __exports.__wbg_onTapeBlock_edf70fa958be9ca2 = function(arg0) {
-        exports.onTapeBlock(arg0 >>> 0);
-    };
-    /**
-    * @param {boolean} is128k
-    * @returns {number}
-    */
-    __exports.wasm_main = function(is128k) {
-        return wasm.wasm_main(is128k);
-    };
-
-    /**
-    * @param {number} game
-    * @returns {void}
-    */
-    __exports.wasm_drop = function(game) {
-        return wasm.wasm_drop(game);
-    };
-
-    /**
-    * @param {number} size
-    * @returns {number}
-    */
-    __exports.wasm_alloc = function(size) {
-        return wasm.wasm_alloc(size);
-    };
-
-    /**
-    * @param {number} game
-    * @param {boolean} turbo
-    * @returns {void}
-    */
-    __exports.wasm_draw_frame = function(game, turbo) {
-        return wasm.wasm_draw_frame(game, turbo);
-    };
 
     let WASM_VECTOR_LEN = 0;
 
@@ -102,25 +57,24 @@
     * @returns {number}
     */
     __exports.wasm_load_tape = function(game, data) {
-        const ptr1 = passArray8ToWasm(data);
-        const len1 = WASM_VECTOR_LEN;
-        return wasm.wasm_load_tape(game, ptr1, len1) >>> 0;
+        const ret = wasm.wasm_load_tape(game, passArray8ToWasm(data), WASM_VECTOR_LEN);
+        return ret >>> 0;
     };
 
-    let cachedGlobalArgumentPtr = null;
-    function globalArgumentPtr() {
-        if (cachedGlobalArgumentPtr === null) {
-            cachedGlobalArgumentPtr = wasm.__wbindgen_global_argument_ptr();
+    let cachegetInt32Memory = null;
+    function getInt32Memory() {
+        if (cachegetInt32Memory === null || cachegetInt32Memory.buffer !== wasm.memory.buffer) {
+            cachegetInt32Memory = new Int32Array(wasm.memory.buffer);
         }
-        return cachedGlobalArgumentPtr;
+        return cachegetInt32Memory;
     }
 
-    let cachegetUint32Memory = null;
-    function getUint32Memory() {
-        if (cachegetUint32Memory === null || cachegetUint32Memory.buffer !== wasm.memory.buffer) {
-            cachegetUint32Memory = new Uint32Array(wasm.memory.buffer);
-        }
-        return cachegetUint32Memory;
+    let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+
+    cachedTextDecoder.decode();
+
+    function getStringFromWasm(ptr, len) {
+        return cachedTextDecoder.decode(getUint8Memory().subarray(ptr, ptr + len));
     }
     /**
     * @param {number} game
@@ -128,16 +82,12 @@
     * @returns {string}
     */
     __exports.wasm_tape_name = function(game, index) {
-        const retptr = globalArgumentPtr();
-        wasm.wasm_tape_name(retptr, game, index);
-        const mem = getUint32Memory();
-        const rustptr = mem[retptr / 4];
-        const rustlen = mem[retptr / 4 + 1];
-
-        const realRet = getStringFromWasm(rustptr, rustlen).slice();
-        wasm.__wbindgen_free(rustptr, rustlen * 1);
-        return realRet;
-
+        const retptr = 8;
+        const ret = wasm.wasm_tape_name(retptr, game, index);
+        const memi32 = getInt32Memory();
+        const v0 = getStringFromWasm(memi32[retptr / 4 + 0], memi32[retptr / 4 + 1]).slice();
+        wasm.__wbindgen_free(memi32[retptr / 4 + 0], memi32[retptr / 4 + 1] * 1);
+        return v0;
     };
 
     /**
@@ -146,24 +96,23 @@
     * @returns {boolean}
     */
     __exports.wasm_tape_selectable = function(game, index) {
-        return (wasm.wasm_tape_selectable(game, index)) !== 0;
+        const ret = wasm.wasm_tape_selectable(game, index);
+        return ret !== 0;
     };
 
     /**
     * @param {number} game
     * @param {number} index
-    * @returns {void}
     */
     __exports.wasm_tape_seek = function(game, index) {
-        return wasm.wasm_tape_seek(game, index);
+        wasm.wasm_tape_seek(game, index);
     };
 
     /**
     * @param {number} game
-    * @returns {void}
     */
     __exports.wasm_tape_stop = function(game) {
-        return wasm.wasm_tape_stop(game);
+        wasm.wasm_tape_stop(game);
     };
 
     /**
@@ -172,89 +121,97 @@
     * @returns {boolean}
     */
     __exports.wasm_load_snapshot = function(game, data) {
-        const ptr1 = passArray8ToWasm(data);
-        const len1 = WASM_VECTOR_LEN;
-        try {
-            return (wasm.wasm_load_snapshot(game, ptr1, len1)) !== 0;
-
-        } finally {
-            wasm.__wbindgen_free(ptr1, len1 * 1);
-
-        }
-
+        const ret = wasm.wasm_load_snapshot(game, passArray8ToWasm(data), WASM_VECTOR_LEN);
+        return ret !== 0;
     };
 
+    function getArrayU8FromWasm(ptr, len) {
+        return getUint8Memory().subarray(ptr / 1, ptr / 1 + len);
+    }
     /**
     * @param {number} game
     * @returns {Uint8Array}
     */
     __exports.wasm_snapshot = function(game) {
-        const retptr = globalArgumentPtr();
-        wasm.wasm_snapshot(retptr, game);
-        const mem = getUint32Memory();
-        const rustptr = mem[retptr / 4];
-        const rustlen = mem[retptr / 4 + 1];
-
-        const realRet = getArrayU8FromWasm(rustptr, rustlen).slice();
-        wasm.__wbindgen_free(rustptr, rustlen * 1);
-        return realRet;
-
+        const retptr = 8;
+        const ret = wasm.wasm_snapshot(retptr, game);
+        const memi32 = getInt32Memory();
+        const v0 = getArrayU8FromWasm(memi32[retptr / 4 + 0], memi32[retptr / 4 + 1]).slice();
+        wasm.__wbindgen_free(memi32[retptr / 4 + 0], memi32[retptr / 4 + 1] * 1);
+        return v0;
     };
 
     /**
     * @param {number} game
-    * @returns {void}
     */
     __exports.wasm_reset_input = function(game) {
-        return wasm.wasm_reset_input(game);
+        wasm.wasm_reset_input(game);
     };
 
     /**
     * @param {number} game
     * @param {number} key
-    * @returns {void}
     */
     __exports.wasm_key_up = function(game, key) {
-        return wasm.wasm_key_up(game, key);
+        wasm.wasm_key_up(game, key);
     };
 
     /**
     * @param {number} game
     * @param {number} key
-    * @returns {void}
     */
     __exports.wasm_key_down = function(game, key) {
-        return wasm.wasm_key_down(game, key);
+        wasm.wasm_key_down(game, key);
     };
 
-    const heap = new Array(32);
-
-    heap.fill(undefined);
-
-    heap.push(undefined, null, true, false);
-
-    let heap_next = heap.length;
-
-    function dropObject(idx) {
-        if (idx < 36) return;
-        heap[idx] = heap_next;
-        heap_next = idx;
+    let cachegetFloat32Memory = null;
+    function getFloat32Memory() {
+        if (cachegetFloat32Memory === null || cachegetFloat32Memory.buffer !== wasm.memory.buffer) {
+            cachegetFloat32Memory = new Float32Array(wasm.memory.buffer);
+        }
+        return cachegetFloat32Memory;
     }
 
-    __exports.__wbindgen_object_drop_ref = function(i) { dropObject(i); };
+    function getArrayF32FromWasm(ptr, len) {
+        return getFloat32Memory().subarray(ptr / 4, ptr / 4 + len);
+    }
 
     function init(module) {
+
         let result;
-        const imports = { './raze': __exports };
-        if (module instanceof URL || typeof module === 'string' || module instanceof Request) {
+        const imports = {};
+        imports.wbg = {};
+        imports.wbg.__wbg_log_ee5ef086d9ee97e1 = function(arg0, arg1) {
+            console.log(getStringFromWasm(arg0, arg1));
+        };
+        imports.wbg.__wbg_onTapeBlock_edf70fa958be9ca2 = function(arg0) {
+            exports.onTapeBlock(arg0 >>> 0);
+        };
+        imports.wbg.__wbg_putSoundData_8bb1346d8a1c3815 = function(arg0, arg1) {
+            exports.putSoundData(getArrayF32FromWasm(arg0, arg1));
+        };
+        imports.wbg.__wbg_putImageData_b10a4ab0f43ddaa1 = function(arg0, arg1, arg2, arg3) {
+            exports.putImageData(arg0, arg1, getArrayU8FromWasm(arg2, arg3));
+        };
+        imports.wbg.__wbg_alert_91462df3c2071dfb = function(arg0, arg1) {
+            alert(getStringFromWasm(arg0, arg1));
+        };
+
+        if ((typeof URL === 'function' && module instanceof URL) || typeof module === 'string' || (typeof Request === 'function' && module instanceof Request)) {
 
             const response = fetch(module);
             if (typeof WebAssembly.instantiateStreaming === 'function') {
                 result = WebAssembly.instantiateStreaming(response, imports)
                 .catch(e => {
-                    console.warn("`WebAssembly.instantiateStreaming` failed. Assuming this is because your server does not serve wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
                     return response
-                    .then(r => r.arrayBuffer())
+                    .then(r => {
+                        if (r.headers.get('Content-Type') != 'application/wasm') {
+                            console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
+                            return r.arrayBuffer();
+                        } else {
+                            throw e;
+                        }
+                    })
                     .then(bytes => WebAssembly.instantiate(bytes, imports));
                 });
             } else {

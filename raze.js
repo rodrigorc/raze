@@ -1,7 +1,7 @@
 'use strict';
 
 let g_module = {};
-let g_actx = new AudioContext();
+let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
 let g_realCanvas = null;
@@ -95,13 +95,25 @@ async function onDocumentLoad() {
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 gl.flush();
             } else {
+                //data is a Uint8Array, but some browsers need a Uint8ClampedArray
+                data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
                 let img = new ImageData(data, w, h);
                 ctx.putImageData(img, 0, 0);
             }
         },
         putSoundData: function(slice) {
             let asrc = g_actx.createBufferSource();
-            let abuf = g_actx.createBuffer(1, slice.length, g_module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+            let freq;
+            if (window.AudioContext) {
+                // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+                freq = g_module.is128k? 21112 : 20833;
+            } else {
+                //Safari uses old webkitAudioContext and cannot do slow sample rates (less than 22050)
+                //We could double the samples, but then it will click horribly because of the resampling.
+                //As a compromise we just use 22050 Hz that is near enough to the real value
+                freq = 22050
+            }
+            let abuf = g_actx.createBuffer(1, slice.length, freq);
             let data = abuf.getChannelData(0);
             for (let i = 0; i < slice.length; ++i)
                 data[i] = slice[i];
@@ -514,7 +526,7 @@ function handleCursorKeys(evt) {
 
 const CURSOR_KEYS = [
     //cursorkeys
-    [0xf034, 0xf042, 0xf044, 0xf043, 0x71], //Shift+{5,8,6,7}, SymbolShift
+    [0x0834, 0x0842, 0x0844, 0x0843, 0x71], //Shift+{5,8,6,7}, SymbolShift
     //kempston
     [0x81, 0x80, 0x82, 0x83, 0x84],
     //sinclair
@@ -538,7 +550,7 @@ function getKeyCode(ev) {
 
     case "ShiftLeft":
     case "ShiftRight":
-        return 0xf0; //just like 0x00, but 0x00 is ignored by game code
+        return 0x08; //just like 0x00, but 0x00 is ignored by game code
     case "KeyZ":
         return 0x01;
     case "KeyX":
@@ -618,7 +630,7 @@ function getKeyCode(ev) {
     case "KeyB":
         return 0x74;
     case "Backspace":
-        return 0xf040; //Shift+0
+        return 0x0840; //Shift+0
     default:
         return null;
     }
