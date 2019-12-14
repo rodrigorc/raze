@@ -95,6 +95,8 @@ async function onDocumentLoad() {
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 gl.flush();
             } else {
+                //data is a Uint8Array, but some browsers need a Uint8ClampedArray
+                data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
                 let img = new ImageData(data, w, h);
                 ctx.putImageData(img, 0, 0);
             }
