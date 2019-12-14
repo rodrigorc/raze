@@ -1,7 +1,7 @@
 'use strict';
 
 let g_module = {};
-let g_actx = new AudioContext();
+let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
 let g_realCanvas = null;
@@ -101,7 +101,17 @@ async function onDocumentLoad() {
         },
         putSoundData: function(slice) {
             let asrc = g_actx.createBufferSource();
-            let abuf = g_actx.createBuffer(1, slice.length, g_module.is128k? 21112 : 20833); // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+            let freq;
+            if (window.AudioContext) {
+                // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+                freq = g_module.is128k? 21112 : 20833;
+            } else {
+                //Safari uses old webkitAudioContext and cannot do slow sample rates (less than 22050)
+                //We could double the samples, but then it will click horribly because of the resampling.
+                //As a compromise we just use 22050 Hz that is near enough to the real value
+                freq = 22050
+            }
+            let abuf = g_actx.createBuffer(1, slice.length, freq);
             let data = abuf.getChannelData(0);
             for (let i = 0; i < slice.length; ++i)
                 data[i] = slice[i];
