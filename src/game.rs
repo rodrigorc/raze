@@ -258,7 +258,7 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
             let blink = inv && (attr & 0b10_000_000) != 0;
 
             let c = if pix ^ blink {
-                (attr & 0b00_000_111)
+                attr & 0b00_000_111
             } else {
                 (attr & 0b00_111_000) >> 3
             };
@@ -747,11 +747,11 @@ cfg_if! {
             for i in 0 .. zip.len() {
                 let mut ze = zip.by_index(i)?;
                 let name = ze.sanitized_name();
-                let ext = name.extension().
-                    and_then(|e| e.to_str()).
-                    map(|e| e.to_string()).
-                    map(|e| e.to_ascii_lowercase());
-                if let Some("z80") = ext.as_ref().map(|s| s.as_str()) {
+                let ext = name.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_string())
+                    .map(|e| e.to_ascii_lowercase());
+                if ext.as_deref() == Some("z80") {
                     log!("unzipping Z80 {}", name.to_string_lossy());
                     let mut res = Vec::new();
                     ze.read_to_end(&mut res)?;

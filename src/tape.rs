@@ -184,11 +184,10 @@ cfg_if! {
             for i in 0 .. zip.len() {
                 let mut ze = zip.by_index(i)?;
                 let name = ze.sanitized_name();
-                let ext = name.extension().
-                    and_then(|e| e.to_str()).
-                    map(|e| e.to_string()).
-                    map(|e| e.to_ascii_lowercase());
-                match ext.as_ref().map(|s| s.as_str()) {
+                let ext = name.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_string().to_ascii_lowercase());
+                match ext.as_deref() {
                     Some("tap") => {
                         log!("unzipping TAP {}", name.to_string_lossy());
                         return new_tap(&mut ze);
