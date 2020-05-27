@@ -10,12 +10,13 @@ extern "C" {
     fn log_slice(s: &str);
     #[wasm_bindgen(js_name = alert)]
     fn alert_slice(s: &str);
-    #[wasm_bindgen(js_namespace = exports, js_name = putImageData)]
-    fn putImageDataU8(w: i32, h: i32, data: &[u8]);
+}
 
-    #[wasm_bindgen(js_namespace = exports)]
+#[wasm_bindgen(raw_module = "../raze_fg.js")]
+extern "C" {
+    #[wasm_bindgen(js_name = putImageData)]
+    fn putImageDataU8(w: i32, h: i32, data: &[u8]);
     pub fn putSoundData(data: &[f32]);
-    #[wasm_bindgen(js_namespace = exports)]
     pub fn onTapeBlock(index: usize);
 }
 

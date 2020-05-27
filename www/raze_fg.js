@@ -1,10 +1,13 @@
 'use strict';
+import raze_init, * as wasm_bindgen from "/pkg/raze.js";
+import * as base64 from "./base64.js";
 
 let g_module = {};
 let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
 let g_realCanvas = null;
+let g_ctx = null, g_gl = null;
 
 function ensureAudioRunning() {
     //autoplay policy in chrome requires this
@@ -40,7 +43,7 @@ let g_lastSnapshot = null;
 if (window.localStorage) {
     let last = window.localStorage.getItem("lastSnapshot");
     if (last) {
-        g_lastSnapshot = base64decode(last);
+        g_lastSnapshot = base64.decode(last);
     }
 }
 
@@ -57,21 +60,67 @@ function boolURLParamDef(urlParams, key, def) {
     return true;
 }
 
+export function onTapeBlock(index) {
+    console.log("Block", index);
+    let xTape = document.getElementById("tape");
+    for (let i = 0; i < xTape.children.length; ++i) {
+        let btn = xTape.children[i];
+        if (btn['data-index'] == index)
+            btn.classList.add('selected');
+        else
+            btn.classList.remove('selected');
+    }
+}
+
+export function putSoundData(slice) {
+    let asrc = g_actx.createBufferSource();
+    let freq;
+    if (window.AudioContext) {
+        // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
+        freq = g_module.is128k? 21112 : 20833;
+    } else {
+        //Safari uses old webkitAudioContext and cannot do slow sample rates (less than 22050)
+        //We could double the samples, but then it will click horribly because of the resampling.
+        //As a compromise we just use 22050 Hz that is near enough to the real value
+        freq = 22050
+    }
+    let abuf = g_actx.createBuffer(1, slice.length, freq);
+    let data = abuf.getChannelData(0);
+    for (let i = 0; i < slice.length; ++i)
+        data[i] = slice[i];
+    asrc.buffer = abuf;
+    asrc.connect(g_actx.destination);
+
+    asrc.start(g_audio_next);
+    g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
+}
+
+export function putImageData(w, h, data) {
+    if (g_gl) {
+        g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
+        g_gl.drawArrays(g_gl.TRIANGLE_STRIP, 0, 4);
+        g_gl.flush();
+    } else {
+        //data is a Uint8Array, but some browsers need a Uint8ClampedArray
+        data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
+        let img = new ImageData(data, w, h);
+        g_ctx.putImageData(img, 0, 0);
+    }
+}
+
 async function onDocumentLoad() {
 
     let urlParams = new URLSearchParams(window.location.search);
     let webgl = boolURLParamDef(urlParams, 'webgl', true)
 
-    let ctx = null, gl = null;
-
     let canvas3d = document.querySelector('#game-layer-3d');
     let canvas = document.querySelector('#game-layer');
 
     if (webgl) {
-        gl = canvas3d.getContext('webgl');
+        g_gl = canvas3d.getContext('webgl');
     }
 
-    if (gl && initMyGL(gl)) {
+    if (g_gl && initMyGL(g_gl)) {
         console.log("using webgl rendering");
         g_realCanvas = canvas3d;
     } else {
@@ -79,53 +128,16 @@ async function onDocumentLoad() {
             console.log("webgl initialization failed, falling back to canvas");
         else
             console.log("webgl initialization skipped, falling back to canvas");
-        gl = null;
+        g_gl = null;
         canvas3d.style.display = 'none';
         canvas.style.display = '';
 
-        ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
+        g_ctx = canvas.getContext('2d');
+        g_ctx.imageSmoothingEnabled = false;
         g_realCanvas = canvas;
     }
 
-    Object.assign(exports, {
-        putImageData: function(w, h, data) {
-            if (gl) {
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-                gl.flush();
-            } else {
-                //data is a Uint8Array, but some browsers need a Uint8ClampedArray
-                data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
-                let img = new ImageData(data, w, h);
-                ctx.putImageData(img, 0, 0);
-            }
-        },
-        putSoundData: function(slice) {
-            let asrc = g_actx.createBufferSource();
-            let freq;
-            if (window.AudioContext) {
-                // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
-                freq = g_module.is128k? 21112 : 20833;
-            } else {
-                //Safari uses old webkitAudioContext and cannot do slow sample rates (less than 22050)
-                //We could double the samples, but then it will click horribly because of the resampling.
-                //As a compromise we just use 22050 Hz that is near enough to the real value
-                freq = 22050
-            }
-            let abuf = g_actx.createBuffer(1, slice.length, freq);
-            let data = abuf.getChannelData(0);
-            for (let i = 0; i < slice.length; ++i)
-                data[i] = slice[i];
-            asrc.buffer = abuf;
-            asrc.connect(g_actx.destination);
-
-            asrc.start(g_audio_next);
-            g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
-        },
-    });
-
-    let wasm = await wasm_bindgen('/pkg/raze_bg.wasm');
+    await raze_init();
 
     let is128k = !boolURLParamDef(urlParams, '48k', false)
     g_module.is128k = is128k;
@@ -201,8 +213,8 @@ async function onDocumentLoad() {
     document.querySelector('#fullscreen').addEventListener('click', handleFullscreen, false);
     document.querySelector('#turbo').addEventListener('click', handleTurbo, false);
     let dither = document.querySelector('#dither');
-    dither.addEventListener('click', function(evt) { handleDither.call(this, evt, gl) }, false);
-    handleDither.call(dither, null, gl)
+    dither.addEventListener('click', function(evt) { handleDither.call(this, evt, g_gl) }, false);
+    handleDither.call(dither, null, g_gl)
 
     let cursorKeys = document.querySelector('#cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
@@ -643,21 +655,6 @@ function resetTape() {
     return xTape;
 }
 
-//export to Rust
-let exports = {
-    onTapeBlock: function(index) {
-        console.log("Block", index);
-        let xTape = document.getElementById("tape");
-        for (let i = 0; i < xTape.children.length; ++i) {
-            let btn = xTape.children[i];
-            if (btn['data-index'] == index)
-                btn.classList.add('selected');
-            else
-                btn.classList.remove('selected');
-        }
-    }
-}
-
 function onLoadTape(data) {
     let tape_len = wasm_bindgen.wasm_load_tape(g_module.game, new Uint8Array(data));
     let xTape = resetTape();
@@ -740,7 +737,7 @@ function handleLoadSnapshot(evt) {
 function saveLastSnapshot(data) {
     g_lastSnapshot = data;
     if (g_lastSnapshot && window.localStorage) {
-        window.localStorage.setItem("lastSnapshot", base64encode(g_lastSnapshot));
+        window.localStorage.setItem("lastSnapshot", base64.encode(g_lastSnapshot));
     }
 }
 
