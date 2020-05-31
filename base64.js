@@ -2,7 +2,7 @@
 
 const B64CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-function base64encode(b) {
+export function encode(b) {
     let blocks = Math.trunc(b.length / 3);
     let r = '';
     let x;
@@ -33,7 +33,7 @@ function base64encode(b) {
     return r;
 }
 
-function base64decode(s) {
+export function decode(s) {
     let len = Math.trunc(s.length / 4) * 3;
     if (s[s.length - 1] == '=') {
         --len;
