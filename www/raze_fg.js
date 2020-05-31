@@ -1,5 +1,5 @@
 'use strict';
-import raze_init, * as wasm_bindgen from "/pkg/raze.js";
+import raze_init, * as wasm_bindgen from "./pkg/raze.js";
 import * as base64 from "./base64.js";
 
 let g_module = {};

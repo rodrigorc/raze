@@ -1,7 +1,7 @@
 #!/bin/bash
 #This assumes that gh-pages is checked out at DEMO (git worktree add DEMO gh-pages)
 cp www/raze_fg.js DEMO/
-sed -f www/deploy.sed www/index.html > DEMO/index.html
+sed -e '/<head>/r www/track.html' www/index.html > DEMO/index.html
 cp www/raze.css DEMO/
 cp www/favicon.png DEMO/
 cp pkg/raze_bg.wasm pkg/raze.js DEMO/pkg/
