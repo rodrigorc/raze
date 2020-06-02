@@ -2,12 +2,20 @@
 import raze_init, * as wasm_bindgen from "./pkg/raze.js";
 import * as base64 from "./base64.js";
 
-let g_module = {};
+let g_game;
+let g_is128k;
 let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
 let g_realCanvas = null;
 let g_ctx = null, g_gl = null;
+let g_lastSnapshot = null;
+let g_delayed_funcs = null;
+let g_joyTouchIdentifier = null;
+let g_interval = null;
+let g_gamepad = null;
+let g_gamepadStatus = { fire: false, x: 0, y: 0 };
+let g_cursorKeys = null;
 
 function ensureAudioRunning() {
     //autoplay policy in chrome requires this
@@ -34,12 +42,10 @@ async function fetch_with_cors_if_needed(url, callback, error) {
     }
 }
 
-let g_delayed_funcs = null;
 function call_with_delay(first, other, args) {
     g_delayed_funcs = [first, other, args];
 }
 
-let g_lastSnapshot = null;
 if (window.localStorage) {
     let last = window.localStorage.getItem("lastSnapshot");
     if (last) {
@@ -77,7 +83,7 @@ export function putSoundData(slice) {
     let freq;
     if (window.AudioContext) {
         // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
-        freq = g_module.is128k? 21112 : 20833;
+        freq = g_is128k? 21112 : 20833;
     } else {
         //Safari uses old webkitAudioContext and cannot do slow sample rates (less than 22050)
         //We could double the samples, but then it will click horribly because of the resampling.
@@ -139,9 +145,8 @@ async function onDocumentLoad() {
 
     await raze_init();
 
-    let is128k = !boolURLParamDef(urlParams, '48k', false)
-    g_module.is128k = is128k;
-    g_module.game = wasm_bindgen.wasm_main(is128k);
+    g_is128k = !boolURLParamDef(urlParams, '48k', false)
+    g_game = wasm_bindgen.wasm_main(g_is128k);
 
     let snapshot = urlParams.get("snapshot");
     if (snapshot) {
@@ -164,24 +169,24 @@ async function onDocumentLoad() {
             bytes => {
                 console.log(bytes);
                 if (bytes) {
-                    if (is128k) {
+                    if (g_is128k) {
                         call_with_delay(1500, 100, [
-                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
-                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
                         ]);
                     } else {
                         call_with_delay(2000, 100, [
-                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x63), //J (LOAD)
-                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x63),
-                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x71), //SS
-                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
-                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
-                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x50), //P (")
-                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x50), //P (")
-                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x71), //SS
-                            () => wasm_bindgen.wasm_key_down(g_module.game, 0x60), //ENTER
-                            () => wasm_bindgen.wasm_key_up(g_module.game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x63), //J (LOAD)
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x63),
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x71), //SS
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x50), //P (")
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x71), //SS
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
                         ]);
                     }
@@ -248,12 +253,12 @@ async function onDocumentLoad() {
         joyFire.addEventListener('touchstart', ev => {
             ev.preventDefault();
             drawJoystickFire(joyFireCtx, true);
-            wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[4]);
+            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[4]);
         }, false);
         joyFire.addEventListener('touchend', ev => {
             ev.preventDefault();
             drawJoystickFire(joyFireCtx, false);
-            wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[4]);
+            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[4]);
         }, false);
         //disable scroll/zoom
         keyboard.addEventListener('touchstart', ev => {
@@ -313,7 +318,6 @@ function drawJoystickFire(ctx, f) {
     ctx.stroke();
 }
 
-let g_joyTouchIdentifier = null;
 
 function onOSJoyDown(ev) {
     ev.preventDefault();
@@ -356,21 +360,21 @@ function onOSJoyDown(ev) {
     //first do the key_up, then the key_down, in case "cursor" mode is used
     //so that the shift key is properly pressed
     if (!left)
-        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[0]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[0]);
     if (!right)
-        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[1]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[1]);
     if (!down)
-        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[2]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[2]);
     if (!up)
-        wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[3]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[3]);
     if (left)
-        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[0]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[0]);
     if (right)
-        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[1]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[1]);
     if (down)
-        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[2]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[2]);
     if (up)
-        wasm_bindgen.wasm_key_down(g_module.game, g_cursorKeys[3]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[3]);
 }
 
 function onOSJoyUp(ev) {
@@ -385,24 +389,24 @@ function onOSJoyUp(ev) {
         return;
     g_joyTouchIdentifier = null;
     drawJoystickBtns(this, false, false, false, false);
-    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[0]);
-    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[1]);
-    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[2]);
-    wasm_bindgen.wasm_key_up(g_module.game, g_cursorKeys[3]);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[0]);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[1]);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[2]);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[3]);
 }
 
 function onOSKeyDown(ev) {
     this.classList.add('pressed');
     ev.preventDefault();
     let key = parseInt(this.dataset.code);
-    wasm_bindgen.wasm_key_down(g_module.game, key);
+    wasm_bindgen.wasm_key_down(g_game, key);
 }
 
 function onOSKeyUp(ev) {
     this.classList.remove('pressed');
     ev.preventDefault();
     let key = parseInt(this.dataset.code);
-    wasm_bindgen.wasm_key_up(g_module.game, key);
+    wasm_bindgen.wasm_key_up(g_game, key);
 }
 
 function onKeyDown(ev) {
@@ -433,7 +437,7 @@ function onKeyDown(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    wasm_bindgen.wasm_key_down(g_module.game, key);
+    wasm_bindgen.wasm_key_down(g_game, key);
     ev.preventDefault();
 }
 function onKeyUp(ev) {
@@ -447,21 +451,20 @@ function onKeyUp(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    wasm_bindgen.wasm_key_up(g_module.game, key);
+    wasm_bindgen.wasm_key_up(g_game, key);
     ev.preventDefault();
 }
 
-let g_interval = null;
 function onFocus(ev) {
     if (!g_delayed_funcs)
-        wasm_bindgen.wasm_reset_input(g_module.game);
+        wasm_bindgen.wasm_reset_input(g_game);
     if (g_interval === null) {
         g_interval = setInterval(function(){
             inputGamepad();
             if (g_turbo) {
-                wasm_bindgen.wasm_draw_frame(g_module.game, true);
+                wasm_bindgen.wasm_draw_frame(g_game, true);
             } else while (g_audio_next - g_actx.currentTime < 0.05) {
-                wasm_bindgen.wasm_draw_frame(g_module.game, false);
+                wasm_bindgen.wasm_draw_frame(g_game, false);
                 if (g_delayed_funcs !== null) {
                     if ((g_delayed_funcs[0] -= 20) <= 0) {
                         let f = g_delayed_funcs[2].shift();
@@ -479,15 +482,13 @@ function onFocus(ev) {
 }
 function onBlur(ev) {
     if (!g_delayed_funcs)
-        wasm_bindgen.wasm_reset_input(g_module.game);
+        wasm_bindgen.wasm_reset_input(g_game);
     if (g_interval !== null) {
         clearInterval(g_interval);
         g_interval = null;
     }
 }
 
-let g_gamepad = null;
-let g_gamepadStatus = { fire: false, x: 0, y: 0 };
 
 function onGamepadConnected(ev, connecting) {
     if (!g_gamepad) {
@@ -512,19 +513,18 @@ function inputGamepad() {
     let x = gamepad.axes[0];
     let y = gamepad.axes[1];
     if (x != g_gamepadStatus.x) {
-        (x < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x81);
-        (x > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x80);
+        (x < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x81);
+        (x > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x80);
     }
     if (y != g_gamepadStatus.y) {
-        (y > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x82);
-        (y < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x83);
+        (y > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x82);
+        (y < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x83);
     }
     if (fire != g_gamepadStatus.fire)
-        (fire? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_module.game, 0x84);
+        (fire? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x84);
     g_gamepadStatus = { fire: fire, x: x, y: y };
 }
 
-let g_cursorKeys = null;
 
 function handleCursorKeys(evt) {
     let sel = this.selectedIndex;
@@ -532,8 +532,8 @@ function handleCursorKeys(evt) {
         window.localStorage.setItem("cursorKeys", sel);
     g_cursorKeys = CURSOR_KEYS[sel];
     this.blur();
-    if (g_module.game)
-        wasm_bindgen.wasm_reset_input(g_module.game);
+    if (g_game)
+        wasm_bindgen.wasm_reset_input(g_game);
 }
 
 const CURSOR_KEYS = [
@@ -656,12 +656,12 @@ function resetTape() {
 }
 
 function onLoadTape(data) {
-    let tape_len = wasm_bindgen.wasm_load_tape(g_module.game, new Uint8Array(data));
+    let tape_len = wasm_bindgen.wasm_load_tape(g_game, new Uint8Array(data));
     let xTape = resetTape();
 
     for (let i = 0; i < tape_len; ++i) {
-        let selectable = wasm_bindgen.wasm_tape_selectable(g_module.game, i);
-        let tape_name = wasm_bindgen.wasm_tape_name(g_module.game, i);
+        let selectable = wasm_bindgen.wasm_tape_selectable(g_game, i);
+        let tape_name = wasm_bindgen.wasm_tape_name(g_game, i);
         console.log("Tape ", i, tape_name);
         if (selectable) {
             let btn = document.createElement("button");
@@ -686,21 +686,21 @@ function handleTapeBlock(evt) {
     let btn = evt.target;
     let index = btn['data-index'];
     //evt.target.classList.add('playing');
-    wasm_bindgen.wasm_tape_seek(g_module.game, index);
+    wasm_bindgen.wasm_tape_seek(g_game, index);
 }
 
 function handleReset48k(evt) {
     resetTape();
-    wasm_bindgen.wasm_drop(g_module.game);
-    g_module.is128k = false;
-    g_module.game = wasm_bindgen.wasm_main(g_module.is128k);
+    wasm_bindgen.wasm_drop(g_game);
+    g_is128k = false;
+    g_game = wasm_bindgen.wasm_main(g_is128k);
 }
 
 function handleReset128k(evt) {
     resetTape();
-    wasm_bindgen.wasm_drop(g_module.game);
-    g_module.is128k = true;
-    g_module.game = wasm_bindgen.wasm_main(g_module.is128k);
+    wasm_bindgen.wasm_drop(g_game);
+    g_is128k = true;
+    g_game = wasm_bindgen.wasm_main(g_is128k);
 }
 
 function handleLoadTape(evt) {
@@ -712,7 +712,7 @@ function handleLoadTape(evt) {
 }
 
 function handleStopTape(evt) {
-    wasm_bindgen.wasm_tape_stop(g_module.game);
+    wasm_bindgen.wasm_tape_stop(g_game);
 }
 
 function handleLoadSnapshotSelect(evt) {
@@ -744,12 +744,12 @@ function saveLastSnapshot(data) {
 function handleLoadLastSnapshot(evt) {
     if (!g_lastSnapshot)
         return;
-    g_module.is128k = wasm_bindgen.wasm_load_snapshot(g_module.game, g_lastSnapshot);
+    g_is128k = wasm_bindgen.wasm_load_snapshot(g_game, g_lastSnapshot);
 }
 
 function handleSnapshot(evt) {
     console.log("snapshot");
-    let data = wasm_bindgen.wasm_snapshot(g_module.game);
+    let data = wasm_bindgen.wasm_snapshot(g_game);
     let blob = new Blob([data], {type: "application/octet-stream"});
     let url = window.URL.createObjectURL(blob);
 
@@ -766,11 +766,12 @@ function handleSnapshot(evt) {
 }
 
 function handleFullscreen(evt) {
-    console.log("fullscreen");
-    let canvas = g_realCanvas;
-    let fs = canvas.requestFullscreen || canvas.mozRequestFullScreen || canvas.webkitRequestFullScreen || canvas.msRequestFullscreen;
+    let fs = g_realCanvas.requestFullscreen ||
+             g_realCanvas.mozRequestFullScreen ||
+             g_realCanvas.webkitRequestFullScreen ||
+             g_realCanvas.msRequestFullscreen;
     if (fs)
-        fs.call(canvas);
+        fs.call(g_realCanvas);
 }
 
 function handleTurbo(evt) {
