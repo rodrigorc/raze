@@ -12,7 +12,7 @@ extern "C" {
     fn alert_slice(s: &str);
 }
 
-#[wasm_bindgen(raw_module = "../raze_fg.js")]
+#[wasm_bindgen(raw_module = "../raze.js")]
 extern "C" {
     #[wasm_bindgen(js_name = putImageData)]
     fn putImageDataU8(w: i32, h: i32, data: &[u8]);

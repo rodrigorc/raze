@@ -1,7 +1,7 @@
 #!/bin/bash
 #This assumes that gh-pages is checked out at DEMO (git worktree add DEMO gh-pages)
 sed -e '/<head>/r track.html' index.html > DEMO/index.html
-cp raze_fg.js DEMO/
+cp raze.js DEMO/
 cp raze.css DEMO/
 cp favicon.png DEMO/
 cp base64.js DEMO/
