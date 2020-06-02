@@ -399,6 +399,12 @@ impl Game {
             keys >>= 8;
         }
     }
+    pub fn peek(&self, addr: u16) -> u8 {
+        self.ula.memory.peek_no_delay(addr)
+    }
+    pub fn poke(&mut self, addr: u16, value: u8) {
+        self.ula.memory.poke(addr, value);
+    }
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
     }

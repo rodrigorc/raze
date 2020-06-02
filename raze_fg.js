@@ -217,6 +217,8 @@ async function onDocumentLoad() {
     document.querySelector('#load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
     document.querySelector('#fullscreen').addEventListener('click', handleFullscreen, false);
     document.querySelector('#turbo').addEventListener('click', handleTurbo, false);
+    document.querySelector('#poke').addEventListener('click', handlePoke, false);
+    document.querySelector('#peek').addEventListener('click', handlePeek, false);
     let dither = document.querySelector('#dither');
     dither.addEventListener('click', function(evt) { handleDither.call(this, evt, g_gl) }, false);
     handleDither.call(dither, null, g_gl)
@@ -431,6 +433,11 @@ function onKeyDown(ev) {
     case "F11":
         handleFullscreen(ev);
         ev.preventDefault();
+        return;
+    }
+
+    let focus = document.activeElement.id;
+    if (focus == 'addr' || focus == 'byte') {
         return;
     }
 
@@ -776,6 +783,24 @@ function handleFullscreen(evt) {
 
 function handleTurbo(evt) {
     g_turbo = this.checked;
+}
+
+function handlePoke(evt) {
+    let addr = parseInt(document.getElementById('addr').value);
+    if (isNaN(addr))
+        return;
+    let value = parseInt(document.getElementById('byte').value);
+    if (isNaN(value))
+        return;
+    wasm_bindgen.wasm_poke(g_game, addr, value);
+}
+
+function handlePeek(evt) {
+    let addr = parseInt(document.getElementById('addr').value);
+    if (isNaN(addr))
+        return;
+    let value = wasm_bindgen.wasm_peek(g_game, addr);
+    document.getElementById('byte').value = value;
 }
 
 function handleDither(evt, gl, ctx) {
