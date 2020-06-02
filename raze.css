@@ -19,6 +19,56 @@ h1 {
     position: relative;
     margin: 0 auto;
 }
+#buttons {
+    display: grid;
+    grid-gap: 5px;
+    /*grid-template-columns: 20% 20% 20% 20% 20%;*/
+}
+#buttons span {
+    line-height: 25px;
+    text-align: center;
+}
+#reset_128k {
+    grid-column: 1;
+}
+#reset_48k {
+    grid-column: 2;
+}
+#turbo_p {
+    grid-column: 3;
+}
+#dither_p {
+    grid-column: 4;
+}
+#snapshot {
+    grid-column: 1;
+}
+#load_last_snapshot {
+    grid-column: 2;
+}
+#load_snapshot {
+    grid-column: 3;
+}
+#fullscreen {
+    grid-column: 1;
+}
+#buttons #cursor_keys_p {
+    grid-column-start: 3;
+    grid-column-end: 5;
+    text-align: end;
+}
+#load_tape {
+    grid-column: 1;
+}
+#pause {
+    grid-column: 2;
+}
+#buttons #peek_poke {
+    grid-column-start: 3;
+    grid-column-end: 5;
+    text-align: end;
+}
+
 #stage canvas {
     width: 798px;
     height: 600px;

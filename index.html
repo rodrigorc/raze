@@ -15,19 +15,34 @@
 </div>
 <p>
 <div id="controls">
-  <button id="reset_128k">Reset 128k</button><button id="reset_48k">Reset 48k</button><input id="turbo" name="turbo" type="checkbox">Turbo (F10)</input>&nbsp;&nbsp;<input id="dither" name="dither" type="checkbox">Dither (F8)</input><br>
-  <button id="snapshot">Save Snapshot (F6)</button><button id="load_last_snapshot">Reload Last (F9)</button><button id="load_snapshot">Load Snapshot</button><br>
-  <button id="fullscreen">Fullscreen (F11)</button>
-  <label for="cursor_keys">Cursor keys &amp; LCtrl: </label><select id="cursor_keys" name="cursor_keys">
-    <option value="cursorkeys">Cursor keys</option>
-    <option value="kempston">Kempston</option>
-    <option value="sinclair">Sinclair</option>
-    <option value="protek">Protek/Cursor</option>
-  </select><br>
-  <div>
-      <button id="load_tape">Load Tape</button><button id="stop_tape">Pause</button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-      <input id="addr" type="text" style="width:100px" /><input id="byte" type="text" style="width:50px" /><button id="poke">Poke</button><button id="peek">Peek</button>
-  </div><br>
+  <div id="buttons">
+    <button id="reset_128k">Reset 128k</button>
+    <button id="reset_48k">Reset 48k</button>
+    <span id="turbo_p"><input id="turbo" name="turbo" type="checkbox" /><label for="turbo">Turbo (F10)</label></span>
+    <span id="dither_p"><input id="dither" name="dither" type="checkbox" /><label for="dither">Dither (F8)</label></span>
+
+    <button id="snapshot">Save Snapshot (F6)</button>
+    <button id="load_last_snapshot">Reload Last (F9)</button>
+    <button id="load_snapshot">Load Snapshot</button><br>
+
+    <button id="fullscreen">Fullscreen (F11)</button>
+    <span id="cursor_keys_p">
+      <label for="cursor_keys">Cursor keys &amp; LCtrl: </label>
+      <select id="cursor_keys" name="cursor_keys">
+        <option value="cursorkeys">Cursor keys</option>
+        <option value="kempston">Kempston</option>
+        <option value="sinclair">Sinclair</option>
+        <option value="protek">Protek/Cursor</option>
+      </select>
+    </span>
+    <button id="load_tape">Load Tape</button>
+    <button id="stop_tape">Pause</button>
+    <span id="peek_poke">
+      <input id="addr" type="text" style="width:100px" /><input id="byte" type="text" style="width:50px" />
+      <button id="poke">Poke</button>
+      <button id="peek">Peek</button>
+    </span>
+  </div>
   <div id="tape"></div>
   <div id="keyboard">
       <div id="keys">
