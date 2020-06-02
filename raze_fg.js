@@ -119,8 +119,8 @@ async function onDocumentLoad() {
     let urlParams = new URLSearchParams(window.location.search);
     let webgl = boolURLParamDef(urlParams, 'webgl', true)
 
-    let canvas3d = document.querySelector('#game-layer-3d');
-    let canvas = document.querySelector('#game-layer');
+    let canvas3d = document.getElementById('game-layer-3d');
+    let canvas = document.getElementById('game-layer');
 
     if (webgl) {
         g_gl = canvas3d.getContext('webgl');
@@ -208,22 +208,22 @@ async function onDocumentLoad() {
         onFocus();
 
     document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
-    document.querySelector('#reset_48k').addEventListener('click', handleReset48k, false);
-    document.querySelector('#reset_128k').addEventListener('click', handleReset128k, false);
-    document.querySelector('#load_tape').addEventListener('click', handleLoadTape, false);
-    document.querySelector('#stop_tape').addEventListener('click', handleStopTape, false);
-    document.querySelector('#snapshot').addEventListener('click', handleSnapshot, false);
-    document.querySelector('#load_snapshot').addEventListener('click', handleLoadSnapshot, false);
-    document.querySelector('#load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
-    document.querySelector('#fullscreen').addEventListener('click', handleFullscreen, false);
-    document.querySelector('#turbo').addEventListener('click', handleTurbo, false);
-    document.querySelector('#poke').addEventListener('click', handlePoke, false);
-    document.querySelector('#peek').addEventListener('click', handlePeek, false);
-    let dither = document.querySelector('#dither');
+    document.getElementById('reset_48k').addEventListener('click', handleReset48k, false);
+    document.getElementById('reset_128k').addEventListener('click', handleReset128k, false);
+    document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
+    document.getElementById('stop_tape').addEventListener('click', handleStopTape, false);
+    document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
+    document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
+    document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
+    document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
+    document.getElementById('turbo').addEventListener('click', handleTurbo, false);
+    document.getElementById('poke').addEventListener('click', handlePoke, false);
+    document.getElementById('peek').addEventListener('click', handlePeek, false);
+    let dither = document.getElementById('dither');
     dither.addEventListener('click', function(evt) { handleDither.call(this, evt, g_gl) }, false);
     handleDither.call(dither, null, g_gl)
 
-    let cursorKeys = document.querySelector('#cursor_keys');
+    let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
     if (window.localStorage) {
         let cursorSel = parseInt(window.localStorage.getItem("cursorKeys"));
@@ -232,12 +232,12 @@ async function onDocumentLoad() {
     }
     handleCursorKeys.call(cursorKeys, null);
 
-    let keyboard = document.querySelector('#keyboard');
+    let keyboard = document.getElementById('keyboard');
     if ('ontouchstart' in keyboard) {
-        let joyBtns = document.querySelector('#joy-btns');
+        let joyBtns = document.getElementById('joy-btns');
         let joyBtnsCtx = joyBtns.getContext('2d');
         drawJoystickBtns(joyBtnsCtx, false, false, false, false);
-        let joyFire = document.querySelector('#joy-fire');
+        let joyFire = document.getElementById('joy-fire');
         let joyFireCtx = joyFire.getContext('2d');
         drawJoystickFire(joyFireCtx, false);
 
@@ -420,14 +420,14 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "F8":
-        document.querySelector('#dither').click();
+        document.getElementById('dither').click();
         return;
     case "F9":
         handleLoadLastSnapshot(ev);
         ev.preventDefault();
         return;
     case "F10":
-        document.querySelector('#turbo').checked = g_turbo = true;
+        document.getElementById('turbo').checked = g_turbo = true;
         ev.preventDefault();
         return;
     case "F11":
@@ -450,7 +450,7 @@ function onKeyDown(ev) {
 function onKeyUp(ev) {
     switch (ev.code) {
     case "F10":
-        document.querySelector('#turbo').checked = g_turbo = false;
+        document.getElementById('turbo').checked = g_turbo = false;
         ev.preventDefault();
         return;
     }
@@ -807,7 +807,7 @@ function handleDither(evt, gl, ctx) {
     if (gl) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.checked? gl.LINEAR : gl.NEAREST);
     } else {
-        let canvas = document.querySelector('#game-layer');
+        let canvas = document.getElementById('game-layer');
         if (this.checked)
             canvas.classList.remove('pixelated');
         else
