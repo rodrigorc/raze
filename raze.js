@@ -906,6 +906,8 @@ function initMyGL(gl) {
 
     gl.clearColor(0.0,0.0,0.0,1);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.depthMask(false);
+    gl.stencilMask(0);
 
     gl.useProgram(program);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufferV);
