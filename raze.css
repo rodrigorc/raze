@@ -91,6 +91,9 @@ canvas.pixelated {
 #tape button.selected {
     background: lightblue;
 }
+button:hover {
+    background: lightgray;
+}
 #keyboard {
     display: none;
     height: 600px;

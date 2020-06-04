@@ -71,7 +71,7 @@ export function onTapeBlock(index) {
     let xTape = document.getElementById("tape");
     for (let i = 0; i < xTape.children.length; ++i) {
         let btn = xTape.children[i];
-        if (btn['data-index'] == index)
+        if (btn.dataset.index == index)
             btn.classList.add('selected');
         else
             btn.classList.remove('selected');
@@ -91,9 +91,13 @@ export function putSoundData(slice) {
         freq = 22050
     }
     let abuf = g_actx.createBuffer(1, slice.length, freq);
-    let data = abuf.getChannelData(0);
-    for (let i = 0; i < slice.length; ++i)
-        data[i] = slice[i];
+    if (abuf.copyToChannel) {
+        abuf.copyToChannel(slice, 0);
+    } else {
+        let data = abuf.getChannelData(0);
+        for (let i = 0; i < slice.length; ++i)
+            data[i] = slice[i];
+    }
     asrc.buffer = abuf;
     asrc.connect(g_actx.destination);
 
@@ -675,7 +679,7 @@ function onLoadTape(data) {
             btn.textContent = tape_name;
             xTape.appendChild(btn);
             btn.addEventListener('click', handleTapeBlock, false);
-            btn['data-index'] = i;
+            btn.dataset.index = i;
         }
     }
     xTape.firstChild.classList.add('selected');
@@ -691,7 +695,7 @@ function handleTapeSelect(evt) {
 
 function handleTapeBlock(evt) {
     let btn = evt.target;
-    let index = btn['data-index'];
+    let index = btn.dataset.index;
     //evt.target.classList.add('playing');
     wasm_bindgen.wasm_tape_seek(g_game, index);
 }
