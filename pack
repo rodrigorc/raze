@@ -1,2 +1,1 @@
 wasm-pack build --no-typescript --target web --release
-sed -i "/'env'/d" pkg/raze.js
