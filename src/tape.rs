@@ -84,7 +84,7 @@ impl Block {
         Block {
             name: None,
             selectable: false,
-            tones: vec![Tone { num: 1, len1: len1, len2: len2 }],
+            tones: vec![Tone { num: 1, len1, len2 }],
             len_zero: 0,
             len_one: 0,
             bits_last: 0,
@@ -183,21 +183,15 @@ cfg_if! {
 
             for i in 0 .. zip.len() {
                 let mut ze = zip.by_index(i)?;
-                let name = ze.sanitized_name();
-                let ext = name.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.to_string().to_ascii_lowercase());
-                match ext.as_deref() {
-                    Some("tap") => {
-                        log!("unzipping TAP {}", name.to_string_lossy());
-                        return new_tap(&mut ze);
-                    }
-                    Some("tzx") => {
-                        log!("unzipping TZX {}", name.to_string_lossy());
-                        return new_tzx(&mut ze, is128k);
-                    }
-                    _ => {}
-                };
+                let name = ze.name();
+                let name_l = name.to_ascii_lowercase();
+                if name_l.ends_with(".tap") {
+                    log!("unzipping TAP {}", name);
+                    return new_tap(&mut ze);
+                } else if name_l.ends_with(".tzx") {
+                    log!("unzipping TZX {}", name);
+                    return new_tzx(&mut ze, is128k);
+                }
             }
             Err(io::ErrorKind::InvalidData.into())
         }

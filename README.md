@@ -53,7 +53,7 @@ $ cargo install wasm-pack
 Then clone this repository and build it with this command (copied to `./pack` for convenience):
 
 ```
-$ wasm-pack build --no-typescript --target no-modules --release
+$ wasm-pack build --no-typescript --target web --release
 ```
 
 That that's all! Now you can launch a local sever such as `python -m http.server` and point your browser to the appropriate url.

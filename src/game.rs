@@ -749,16 +749,14 @@ cfg_if! {
             use std::io::Read;
 
             let rdr = Cursor::new(data);
-            let mut zip = zip::ZipArchive::new(rdr)?;
+            let mut zip = zip::ZipArchive::new(rdr)
+                .map_err(|_e| io::ErrorKind::InvalidInput)?;
             for i in 0 .. zip.len() {
-                let mut ze = zip.by_index(i)?;
-                let name = ze.sanitized_name();
-                let ext = name.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.to_string())
-                    .map(|e| e.to_ascii_lowercase());
-                if ext.as_deref() == Some("z80") {
-                    log!("unzipping Z80 {}", name.to_string_lossy());
+                let mut ze = zip.by_index(i)
+                    .map_err(|_e| io::ErrorKind::InvalidInput)?;
+                let name = ze.name();
+                if name.to_ascii_lowercase().ends_with(".z80") {
+                    log!("unzipping Z80 {}", name);
                     let mut res = Vec::new();
                     ze.read_to_end(&mut res)?;
                     return Ok(res);
