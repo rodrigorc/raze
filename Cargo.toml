@@ -29,7 +29,6 @@ opt-level = 3
 
 [dependencies]
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
-cfg-if = "*"
 wasm-bindgen = "*"
 
 [features]

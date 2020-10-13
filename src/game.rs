@@ -420,7 +420,8 @@ impl Game {
                 res
             }
             Err(e) => {
-                alert!("{}", e);
+                log!("Tape error: {}", e);
+                alert!("{}", "Invalid tape file");
                 0
             }
         }
@@ -491,7 +492,7 @@ impl Game {
         }
 
         //memory dump
-        fn compress(data: &mut Vec<u8>, index: u8, bank: &[u8]) {
+        fn compress(data: &mut Vec<u8>, index: u8, bank: &[u8]) -> io::Result<()> {
             //length, delayed
             let start = data.len();
             data.push(0); data.push(0);
@@ -508,7 +509,7 @@ impl Game {
                         Some((b, seq_count + 1))
                     }
                     Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
-                        data.write_all(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
+                        data.write_all(&[0xed, 0xed, seq_count, seq_byte])?;
                         Some((b, 1))
                     }
                     Some((0xed, 1)) => {
@@ -525,7 +526,7 @@ impl Game {
             match seq {
                 None => {}
                 Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
-                    data.write_all(&[0xed, 0xed, seq_count, seq_byte]).unwrap();
+                    data.write_all(&[0xed, 0xed, seq_count, seq_byte])?;
                 }
                 Some((seq_byte, seq_count)) => {
                     data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
@@ -535,17 +536,18 @@ impl Game {
             let len = (data.len() - start - 3) as u16;
             data[start] = len as u8;
             data[start + 1] = (len >> 8) as u8;
+            Ok(())
         }
 
         if self.is128k {
             for i in 0..8 {
                 let bank = self.ula.memory.get_bank(i as usize);
-                compress(&mut data, i + 3, &bank);
+                compress(&mut data, i + 3, &bank).unwrap();
             }
         } else {
             for i in 1..4 {
                 let bank = self.ula.memory.get_bank(i);
-                compress(&mut data, [0, 8, 4, 5][i as usize], &bank);
+                compress(&mut data, [0, 8, 4, 5][i as usize], &bank).unwrap();
             }
         }
         data
@@ -556,7 +558,7 @@ impl Game {
             Err(_) => Cow::Borrowed(data),
         };
         let data_z80 = data.get(..34).ok_or(io::ErrorKind::InvalidData)?;
-        let (z80, version) = Z80::load_snapshot(&data_z80);
+        let (z80, version) = Z80::load_snapshot(&data_z80)?;
         log!("z80 version {:?}", version);
         let border = PIXELS[0][((data_z80[12] >> 1) & 7) as usize];
         let (hdr, mem) = match version {
@@ -594,7 +596,7 @@ impl Game {
                 }
             }
         };
-        let psg = if version != Z80FileVersion::V1 && (hdr[37] & 4) != 0 || is128k {
+        let psg = if (version != Z80FileVersion::V1 && (hdr[37] & 4) != 0) || is128k {
             Some(PSG::load_snapshot(&hdr[38 .. 55]))
         } else {
             None
@@ -610,13 +612,6 @@ impl Game {
                 log!("machine = 48k");
             }
         }
-        /*
-        let mut offset = match version {
-            Z80FileVersion::V1 => 30,
-            Z80FileVersion::V2 => 32 + 23,
-            Z80FileVersion::V3(false) => 32 + 54,
-            Z80FileVersion::V3(true) => 32 + 55,
-        };*/
         let mut memory = if is128k {
             let mut m = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
             //port 0x7ffd
@@ -629,37 +624,38 @@ impl Game {
             Memory::new_from_bytes(ROM_48, None)
         };
 
-        fn uncompress(cdata: &[u8], bank: &mut [u8]) {
+        fn uncompress(cdata: &[u8], bank: &mut [u8]) -> io::Result<()> {
             let mut wbank = bank;
             let mut rdata = cdata.iter();
             let mut prev_ed = false;
             while let Some(&b) = rdata.next() {
                 prev_ed = match (prev_ed, b) {
                     (true, 0xed) => {
-                        let times = *rdata.next().unwrap();
-                        let value = *rdata.next().unwrap();
-                        wbank.write_all(&vec![value; times as usize]).unwrap();
+                        let times = *rdata.next().ok_or(io::ErrorKind::InvalidData)?;
+                        let value = *rdata.next().ok_or(io::ErrorKind::InvalidData)?;
+                        wbank.write_all(&vec![value; times as usize])?;
                         false
                     }
                     (false, 0xed) => {
                         true
                     }
                     (true, b) => {
-                        wbank.write_all(&[0xed, b]).unwrap();
+                        wbank.write_all(&[0xed, b])?;
                         false
                     }
                     (false, b) => {
-                        wbank.write_all(&[b]).unwrap();
+                        wbank.write_all(&[b])?;
                         false
                     }
                 }
             }
             if prev_ed {
-                wbank.write_all(&[0xed]).unwrap();
+                wbank.write_all(&[0xed])?;
             }
             if !wbank.is_empty() {
                 log!("Warning: uncompressed page misses {} bytes", wbank.len());
             }
+            Ok(())
         }
 
         match version {
@@ -673,7 +669,7 @@ impl Game {
                         return Err(io::ErrorKind::InvalidData.into());
                     }
                     let cdata = mem.get(.. mem.len() - 4).ok_or(io::ErrorKind::InvalidData)?;
-                    uncompress(cdata, &mut fullmem);
+                    uncompress(cdata, &mut fullmem).map_err(|_| io::ErrorKind::InvalidData)?;
                     Cow::Owned(fullmem)
                 } else {
                     //is there a signature in uncompressed memory?
@@ -714,7 +710,7 @@ impl Game {
                     log!("MEM {:02x}: {:04x}", ibank, memlen);
                     let bank = memory.get_bank_mut(ibank);
                     if compressed {
-                        uncompress(cdata, bank);
+                        uncompress(cdata, bank)?;
                     } else {
                         bank.copy_from_slice(cdata);
                     }
@@ -743,30 +739,28 @@ impl Game {
     }
 }
 
-cfg_if! {
-    if #[cfg(feature="zip")] {
-        fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
-            use std::io::Read;
+#[cfg(feature="zip")]
+fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
+    use std::io::Read;
 
-            let rdr = Cursor::new(data);
-            let mut zip = zip::ZipArchive::new(rdr)
-                .map_err(|_e| io::ErrorKind::InvalidInput)?;
-            for i in 0 .. zip.len() {
-                let mut ze = zip.by_index(i)
-                    .map_err(|_e| io::ErrorKind::InvalidInput)?;
-                let name = ze.name();
-                if name.to_ascii_lowercase().ends_with(".z80") {
-                    log!("unzipping Z80 {}", name);
-                    let mut res = Vec::new();
-                    ze.read_to_end(&mut res)?;
-                    return Ok(res);
-                }
-            }
-            Err(io::ErrorKind::InvalidData.into())
-        }
-    } else {
-        fn snapshot_from_zip(_data: &[u8]) -> io::Result<Vec<u8>> {
-            Err(io::ErrorKind::NotFound.into())
+    let rdr = Cursor::new(data);
+    let mut zip = zip::ZipArchive::new(rdr)
+        .map_err(|_e| io::ErrorKind::InvalidInput)?;
+    for i in 0 .. zip.len() {
+        let mut ze = zip.by_index(i)
+            .map_err(|_e| io::ErrorKind::InvalidInput)?;
+        let name = ze.name();
+        if name.to_ascii_lowercase().ends_with(".z80") {
+            log!("unzipping Z80 {}", name);
+            let mut res = Vec::new();
+            ze.read_to_end(&mut res)?;
+            return Ok(res);
         }
     }
+    Err(io::ErrorKind::InvalidData.into())
+}
+
+#[cfg(not(feature="zip"))]
+fn snapshot_from_zip(_data: &[u8]) -> io::Result<Vec<u8>> {
+    Err(io::ErrorKind::NotFound.into())
 }

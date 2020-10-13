@@ -25,7 +25,6 @@ h1 {
     /*grid-template-columns: 20% 20% 20% 20% 20%;*/
 }
 #buttons span {
-    line-height: 25px;
     text-align: center;
 }
 #reset_128k {
@@ -87,6 +86,15 @@ canvas.pixelated {
     padding: 2px;
     margin: 2px;
     font-size: small;
+}
+button {
+    background: lightgray;
+}
+label, input {
+    vertical-align: middle;
+}
+input, select {
+    background: white;
 }
 #tape button.selected {
     background: lightblue;

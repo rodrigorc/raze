@@ -682,7 +682,8 @@ function onLoadTape(data) {
             btn.dataset.index = i;
         }
     }
-    xTape.firstChild.classList.add('selected');
+    if (xTape.firstChild)
+        xTape.firstChild.classList.add('selected');
 }
 
 function handleTapeSelect(evt) {

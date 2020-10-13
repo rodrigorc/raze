@@ -1,6 +1,7 @@
 #![allow(clippy::many_single_char_names, clippy::verbose_bit_mask, clippy::cognitive_complexity)]
 
 use std::mem;
+use std::io;
 
 mod r16;
 
@@ -222,7 +223,10 @@ impl Z80 {
             InterruptMode::IM2 => 2,
         } | 0x40; //kempston joystick
     }
-    pub fn load_snapshot(data: &[u8]) -> (Self, Z80FileVersion) {
+    pub fn load_snapshot(data: &[u8]) -> io::Result<(Self, Z80FileVersion)> {
+        if data.len() < 30 {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
         let af = R16::from_bytes(data[1], data[0]);
         let bc = R16::from_bytes(data[2], data[3]);
         let hl = R16::from_bytes(data[4], data[5]);
@@ -246,13 +250,16 @@ impl Z80 {
             _ => InterruptMode::IM0,
         };
         let (pc, version) = if pc.as_u16() == 0 { //v. 2 or 3
+            if data.len() < 34 {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
             let extra = u16::from(data[30]) | (u16::from(data[31]) << 8);
             let pc = R16::from_bytes(data[32], data[33]);
             let version = match extra {
                 23 => Z80FileVersion::V2,
                 54 => Z80FileVersion::V3(false),
                 55 => Z80FileVersion::V3(true),
-                _ => panic!("Unknown Z80 file format"),
+                _ => { return Err(io::ErrorKind::InvalidData.into()); }
             };
             (pc, version)
         } else {
@@ -269,7 +276,7 @@ impl Z80 {
             iff1, im,
             next_op: NextOp::Fetch,
         };
-        (z80, version)
+        Ok((z80, version))
     }
     pub fn interrupt(&mut self) {
         if !self.iff1 {

@@ -108,7 +108,8 @@ mod exports {
                 *old_game = new_game;
             }
             Err(e) => {
-                alert!("{}", e);
+                log!("Snapshot error: {}", e);
+                alert!("{}", "Invalid snapshot file");
             }
         }
         old_game.is_128k()
