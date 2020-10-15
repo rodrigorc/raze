@@ -1,7 +1,38 @@
-import { putImageData, putSoundData, onTapeBlock } from '../raze_fg.js';
+import { putImageData, putSoundData, onTapeBlock } from '../raze.js';
 
 let wasm;
 
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+
+cachedTextDecoder.decode();
+
+let cachegetUint8Memory0 = null;
+function getUint8Memory0() {
+    if (cachegetUint8Memory0 === null || cachegetUint8Memory0.buffer !== wasm.memory.buffer) {
+        cachegetUint8Memory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachegetUint8Memory0;
+}
+
+function getStringFromWasm0(ptr, len) {
+    return cachedTextDecoder.decode(getUint8Memory0().subarray(ptr, ptr + len));
+}
+
+function getArrayU8FromWasm0(ptr, len) {
+    return getUint8Memory0().subarray(ptr / 1, ptr / 1 + len);
+}
+
+let cachegetFloat32Memory0 = null;
+function getFloat32Memory0() {
+    if (cachegetFloat32Memory0 === null || cachegetFloat32Memory0.buffer !== wasm.memory.buffer) {
+        cachegetFloat32Memory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachegetFloat32Memory0;
+}
+
+function getArrayF32FromWasm0(ptr, len) {
+    return getFloat32Memory0().subarray(ptr / 4, ptr / 4 + len);
+}
 /**
 * @param {boolean} is128k
 * @returns {number}
@@ -35,14 +66,6 @@ export function wasm_draw_frame(game, turbo) {
     wasm.wasm_draw_frame(game, turbo);
 }
 
-let cachegetUint8Memory0 = null;
-function getUint8Memory0() {
-    if (cachegetUint8Memory0 === null || cachegetUint8Memory0.buffer !== wasm.memory.buffer) {
-        cachegetUint8Memory0 = new Uint8Array(wasm.memory.buffer);
-    }
-    return cachegetUint8Memory0;
-}
-
 let WASM_VECTOR_LEN = 0;
 
 function passArray8ToWasm0(arg, malloc) {
@@ -70,14 +93,6 @@ function getInt32Memory0() {
     }
     return cachegetInt32Memory0;
 }
-
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-
-cachedTextDecoder.decode();
-
-function getStringFromWasm0(ptr, len) {
-    return cachedTextDecoder.decode(getUint8Memory0().subarray(ptr, ptr + len));
-}
 /**
 * @param {number} game
 * @param {number} index
@@ -85,11 +100,14 @@ function getStringFromWasm0(ptr, len) {
 */
 export function wasm_tape_name(game, index) {
     try {
-        wasm.wasm_tape_name(8, game, index);
-        var r0 = getInt32Memory0()[8 / 4 + 0];
-        var r1 = getInt32Memory0()[8 / 4 + 1];
+        const retptr = wasm.__wbindgen_export_1.value - 16;
+        wasm.__wbindgen_export_1.value = retptr;
+        wasm.wasm_tape_name(retptr, game, index);
+        var r0 = getInt32Memory0()[retptr / 4 + 0];
+        var r1 = getInt32Memory0()[retptr / 4 + 1];
         return getStringFromWasm0(r0, r1);
     } finally {
+        wasm.__wbindgen_export_1.value += 16;
         wasm.__wbindgen_free(r0, r1);
     }
 }
@@ -131,20 +149,23 @@ export function wasm_load_snapshot(game, data) {
     return ret !== 0;
 }
 
-function getArrayU8FromWasm0(ptr, len) {
-    return getUint8Memory0().subarray(ptr / 1, ptr / 1 + len);
-}
 /**
 * @param {number} game
 * @returns {Uint8Array}
 */
 export function wasm_snapshot(game) {
-    wasm.wasm_snapshot(8, game);
-    var r0 = getInt32Memory0()[8 / 4 + 0];
-    var r1 = getInt32Memory0()[8 / 4 + 1];
-    var v0 = getArrayU8FromWasm0(r0, r1).slice();
-    wasm.__wbindgen_free(r0, r1 * 1);
-    return v0;
+    try {
+        const retptr = wasm.__wbindgen_export_1.value - 16;
+        wasm.__wbindgen_export_1.value = retptr;
+        wasm.wasm_snapshot(retptr, game);
+        var r0 = getInt32Memory0()[retptr / 4 + 0];
+        var r1 = getInt32Memory0()[retptr / 4 + 1];
+        var v0 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_free(r0, r1 * 1);
+        return v0;
+    } finally {
+        wasm.__wbindgen_export_1.value += 16;
+    }
 }
 
 /**
@@ -170,16 +191,23 @@ export function wasm_key_down(game, key) {
     wasm.wasm_key_down(game, key);
 }
 
-let cachegetFloat32Memory0 = null;
-function getFloat32Memory0() {
-    if (cachegetFloat32Memory0 === null || cachegetFloat32Memory0.buffer !== wasm.memory.buffer) {
-        cachegetFloat32Memory0 = new Float32Array(wasm.memory.buffer);
-    }
-    return cachegetFloat32Memory0;
+/**
+* @param {number} game
+* @param {number} addr
+* @returns {number}
+*/
+export function wasm_peek(game, addr) {
+    var ret = wasm.wasm_peek(game, addr);
+    return ret;
 }
 
-function getArrayF32FromWasm0(ptr, len) {
-    return getFloat32Memory0().subarray(ptr / 4, ptr / 4 + len);
+/**
+* @param {number} game
+* @param {number} addr
+* @param {number} value
+*/
+export function wasm_poke(game, addr, value) {
+    wasm.wasm_poke(game, addr, value);
 }
 
 async function load(module, imports) {
@@ -221,20 +249,20 @@ async function init(input) {
     }
     const imports = {};
     imports.wbg = {};
-    imports.wbg.__wbg_log_ee5ef086d9ee97e1 = function(arg0, arg1) {
+    imports.wbg.__wbg_log_47e2fc9a446c5725 = function(arg0, arg1) {
         console.log(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_alert_91462df3c2071dfb = function(arg0, arg1) {
-        alert(getStringFromWasm0(arg0, arg1));
-    };
-    imports.wbg.__wbg_onTapeBlock_a7fef67f2abb2590 = function(arg0) {
+    imports.wbg.__wbg_onTapeBlock_5fef6f07f2a38440 = function(arg0) {
         onTapeBlock(arg0 >>> 0);
     };
-    imports.wbg.__wbg_putSoundData_cb52d4ee03107e4a = function(arg0, arg1) {
+    imports.wbg.__wbg_putSoundData_bb8d87be37ea9d3e = function(arg0, arg1) {
         putSoundData(getArrayF32FromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_putImageData_1834cb88eec4f544 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_putImageData_2322fe355f860354 = function(arg0, arg1, arg2, arg3) {
         putImageData(arg0, arg1, getArrayU8FromWasm0(arg2, arg3));
+    };
+    imports.wbg.__wbg_alert_ddf2aa03d6bb8530 = function(arg0, arg1) {
+        alert(getStringFromWasm0(arg0, arg1));
     };
 
     if (typeof input === 'string' || (typeof Request === 'function' && input instanceof Request) || (typeof URL === 'function' && input instanceof URL)) {
