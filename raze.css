@@ -8,6 +8,9 @@ h1 {
    text-align: center;
    margin: 0 0 5px;
 }
+h1 span.version {
+    font-size: 15px;
+}
 #stage {
     width: 798px;
     height: 600px;
