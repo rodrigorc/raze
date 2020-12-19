@@ -385,12 +385,12 @@ impl Z80 {
         self.set_f(f);
         r
     }
-    fn sbc16_flags(&mut self, a: u16, mut b: u16) -> u16 {
+    fn sbc16_flags(&mut self, a: u16, b: u16) -> u16 {
         let mut f = self.f();
+        let mut r = a.wrapping_sub(b);
         if flag8(f, FLAG_C) {
-            b = b.wrapping_add(1);
+            r = r.wrapping_sub(1);
         }
-        let r = a.wrapping_sub(b);
         f = set_flag8(f, FLAG_N, true);
         f = set_flag8(f, FLAG_C, carry16(r, b, a));
         f = set_flag8(f, FLAG_PV, overflow_sub16(a, b, r));
@@ -414,12 +414,12 @@ impl Z80 {
         self.set_f(f);
         r
     }
-    fn adc16_flags(&mut self, a: u16, mut b: u16) -> u16 {
+    fn adc16_flags(&mut self, a: u16, b: u16) -> u16 {
         let mut f = self.f();
+        let mut r = a.wrapping_add(b);
         if flag8(f, FLAG_C) {
-            b = b.wrapping_add(1);
+            r = r.wrapping_add(1);
         }
-        let r = a.wrapping_add(b);
         f = set_flag8(f, FLAG_N, false);
         f = set_flag8(f, FLAG_C, carry16(a, b, r));
         f = set_flag8(f, FLAG_PV, overflow_add16(a, b, r));
