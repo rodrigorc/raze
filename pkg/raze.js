@@ -249,19 +249,19 @@ async function init(input) {
     }
     const imports = {};
     imports.wbg = {};
-    imports.wbg.__wbg_log_47e2fc9a446c5725 = function(arg0, arg1) {
+    imports.wbg.__wbg_log_78615fc9777cff4b = function(arg0, arg1) {
         console.log(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_onTapeBlock_5fef6f07f2a38440 = function(arg0) {
+    imports.wbg.__wbg_onTapeBlock_5f9097950dc446d4 = function(arg0) {
         onTapeBlock(arg0 >>> 0);
     };
-    imports.wbg.__wbg_putSoundData_bb8d87be37ea9d3e = function(arg0, arg1) {
+    imports.wbg.__wbg_putSoundData_68d3e0859e470852 = function(arg0, arg1) {
         putSoundData(getArrayF32FromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_putImageData_2322fe355f860354 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_putImageData_04b7a140b1db36ea = function(arg0, arg1, arg2, arg3) {
         putImageData(arg0, arg1, getArrayU8FromWasm0(arg2, arg3));
     };
-    imports.wbg.__wbg_alert_ddf2aa03d6bb8530 = function(arg0, arg1) {
+    imports.wbg.__wbg_alert_1e9ee988940d9d4e = function(arg0, arg1) {
         alert(getStringFromWasm0(arg0, arg1));
     };
 
