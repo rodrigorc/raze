@@ -31,7 +31,7 @@ async function fetch_with_cors_if_needed(url, callback, error) {
         try {
             resp = await fetch(url);
         } catch (_) {
-            resp = await fetch('https://cors-anywhere.herokuapp.com/' + url);
+            resp = await fetch('https://rodrigorivas.no-ip.org/cors/?url=' + url);
         }
         if (resp.ok)
             callback(await resp.arrayBuffer());

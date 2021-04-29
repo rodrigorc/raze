@@ -100,14 +100,13 @@ function getInt32Memory0() {
 */
 export function wasm_tape_name(game, index) {
     try {
-        const retptr = wasm.__wbindgen_export_1.value - 16;
-        wasm.__wbindgen_export_1.value = retptr;
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         wasm.wasm_tape_name(retptr, game, index);
         var r0 = getInt32Memory0()[retptr / 4 + 0];
         var r1 = getInt32Memory0()[retptr / 4 + 1];
         return getStringFromWasm0(r0, r1);
     } finally {
-        wasm.__wbindgen_export_1.value += 16;
+        wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_free(r0, r1);
     }
 }
@@ -155,8 +154,7 @@ export function wasm_load_snapshot(game, data) {
 */
 export function wasm_snapshot(game) {
     try {
-        const retptr = wasm.__wbindgen_export_1.value - 16;
-        wasm.__wbindgen_export_1.value = retptr;
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         wasm.wasm_snapshot(retptr, game);
         var r0 = getInt32Memory0()[retptr / 4 + 0];
         var r1 = getInt32Memory0()[retptr / 4 + 1];
@@ -164,7 +162,7 @@ export function wasm_snapshot(game) {
         wasm.__wbindgen_free(r0, r1 * 1);
         return v0;
     } finally {
-        wasm.__wbindgen_export_1.value += 16;
+        wasm.__wbindgen_add_to_stack_pointer(16);
     }
 }
 
@@ -212,7 +210,6 @@ export function wasm_poke(game, addr, value) {
 
 async function load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
-
         if (typeof WebAssembly.instantiateStreaming === 'function') {
             try {
                 return await WebAssembly.instantiateStreaming(module, imports);
@@ -231,7 +228,6 @@ async function load(module, imports) {
         return await WebAssembly.instantiate(bytes, imports);
 
     } else {
-
         const instance = await WebAssembly.instantiate(module, imports);
 
         if (instance instanceof WebAssembly.Instance) {
@@ -245,7 +241,7 @@ async function load(module, imports) {
 
 async function init(input) {
     if (typeof input === 'undefined') {
-        input = import.meta.url.replace(/\.js$/, '_bg.wasm');
+        input = new URL('raze_bg.wasm', import.meta.url);
     }
     const imports = {};
     imports.wbg = {};
@@ -268,6 +264,8 @@ async function init(input) {
     if (typeof input === 'string' || (typeof Request === 'function' && input instanceof Request) || (typeof URL === 'function' && input instanceof URL)) {
         input = fetch(input);
     }
+
+
 
     const { instance, module } = await load(await input, imports);
 
