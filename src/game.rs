@@ -28,7 +28,7 @@ const BX1: usize = 5;
 const BY0: usize = 4;
 const BY1: usize = 4;
 
-struct ULA {
+struct Ula {
     memory: Memory,
     keys: [u8; 9], //8 semirows plus joystick
     delay: u32,
@@ -41,7 +41,7 @@ struct ULA {
     psg: Option<PSG>,
 }
 
-impl ULA {
+impl Ula {
     pub fn take_delay(&mut self) -> u32 {
         let r = self.delay;
         self.delay = 0;
@@ -78,7 +78,7 @@ impl ULA {
     }
 }
 
-impl Bus for ULA {
+impl Bus for Ula {
     fn peek(&mut self, addr: impl Into<u16>) -> u8 {
         self.memory.peek(addr)
     }
@@ -93,7 +93,7 @@ impl Bus for ULA {
         //ULA IO port
         if lo & 1 == 0 {
             self.delay += 1;
-            if port >= 0x4000 && port < 0x8000 {
+            if (0x4000 .. 0x8000).contains(&port) {
                 self.delay += 1;
             }
             for i in 0..8 { //half row keyboard
@@ -107,7 +107,7 @@ impl Bus for ULA {
                 }
             }
         } else {
-            if port >= 0x4000 && port < 0x8000 {
+            if (0x4000 .. 0x8000).contains(&port) {
                 self.delay += 4;
             }
             match lo {
@@ -127,7 +127,7 @@ impl Bus for ULA {
                 0xff => { //reads stale data from the bus (last attr byte?)
                     let row = self.time / 224;
                     let ofs = self.time % 224;
-                    r = if row >= 64 && row < 256 && ofs < 128 {
+                    r = if (64..256).contains(&row) && ofs < 128 {
                         let row = row - 64;
                         let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
                         let addr = (0x4000 + 192 * 32) + 32 * row + ofs;
@@ -153,7 +153,7 @@ impl Bus for ULA {
         if lo & 1 == 0 {
             //ULA IO port
             self.delay += 1;
-            if port >= 0x4000 && port < 0x8000 {
+            if (0x4000..0x8000).contains(&port) {
                 self.delay += 1;
             }
             let border = value & 7;
@@ -162,7 +162,7 @@ impl Bus for ULA {
             self.mic = (value & 0x08) != 0;
         } else {
             //log!("OUT {:04x}, {:02x}", port, value);
-            if port >= 0x4000 && port < 0x8000 {
+            if (0x4000..0x8000).contains(&port) {
                 self.delay += 4;
             }
             #[allow(clippy::single_match)]
@@ -211,7 +211,7 @@ impl Bus for ULA {
 pub struct Game {
     is128k: bool,
     z80: Z80,
-    ula: ULA,
+    ula: Ula,
     image: Vec<Pixel>,
     speaker: Speaker,
 }
@@ -251,6 +251,14 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
     }
     let prow = &mut prow_full[BX0 .. BX0 + 256];
     let arow = 192 * 32 + (y / 8) * 32;
+
+    //Attributes are 8 bits:
+    // b7: blink
+    // b6: bright
+    // b5-b3: bk color
+    // b2-b0: fg color
+    //Bitmap and attribute addresses are related in a funny way.
+    #[allow(clippy::unusual_byte_groupings)]
     for ((&d, &attr), bits) in data[orow .. orow + 32].iter().zip(data[arow .. arow + 32].iter()).zip(prow.chunks_mut(8)) {
         for (b, bo) in bits.iter_mut().enumerate() {
             let pix = ((d >> (7-b)) & 1) != 0;
@@ -295,7 +303,7 @@ impl Game {
         Game {
             is128k,
             z80,
-            ula: ULA {
+            ula: Ula {
                 memory,
                 keys: Default::default(),
                 delay: 0,
@@ -720,7 +728,7 @@ impl Game {
         let game = Game {
             is128k,
             z80,
-            ula: ULA {
+            ula: Ula {
                 memory,
                 keys: Default::default(),
                 delay: 0,

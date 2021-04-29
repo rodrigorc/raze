@@ -28,11 +28,12 @@ impl Memory {
         match rom1 {
             None => {
                 //48k
-                let mut data = Vec::new();
-                data.push(Bank::rom(brom0));
-                for i in 1..4 {
-                    data.push(Bank::ram(i == 1));
-                }
+                let data = vec![
+                    Bank::rom(brom0),
+                    Bank::ram(true),
+                    Bank::ram(false),
+                    Bank::ram(false),
+                ];
                 Memory {
                     data,
                     banks: [0, 1, 2, 3],
@@ -46,12 +47,18 @@ impl Memory {
             Some(rom1) => {
                 //128k
                 let brom1 = rom1.to_vec();
-                let mut data = vec![];
-                for i in 0..8 {
-                    data.push(Bank::ram(i & 1 == 1));
-                }
-                data.push(Bank::rom(brom0)); //8: is the 128k rom
-                data.push(Bank::rom(brom1)); //9: is the 128k-48k compatible rom
+                let data = vec![
+                    Bank::ram(false),
+                    Bank::ram(true),
+                    Bank::ram(false),
+                    Bank::ram(true),
+                    Bank::ram(false),
+                    Bank::ram(true),
+                    Bank::ram(false),
+                    Bank::ram(true),
+                    Bank::rom(brom0), //8: is the 128k rom
+                    Bank::rom(brom1), //9: is the 128k-48k compatible rom
+                ];
                 Memory {
                     data,
                     banks: [8, 5, 2, 0],

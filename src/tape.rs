@@ -72,13 +72,14 @@ impl Block {
     }
     #[allow(clippy::too_many_arguments)]
     fn turbo_data_block(par: TurboDataParams) -> Block {
-        let mut tones = Vec::new();
         //num_pilots counts the half pulses, so divide by 2
         //If num_pilots is odd, add a pair. The proper thing to do would be to add a half tone
         //but then the levels should get inverted and that is not implemented yet.
         //pilot
-        tones.push(Tone { num: (par.num_pilots + 1) / 2, len1: par.len_pilot, len2: par.len_pilot});
-        tones.push(Tone { num: 1, len1: par.len_sync1, len2: par.len_sync2});
+        let tones = vec![
+            Tone { num: (par.num_pilots + 1) / 2, len1: par.len_pilot, len2: par.len_pilot},
+            Tone { num: 1, len1: par.len_sync1, len2: par.len_sync2},
+        ];
         Block {
             name: None,
             selectable: true,
@@ -273,7 +274,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
         First(String),
         Middle(String),
         SingleBlockName(String),
-    };
+    }
     struct Parser {
         blocks: Vec<Block>,
         loop_start: Option<(usize, u16)>,
