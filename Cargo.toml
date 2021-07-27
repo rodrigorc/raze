@@ -7,9 +7,6 @@ description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
 repository = "https://github.com/rodrigorc/raze"
 license = "MIT"
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-O", "--enable-mutable-globals"]
-
 [lib]
 crate-type=["cdylib"]
 
