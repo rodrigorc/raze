@@ -148,7 +148,7 @@ impl Envelope {
     }
 }
 
-pub struct PSG {
+pub struct Psg {
     reg_sel: u8,
     reg: [u8; 16],
     freq_a: FreqGen,
@@ -158,9 +158,9 @@ pub struct PSG {
     envelope: Envelope,
 }
 
-impl PSG {
-    pub fn new() -> PSG {
-        PSG {
+impl Psg {
+    pub fn new() -> Psg {
+        Psg {
             reg_sel: 0,
             reg: Default::default(),
             freq_a: FreqGen::new(),
@@ -170,7 +170,7 @@ impl PSG {
             envelope: Envelope::new(),
         }
     }
-    pub fn load_snapshot(data: &[u8]) -> PSG {
+    pub fn load_snapshot(data: &[u8]) -> Psg {
         let mut psg = Self::new();
         for (r, &v) in (0..16).zip(&data[1..17]) {
             psg.reg_sel = r;

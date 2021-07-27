@@ -2,7 +2,7 @@ use crate::js;
 use crate::z80::{Z80, Bus, Z80FileVersion};
 use crate::memory::Memory;
 use crate::tape::{Tape, TapePos};
-use crate::psg::PSG;
+use crate::psg::Psg;
 use crate::speaker::Speaker;
 use std::io::{self, Cursor, Write};
 use std::borrow::Cow;
@@ -17,16 +17,25 @@ static ROM_48: &[u8] = include_bytes!("48k.rom");
 #[derive(Copy, Clone, PartialEq, Eq)]
 struct Pixel(u8,u8,u8,u8);
 
-static PIXELS : [[Pixel; 8]; 2] = [
+//Palette of colors: 2 intensities, each with 8 basic colors
+const PALETTE : [[Pixel; 8]; 2] = [
     [Pixel(0,0,0,0xff), Pixel(0,0,0xd7,0xff), Pixel(0xd7,0,0,0xff), Pixel(0xd7,0,0xd7,0xff), Pixel(0,0xd7,0,0xff), Pixel(0,0xd7,0xd7,0xff), Pixel(0xd7,0xd7,0,0xff), Pixel(0xd7,0xd7,0xd7,0xff)],
     [Pixel(0,0,0,0xff), Pixel(0,0,0xff,0xff), Pixel(0xff,0,0,0xff), Pixel(0xff,0,0xff,0xff), Pixel(0,0xff,0,0xff), Pixel(0,0xff,0xff,0xff), Pixel(0xff,0xff,0,0xff), Pixel(0xff,0xff,0xff,0xff)],
 ];
+
+const BLACK_PIXEL: Pixel = PALETTE[0][0];
 
 //margins
 const BX0: usize = 5;
 const BX1: usize = 5;
 const BY0: usize = 4;
 const BY1: usize = 4;
+
+const SCREEN_SIZE: usize = (BX0 + 256 + BX1) * (BY0 + 192 + BY1); //256x192 plus border
+
+fn black_screen() -> [Pixel; SCREEN_SIZE] {
+    [BLACK_PIXEL; SCREEN_SIZE]
+}
 
 struct Ula {
     memory: Memory,
@@ -38,7 +47,7 @@ struct Ula {
     border: Pixel,
     ear: bool,
     mic: bool,
-    psg: Option<PSG>,
+    psg: Option<Psg>,
 }
 
 impl Ula {
@@ -157,7 +166,8 @@ impl Bus for Ula {
                 self.delay += 1;
             }
             let border = value & 7;
-            self.border = PIXELS[0][border as usize];
+            //Border is never bright
+            self.border = PALETTE[0][border as usize];
             self.ear = (value & 0x10) != 0;
             self.mic = (value & 0x08) != 0;
         } else {
@@ -212,15 +222,13 @@ pub struct Game {
     is128k: bool,
     z80: Z80,
     ula: Ula,
-    image: Vec<Pixel>,
     speaker: Speaker,
+    image: [Pixel; SCREEN_SIZE],
 }
 
 fn write_border_row(y: usize, border: Pixel, ps: &mut [Pixel]) {
     let prow = &mut ps[(BX0 + 256 + BX1) * y .. (BX0 + 256 + BX1) * (y+1)];
-    for x in prow.iter_mut() {
-        *x = border;
-    }
+    prow.fill(border);
 }
 
 fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
@@ -243,12 +251,8 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
     };
     let ym = y + BY0;
     let prow_full = &mut ps[(BX0 + 256 + BX1) * ym .. (BX0 + 256 + BX1) * (ym + 1)];
-    for x in &mut prow_full[0..BX0] {
-        *x = border;
-    }
-    for x in &mut prow_full[BX0 + 256 .. BX0 + 256 + BX1] {
-        *x = border;
-    }
+    prow_full[.. BX0].fill(border);
+    prow_full[BX0 + 256 ..].fill(border);
     let prow = &mut prow_full[BX0 .. BX0 + 256];
     let arow = 192 * 32 + (y / 8) * 32;
 
@@ -259,19 +263,23 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
     // b2-b0: fg color
     //Bitmap and attribute addresses are related in a funny way.
     #[allow(clippy::unusual_byte_groupings)]
-    for ((&d, &attr), bits) in data[orow .. orow + 32].iter().zip(data[arow .. arow + 32].iter()).zip(prow.chunks_mut(8)) {
-        for (b, bo) in bits.iter_mut().enumerate() {
-            let pix = ((d >> (7-b)) & 1) != 0;
-            let bright = (attr & 0b01_000_000) != 0;
-            let blink = inv && (attr & 0b10_000_000) != 0;
-
-            let c = if pix ^ blink {
-                attr & 0b00_000_111
-            } else {
-                (attr & 0b00_111_000) >> 3
-            };
-            *bo = PIXELS[bright as usize][c as usize];
-        }
+    for ((&bits, &attr), pixels) in
+            data[orow .. orow + 32]
+                .iter()
+                .zip(&data[arow .. arow + 32])
+                .zip(prow.chunks_mut(8))
+    {
+        let bright = (attr & 0b01_000_000) != 0;
+        let palette = &PALETTE[bright as usize];
+        let ink = palette[(attr & 0b00_000_111) as usize];
+        let paper = palette[((attr & 0b00_111_000) >> 3) as usize];
+        let inv = inv && (attr & 0b10_000_000) != 0;
+        let mut bits = if inv { bits ^ 0xff } else { bits };
+        pixels.fill_with(|| {
+            let on = bits & 0x80 != 0;
+            bits <<= 1;
+            if on { ink } else { paper }
+        });
     }
 }
 
@@ -294,7 +302,7 @@ impl Game {
         let psg;
         if is128k {
             memory = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
-            psg = Some(PSG::new());
+            psg = Some(Psg::new());
         } else {
             memory = Memory::new_from_bytes(ROM_48, None);
             psg = None;
@@ -310,13 +318,13 @@ impl Game {
                 frame_counter: 0,
                 time: 0,
                 tape: None,
-                border: PIXELS[0][0],
+                border: BLACK_PIXEL,
                 ear: false,
                 mic: false,
                 psg,
             },
-            image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
             speaker: Speaker::new(),
+            image: black_screen()
         }
     }
     pub fn is_128k(&self) -> bool {
@@ -476,7 +484,7 @@ impl Game {
         let header_extra = if banks_plus2 == 0 { 23 } else { 55 };
         let mut data = vec![0; HEADER + header_extra];
         self.z80.snapshot(&mut data);
-        data[12] |= (PIXELS[0].iter().position(|c| *c == self.ula.border).unwrap_or(0) as u8) << 1;
+        data[12] |= (PALETTE[0].iter().position(|c| *c == self.ula.border).unwrap_or(0) as u8) << 1;
 
         //extended header block
         //len of the block
@@ -500,7 +508,7 @@ impl Game {
         }
 
         //memory dump
-        fn compress(data: &mut Vec<u8>, index: u8, bank: &[u8]) -> io::Result<()> {
+        fn compress(data: &mut Vec<u8>, index: u8, bank: &[u8]) {
             //length, delayed
             let start = data.len();
             data.push(0); data.push(0);
@@ -517,7 +525,7 @@ impl Game {
                         Some((b, seq_count + 1))
                     }
                     Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
-                        data.write_all(&[0xed, 0xed, seq_count, seq_byte])?;
+                        data.extend(&[0xed, 0xed, seq_count, seq_byte]);
                         Some((b, 1))
                     }
                     Some((0xed, 1)) => {
@@ -534,7 +542,7 @@ impl Game {
             match seq {
                 None => {}
                 Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
-                    data.write_all(&[0xed, 0xed, seq_count, seq_byte])?;
+                    data.extend(&[0xed, 0xed, seq_count, seq_byte]);
                 }
                 Some((seq_byte, seq_count)) => {
                     data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
@@ -544,18 +552,17 @@ impl Game {
             let len = (data.len() - start - 3) as u16;
             data[start] = len as u8;
             data[start + 1] = (len >> 8) as u8;
-            Ok(())
         }
 
         if self.is128k {
             for i in 0..8 {
                 let bank = self.ula.memory.get_bank(i as usize);
-                compress(&mut data, i + 3, &bank).unwrap();
+                compress(&mut data, i + 3, bank);
             }
         } else {
             for i in 1..4 {
                 let bank = self.ula.memory.get_bank(i);
-                compress(&mut data, [0, 8, 4, 5][i as usize], &bank).unwrap();
+                compress(&mut data, [0, 8, 4, 5][i as usize], bank);
             }
         }
         data
@@ -566,9 +573,9 @@ impl Game {
             Err(_) => Cow::Borrowed(data),
         };
         let data_z80 = data.get(..34).ok_or(io::ErrorKind::InvalidData)?;
-        let (z80, version) = Z80::load_snapshot(&data_z80)?;
+        let (z80, version) = Z80::load_snapshot(data_z80)?;
         log!("z80 version {:?}", version);
-        let border = PIXELS[0][((data_z80[12] >> 1) & 7) as usize];
+        let border = PALETTE[0][((data_z80[12] >> 1) & 7) as usize];
         let (hdr, mem) = match version {
             Z80FileVersion::V1 => {
                 (&[] as &[u8], data.get(30..).ok_or(io::ErrorKind::InvalidData)?)
@@ -605,7 +612,7 @@ impl Game {
             }
         };
         let psg = if (version != Z80FileVersion::V1 && (hdr[37] & 4) != 0) || is128k {
-            Some(PSG::load_snapshot(&hdr[38 .. 55]))
+            Some(Psg::load_snapshot(&hdr[38 .. 55]))
         } else {
             None
         };
@@ -740,8 +747,8 @@ impl Game {
                 mic: false,
                 psg,
             },
-            image: vec![PIXELS[0][0]; (BX0 + 256 + BX1) * (BY0 + 192 + BY1)], //256x192 plus border
             speaker: Speaker::new(),
+            image: black_screen(),
         };
         Ok(game)
     }
