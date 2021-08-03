@@ -112,7 +112,7 @@ impl Envelope {
             0x0c => (RaiseLoop, Raise),
             0x0d => (RaiseHigh, Raise),
             0x0e => (RaiseLowerLoop, Raise),
-            _ => unreachable!(),
+            0x10 ..= 0xff => unreachable!(),
         };
         self.shape = shape;
         self.block = block;
@@ -148,13 +148,21 @@ impl Envelope {
     }
 }
 
+/// The Programmable Sound Generator: AY-3-8910
 pub struct Psg {
+    /// The selected register, that will be read/written next
     reg_sel: u8,
+    /// There are 16 byte-sized registers
     reg: [u8; 16],
+    /// There are 3 frequency generators, this is the FG-A.
     freq_a: FreqGen,
+    /// The second frequency generator FG-B
     freq_b: FreqGen,
+    /// The third frequency generator FG-C
     freq_c: FreqGen,
+    /// There is only one noise generator, shared by all the FG-*
     noise: NoiseGen,
+    /// The envelope setup
     envelope: Envelope,
 }
 
@@ -172,8 +180,8 @@ impl Psg {
     }
     pub fn load_snapshot(data: &[u8]) -> Psg {
         let mut psg = Self::new();
-        for (r, &v) in (0..16).zip(&data[1..17]) {
-            psg.reg_sel = r;
+        for (r, &v) in data[1..17].iter().enumerate() {
+            psg.reg_sel = r as u8;
             psg.write_reg(v);
         }
         psg.reg_sel = data[0];
@@ -183,56 +191,69 @@ impl Psg {
         data[0] = self.reg_sel;
         data[1..17].copy_from_slice(&self.reg);
     }
+    /// Changes the selected register
     pub fn select_reg(&mut self, reg: u8) {
         if let 0..=0x0f = reg {
             self.reg_sel = reg;
         }
     }
+    /// Reads the selected register, it has no side effects
     pub fn read_reg(&self) -> u8 {
         //log!("PSG read {:02x} <- {:02x}", self.psg_sel, r);
         self.reg[usize::from(self.reg_sel)]
     }
+    /// Reads the selected register
     pub fn write_reg(&mut self, x: u8) {
         self.reg[usize::from(self.reg_sel)] = x;
         //log!("PSG write {:02x} <- {:02x}", self.reg_sel, x);
         match self.reg_sel {
+            //Regs 0x00-0x01 set up the frequency for FG-A
             0x00 | 0x01 => {
                 let freq = Self::freq_12(self.reg[0x00], self.reg[0x01]);
                 self.freq_a.set_freq(freq);
                 //log!("Tone A: {}", freq);
             }
+            //Regs 0x02-0x03 set up the frequency for FG-B
             0x02 | 0x03 => {
                 let freq = Self::freq_12(self.reg[0x02], self.reg[0x03]);
                 self.freq_b.set_freq(freq);
                 //log!("Tone B: {}", freq);
             }
             0x04 | 0x05 => {
-                let freq = Self::freq_12(self.reg[0x04], self.reg[0x05]);
+            //Regs 0x04-0x05 set up the frequency for FG-C
+            let freq = Self::freq_12(self.reg[0x04], self.reg[0x05]);
                 self.freq_c.set_freq(freq);
                 //log!("Tone C: {}", freq);
             }
+            //Reg 0x06 is the noise frequency
             0x06 => {
                 let noise = self.reg[0x06] & 0x1f;
                 self.noise.set_freq(if noise == 0 { 1 } else { noise });
                 //log!("Noise A: {}", noise);
             }
+            //Regs 0x07-0x0a: are used directly in next_sample(), no side effects
+
+            //Regs 0x0b-0x0c set up the envelope frequency; 0x0d is the shape noise
             0x0b | 0x0c | 0x0d=> {
                 let freq = Self::freq_16(self.reg[0x0b], self.reg[0x0c]);
                 let shape = self.reg[0x0d];
                 self.envelope.set_freq_shape(freq, shape);
                 //log!("Envel: {} {}", freq, shape);
             }
+            //Regs 0x0e-0x0f are unused
             _ => {}
         }
     }
     pub fn next_sample(&mut self, t: i32) -> i16 {
+        //Reg 0x07 is a bitmask that _disables_ what is to be mixed to the final output:
+        // * 0b0000_0001: do not mix freq_a
+        // * 0b0000_0010: do not mix freq_b
+        // * 0b0000_0100: do not mix freq_c
+        // * 0b0000_1000: do not mix noise into channel A
+        // * 0b0001_0000: do not mix noise into channel B
+        // * 0b0010_0000: do not mix noise into channel C
+        // * 0b1100_0000: unused
         let mix = self.reg[0x07];
-        let mut res : i16 = 0;
-        let noise = if mix & 0x38 != 0x38 {
-            self.noise.next_sample(t)
-        } else {
-            false
-        };
         let tone_a = (mix & 0x01) == 0;
         let tone_b = (mix & 0x02) == 0;
         let tone_c = (mix & 0x04) == 0;
@@ -240,11 +261,24 @@ impl Psg {
         let noise_b = (mix & 0x10) == 0;
         let noise_c = (mix & 0x20) == 0;
 
+        // If any noise bit is set, compute the next noise sample.
+        // It not, do not bother, because it is just noise.
+        let noise = if noise_a || noise_b || noise_c {
+            self.noise.next_sample(t)
+        } else {
+            false
+        };
+
+        // Compute which channels are to be added
         let chan_a = Self::channel(tone_a, noise_a, &mut self.freq_a, noise, t);
         let chan_b = Self::channel(tone_b, noise_b, &mut self.freq_b, noise, t);
         let chan_c = Self::channel(tone_c, noise_c, &mut self.freq_c, noise, t);
+
+        //Envelope is computed even if unused
         let env = self.envelope.next_sample(t);
 
+        // Add the enabled channels, pondering the volume and the envelope
+        let mut res : i16 = 0;
         if chan_a {
             let v = self.reg[0x08];
             let vol = Self::volume(v, env);
