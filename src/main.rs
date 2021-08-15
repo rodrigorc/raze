@@ -1,5 +1,5 @@
 use std::env;
-use std::io::{self, ErrorKind};
+use anyhow::anyhow;
 
 #[allow(unused)]
 #[macro_use]
@@ -20,10 +20,10 @@ mod memory;
 mod z80;
 mod tape;
 
-fn main() -> io::Result<()> {
+fn main() -> anyhow::Result<()> {
 
     let mut args = env::args_os();
-    let _program = args.next().ok_or(ErrorKind::InvalidData)?;
+    let _program = args.next().ok_or(anyhow!("Missing command line argument"))?;
 
 
     let load = args.next().unwrap();

@@ -1,4 +1,5 @@
 use std::io::{prelude::*, self};
+use anyhow::anyhow;
 
 #[derive(Copy, Clone, Debug)]
 struct Tone {
@@ -221,7 +222,7 @@ fn latin1_to_string(s: &[u8]) -> String {
 }
 
 #[cfg(feature="zip")]
-fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
+fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> anyhow::Result<Vec<Block>> {
     let mut zip = zip::ZipArchive::new(r)?;
 
     for i in 0 .. zip.len() {
@@ -236,21 +237,21 @@ fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> io::Result<Vec<Block>> {
             return new_tzx(&mut ze, is128k);
         }
     }
-    Err(io::ErrorKind::InvalidData.into())
+    Err(anyhow!("ZIP file does not contain any *.tap or *.tzx file"))
 }
 
 #[cfg(not(feature="zip"))]
-fn new_zip<R: Read + Seek>(_r: &mut R, _is128k: bool) -> io::Result<Vec<Block>> {
-    Err(io::ErrorKind::NotFound.into())
+fn new_zip<R: Read + Seek>(_r: &mut R, _is128k: bool) -> anyhow::Result<Vec<Block>> {
+    Err(anyhow!("ZIP format not supported"))
 }
 
-fn new_tap(r: &mut impl Read) -> io::Result<Vec<Block>> {
+fn new_tap(r: &mut impl Read) -> anyhow::Result<Vec<Block>> {
     let mut blocks = Vec::new();
     loop {
         let len = match r.read_u16() {
             Ok(x) => x,
             Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e),
+            Err(e) => return Err(e.into()),
         };
         let mut data = vec![0; usize::from(len)];
         r.read_exact(&mut data)?;
@@ -259,11 +260,11 @@ fn new_tap(r: &mut impl Read) -> io::Result<Vec<Block>> {
     Ok(blocks)
 }
 
-fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
+fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
     let mut sig = [0; 10];
     r.read_exact(&mut sig)?;
     if &sig[0..8] != b"ZXTape!\x1a" {
-        return Err(io::ErrorKind::InvalidData.into());
+        return Err(anyhow!("invalid TZX signature"));
     }
     let major = sig[8];
     let minor = sig[9];
@@ -370,7 +371,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
         let kind = match r.read_u8() {
             Ok(b) => b,
             Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e),
+            Err(e) => return Err(e.into()),
         };
         match kind {
             0x10 => { //standard speed data block
@@ -494,7 +495,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> io::Result<Vec<Block>> {
             0x2a => { //stop the tape if in 48K mode
                 let len = r.read_u32()?;
                 if len > 0 {
-                    return Err(io::ErrorKind::InvalidData.into());
+                    return Err(anyhow!("invalid TAP-stop48k block"));
                 }
                 log!("stop tape if 48k");
                 if !is128k {
@@ -570,8 +571,8 @@ fn string_from_zx(bs: &[u8]) -> String {
 }
 
 impl Tape {
-    pub fn new<R: Read + Seek>(mut tap: R, is128k: bool) -> io::Result<Tape> {
-        let start_pos = tap.seek(io::SeekFrom::Current(0))?;
+    pub fn new<R: Read + Seek>(mut tap: R, is128k: bool) -> anyhow::Result<Tape> {
+        let start_pos = tap.stream_position()?;
 
         let mut blocks = new_zip(tap.by_ref(), is128k)
             .or_else(|_| {
@@ -580,7 +581,8 @@ impl Tape {
             }).or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;
                 new_tap(tap.by_ref())
-            })?;
+            })
+            .map_err(|_| anyhow!("Invalid tape file"))?;
 
         //try to guess the names of the unnamed blocks
         let mut prefixed = false;

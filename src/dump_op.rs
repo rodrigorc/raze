@@ -15,7 +15,7 @@ mod memory;
 
 use z80::Z80;
 
-fn main() -> io::Result<()> {
+fn main() {
     let mut args = env::args();
     let program = args.next().unwrap();
     let mut z80 = Z80::new();
@@ -41,5 +41,4 @@ fn main() -> io::Result<()> {
             println!("Usage: {0} <opcode>", program);
         }
     }
-    Ok(())
 }

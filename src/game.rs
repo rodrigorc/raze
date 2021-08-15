@@ -4,8 +4,9 @@ use crate::memory::Memory;
 use crate::tape::{Tape, TapePos};
 use crate::psg::Psg;
 use crate::speaker::Speaker;
-use std::io::{self, Cursor, Write};
+use std::io::{Cursor, Write, Read};
 use std::borrow::Cow;
+use anyhow::anyhow;
 
 const TIME_TO_INT : i32 = 69888;
 
@@ -437,7 +438,7 @@ impl Game {
             }
             Err(e) => {
                 log!("Tape error: {}", e);
-                alert!("{}", "Invalid tape file");
+                alert!("{}", e);
                 0
             }
         }
@@ -567,31 +568,32 @@ impl Game {
         }
         data
     }
-    pub fn load_snapshot(data: &[u8]) -> io::Result<Game> {
+    pub fn load_snapshot(data: &[u8]) -> anyhow::Result<Game> {
         let data = match snapshot_from_zip(data) {
             Ok(v) => Cow::Owned(v),
             Err(_) => Cow::Borrowed(data),
         };
-        let data_z80 = data.get(..34).ok_or(io::ErrorKind::InvalidData)?;
+        let file_too_short_error = || anyhow!("invalid z80 format: file too short");
+        let data_z80 = data.get(..34).ok_or_else(file_too_short_error)?;
         let (z80, version) = Z80::load_snapshot(data_z80)?;
         log!("z80 version {:?}", version);
         let border = PALETTE[0][((data_z80[12] >> 1) & 7) as usize];
         let (hdr, mem) = match version {
             Z80FileVersion::V1 => {
-                (&[] as &[u8], data.get(30..).ok_or(io::ErrorKind::InvalidData)?)
+                (&[] as &[u8], data.get(30..).ok_or_else(file_too_short_error)?)
             }
             Z80FileVersion::V2 => {
-                (data.get(..55).ok_or(io::ErrorKind::InvalidData)?,
-                 data.get(55..).ok_or(io::ErrorKind::InvalidData)?)
+                (data.get(..55).ok_or_else(file_too_short_error)?,
+                 data.get(55..).ok_or_else(file_too_short_error)?)
             }
             Z80FileVersion::V3(false) => {
-                (data.get(..86).ok_or(io::ErrorKind::InvalidData)?,
-                 data.get(86..).ok_or(io::ErrorKind::InvalidData)?)
+                (data.get(..86).ok_or_else(file_too_short_error)?,
+                 data.get(86..).ok_or_else(file_too_short_error)?)
 
             }
             Z80FileVersion::V3(true) => {
-                (data.get(..87).ok_or(io::ErrorKind::InvalidData)?,
-                 data.get(87..).ok_or(io::ErrorKind::InvalidData)?)
+                (data.get(..87).ok_or_else(file_too_short_error)?,
+                 data.get(87..).ok_or_else(file_too_short_error)?)
             }
         };
         let is128k = match version {
@@ -639,15 +641,15 @@ impl Game {
             Memory::new_from_bytes(ROM_48, None)
         };
 
-        fn uncompress(cdata: &[u8], bank: &mut [u8]) -> io::Result<()> {
+        fn uncompress(cdata: &[u8], bank: &mut [u8]) -> anyhow::Result<()> {
             let mut wbank = bank;
             let mut rdata = cdata.iter();
             let mut prev_ed = false;
             while let Some(&b) = rdata.next() {
                 prev_ed = match (prev_ed, b) {
                     (true, 0xed) => {
-                        let times = *rdata.next().ok_or(io::ErrorKind::InvalidData)?;
-                        let value = *rdata.next().ok_or(io::ErrorKind::InvalidData)?;
+                        let times = *rdata.next().ok_or_else(|| anyhow!("invalid compressed data"))?;
+                        let value = *rdata.next().ok_or_else(|| anyhow!("invalid compressed data"))?;
                         wbank.write_all(&vec![value; times as usize])?;
                         false
                     }
@@ -678,13 +680,13 @@ impl Game {
                 let compressed = (data_z80[12] & 0x20) != 0;
                 let ram = if compressed {
                     let mut fullmem = vec![0; 0xc000];
-                    //the signature is 4 bytes long
-                    let sig = mem.get(mem.len() - 4..).ok_or(io::ErrorKind::InvalidData)?;
-                    if sig != [0, 0xed, 0xed, 0] {
-                        return Err(io::ErrorKind::InvalidData.into());
+                    //the signature is 4 bytes long, at the end
+                    let sig = mem.get(mem.len() - 4..);
+                    if sig != Some(&[0, 0xed, 0xed, 0]) {
+                        return Err(anyhow!("invalid Z80v1 signature"));
                     }
-                    let cdata = mem.get(.. mem.len() - 4).ok_or(io::ErrorKind::InvalidData)?;
-                    uncompress(cdata, &mut fullmem).map_err(|_| io::ErrorKind::InvalidData)?;
+                    let cdata = &mem[.. mem.len() - 4];
+                    uncompress(cdata, &mut fullmem)?;
                     Cow::Owned(fullmem)
                 } else {
                     //is there a signature in uncompressed memory?
@@ -703,7 +705,7 @@ impl Game {
                     let compressed = memlen < 0x4000;
                     let page = mem[offset + 2];
                     offset += 3;
-                    let cdata = mem.get(offset .. offset + memlen).ok_or(io::ErrorKind::InvalidData)?;
+                    let cdata = mem.get(offset .. offset + memlen).ok_or_else(|| anyhow!("invalid compressed memory block"))?;
                     offset += memlen;
 
                     let ibank = match (is128k, page) {
@@ -719,7 +721,7 @@ impl Game {
                         (true, 9) => 6,
                         (true, 10) => 7,
                         _ => {
-                            return Err(io::ErrorKind::InvalidData.into());
+                            return Err(anyhow!("unknown memory page: {} (128k={})", page, is128k));
                         }
                     };
                     log!("MEM {:02x}: {:04x}", ibank, memlen);
@@ -755,15 +757,11 @@ impl Game {
 }
 
 #[cfg(feature="zip")]
-fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
-    use std::io::Read;
-
+fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     let rdr = Cursor::new(data);
-    let mut zip = zip::ZipArchive::new(rdr)
-        .map_err(|_e| io::ErrorKind::InvalidInput)?;
+    let mut zip = zip::ZipArchive::new(rdr)?;
     for i in 0 .. zip.len() {
-        let mut ze = zip.by_index(i)
-            .map_err(|_e| io::ErrorKind::InvalidInput)?;
+        let mut ze = zip.by_index(i)?;
         let name = ze.name();
         if name.to_ascii_lowercase().ends_with(".z80") {
             log!("unzipping Z80 {}", name);
@@ -772,10 +770,10 @@ fn snapshot_from_zip(data: &[u8]) -> io::Result<Vec<u8>> {
             return Ok(res);
         }
     }
-    Err(io::ErrorKind::InvalidData.into())
+    Err(anyhow!("ZIP file does not contain any *.z80 file"))
 }
 
 #[cfg(not(feature="zip"))]
-fn snapshot_from_zip(_data: &[u8]) -> io::Result<Vec<u8>> {
-    Err(io::ErrorKind::NotFound.into())
+fn snapshot_from_zip(_data: &[u8]) -> anyhow::Result<Vec<u8>> {
+    Err(anyhow!("ZIP format not supported"))
 }

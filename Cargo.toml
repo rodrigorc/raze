@@ -27,6 +27,7 @@ opt-level = 3
 [dependencies]
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
 wasm-bindgen = "*"
+anyhow = "*"
 
 [features]
 default = ["zip"]

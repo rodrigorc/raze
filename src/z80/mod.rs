@@ -1,7 +1,7 @@
 #![allow(clippy::many_single_char_names, clippy::verbose_bit_mask, clippy::cognitive_complexity)]
 
 use std::mem;
-use std::io;
+use anyhow::anyhow;
 
 mod r16;
 
@@ -223,9 +223,9 @@ impl Z80 {
             InterruptMode::IM2 => 2,
         } | 0x40; //kempston joystick
     }
-    pub fn load_snapshot(data: &[u8]) -> io::Result<(Self, Z80FileVersion)> {
+    pub fn load_snapshot(data: &[u8]) -> anyhow::Result<(Self, Z80FileVersion)> {
         if data.len() < 30 {
-            return Err(io::ErrorKind::InvalidData.into());
+            return Err(anyhow!("Z80 snaphot too short"));
         }
         let af = R16::from_bytes(data[1], data[0]);
         let bc = R16::from_bytes(data[2], data[3]);
@@ -251,7 +251,7 @@ impl Z80 {
         };
         let (pc, version) = if pc.as_u16() == 0 { //v. 2 or 3
             if data.len() < 34 {
-                return Err(io::ErrorKind::InvalidData.into());
+                return Err(anyhow!("Z80 snaphot too short"));
             }
             let extra = u16::from(data[30]) | (u16::from(data[31]) << 8);
             let pc = R16::from_bytes(data[32], data[33]);
@@ -259,7 +259,7 @@ impl Z80 {
                 23 => Z80FileVersion::V2,
                 54 => Z80FileVersion::V3(false),
                 55 => Z80FileVersion::V3(true),
-                _ => { return Err(io::ErrorKind::InvalidData.into()); }
+                v => return Err(anyhow!("unknown Z80 snaphot version {}", v)),
             };
             (pc, version)
         } else {
