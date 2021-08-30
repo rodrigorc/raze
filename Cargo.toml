@@ -7,6 +7,9 @@ description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
 repository = "https://github.com/rodrigorc/raze"
 license = "MIT"
 
+[workspace]
+members = ["xtask"]
+
 [lib]
 crate-type=["cdylib"]
 

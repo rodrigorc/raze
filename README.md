@@ -50,10 +50,16 @@ You also need `wasm-pack`, so if you do not have it do:
 $ cargo install wasm-pack
 ```
 
-Then clone this repository and build it with this command (copied to `./pack` for convenience):
+Then clone this repository and build it with this command:
 
 ```
 $ wasm-pack build --no-typescript --target web --release
+```
+
+Alternatively you can use the following [xtask](https://github.com/matklad/cargo-xtask):
+
+```
+$ cargo xtask pack
 ```
 
 That that's all! Now you can launch a local sever such as `python -m http.server` and point your browser to the appropriate url.

@@ -1,4 +1,7 @@
-#![allow(non_snake_case)]
+//If not targetting wasm32 the wasm_bindgen are ignored and there are
+//a lot of warnings about dead_code, for example with "cargo check".
+//But for the real thing we want the warning there, so it is disabled conditionally.
+#![cfg_attr(not(target_family="wasm"), allow(dead_code))]
 
 use crate::game::Game;
 use std::mem;
@@ -41,7 +44,7 @@ macro_rules! alert {
 }
 
 //Wrapper for extern.putImageData, because in Rust we will use &[Pixel], but in JS we prefer &[u8].
-pub fn putImageData<T>(w: i32, h: i32, data: &[T]) {
+pub fn put_image_data<T>(w: i32, h: i32, data: &[T]) {
     let ptr = data.as_ptr() as *const u8;
     let len = data.len() * mem::size_of::<T>();
     unsafe {

@@ -393,7 +393,7 @@ impl Game {
             js::putSoundData(audio);
             self.speaker.clear();
         }
-        js::putImageData((BX0 + 256 + BX1) as i32, (BY0 + 192 + BY1) as i32, &self.image);
+        js::put_image_data((BX0 + 256 + BX1) as i32, (BY0 + 192 + BY1) as i32, &self.image);
     }
     //Every byte in key is a key pressed:
     //  * low nibble: key number (0..5)
