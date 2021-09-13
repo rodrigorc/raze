@@ -9,11 +9,10 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = console, js_name = log)]
-    fn log_slice(s: &str);
     #[wasm_bindgen(js_name = alert)]
     fn alert_slice(s: &str);
 }
+
 
 #[wasm_bindgen(raw_module = "../raze.js")]
 extern "C" {
@@ -23,20 +22,12 @@ extern "C" {
     pub fn onTapeBlock(index: usize);
 }
 
-//Wrapper for console.log that takes a `impl AsRef<str>`
-pub fn log(s: impl AsRef<str>) {
-    log_slice(s.as_ref());
-}
-
 pub fn alert(s: impl AsRef<str>) {
-    alert_slice(s.as_ref());
+    let s = s.as_ref();
+    log::error!("{}", s);
+    alert_slice(s);
 }
 
-macro_rules! log {
-    ( $($e:tt)* ) => {
-        $crate::js::log(format!($($e)*))
-    };
-}
 macro_rules! alert {
     ( $($e:tt)* ) => {
         $crate::js::alert(format!($($e)*))
@@ -58,6 +49,7 @@ mod exports {
 
     #[wasm_bindgen]
     pub fn wasm_main(is128k: bool) -> *mut Game {
+        let _ = console_log::init_with_level(log::Level::Debug);
         let game = Box::new(Game::new(is128k));
         Box::into_raw(game)
     }
@@ -105,14 +97,13 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_load_snapshot(game: *mut Game, data: &[u8]) -> bool{
         let old_game = unsafe { &mut *game };
-        log!("snap len {}", data.len());
+        log::debug!("snap len {}", data.len());
         match Game::load_snapshot(data) {
             Ok(new_game) => {
                 *old_game = new_game;
             }
             Err(e) => {
-                log!("Snapshot error: {}", e);
-                alert!("{}", "Invalid snapshot file");
+                alert!("Snapshot error: {}", e);
             }
         }
         old_game.is_128k()

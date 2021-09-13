@@ -298,7 +298,7 @@ fn write_screen(border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
 
 impl Game {
     pub fn new(is128k: bool) -> Game {
-        log!("Go!");
+        log::info!("Go!");
         let memory;
         let psg;
         if is128k {
@@ -437,8 +437,7 @@ impl Game {
                 res
             }
             Err(e) => {
-                log!("Tape error: {}", e);
-                alert!("{}", e);
+                alert!("Tape error: {}", e);
                 0
             }
         }
@@ -576,7 +575,7 @@ impl Game {
         let file_too_short_error = || anyhow!("invalid z80 format: file too short");
         let data_z80 = data.get(..34).ok_or_else(file_too_short_error)?;
         let (z80, version) = Z80::load_snapshot(data_z80)?;
-        log!("z80 version {:?}", version);
+        log::debug!("z80 version {:?}", version);
         let border = PALETTE[0][((data_z80[12] >> 1) & 7) as usize];
         let (hdr, mem) = match version {
             Z80FileVersion::V1 => {
@@ -620,13 +619,13 @@ impl Game {
         };
         match (is128k, &psg) {
             (true, _) => {
-                log!("machine = 128k");
+                log::debug!("machine = 128k");
             }
             (false, Some(_)) => {
-                log!("machine = 48k with PSG");
+                log::debug!("machine = 48k with PSG");
             }
             (false, None) => {
-                log!("machine = 48k");
+                log::debug!("machine = 48k");
             }
         }
         let mut memory = if is128k {
@@ -670,7 +669,7 @@ impl Game {
                 wbank.write_all(&[0xed])?;
             }
             if !wbank.is_empty() {
-                log!("Warning: uncompressed page misses {} bytes", wbank.len());
+                log::warn!("Warning: uncompressed page misses {} bytes", wbank.len());
             }
             Ok(())
         }
@@ -724,7 +723,7 @@ impl Game {
                             return Err(anyhow!("unknown memory page: {} (128k={})", page, is128k));
                         }
                     };
-                    log!("MEM {:02x}: {:04x}", ibank, memlen);
+                    log::debug!("MEM {:02x}: {:04x}", ibank, memlen);
                     let bank = memory.get_bank_mut(ibank);
                     if compressed {
                         uncompress(cdata, bank)?;
@@ -764,7 +763,7 @@ fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
         let mut ze = zip.by_index(i)?;
         let name = ze.name();
         if name.to_ascii_lowercase().ends_with(".z80") {
-            log!("unzipping Z80 {}", name);
+            log::debug!("unzipping Z80 {}", name);
             let mut res = Vec::new();
             ze.read_to_end(&mut res)?;
             return Ok(res);

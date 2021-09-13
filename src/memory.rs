@@ -120,7 +120,7 @@ impl Memory {
     }
     pub fn switch_banks(&mut self, v: u8) {
         if self.locked {
-            log!("mem locked");
+            log::warn!("mem locked");
             return;
         }
         self.banks[3] = (v & 0x07) as usize;
@@ -133,7 +133,7 @@ impl Memory {
     }
     pub fn switch_banks_plus2(&mut self, v: u8) {
         if self.locked {
-            log!("mem locked");
+            log::warn!("mem locked");
             return;
         }
         //special mode

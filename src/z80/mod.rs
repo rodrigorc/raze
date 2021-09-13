@@ -188,7 +188,7 @@ impl Z80 {
         }
     }
     pub fn _dump_regs(&self) {
-        log!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}; INT {}-{}",
+        log::debug!("PC {:04x}; AF {:04x}; BC {:04x}; DE {:04x}; HL {:04x}; IR {:02x}{:02x}; INT {}-{}",
                  self.pc.as_u16(),
                  self.af.as_u16() & 0xffd7,
                  self.bc.as_u16(), self.de.as_u16(), self.hl.as_u16(),
@@ -635,7 +635,7 @@ impl Z80 {
                 self.iff1 = false;
                 match self.im {
                     InterruptMode::IM0 => {
-                        log!("IM0 interrupt!");
+                        log::debug!("IM0 interrupt!");
                         0x00 //NOP
                     }
                     InterruptMode::IM1 => {
@@ -1342,7 +1342,7 @@ impl Z80 {
             }
             0x76 => { //HALT
                 if !self.iff1 {
-                    log!("DI/HALT deadlock!");
+                    log::warn!("DI/HALT deadlock!");
                 }
                 self.next_op = NextOp::Halt;
                 4

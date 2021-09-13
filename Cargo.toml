@@ -31,6 +31,8 @@ opt-level = 3
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
 wasm-bindgen = "*"
 anyhow = "*"
+log = "*"
+console_log = { version = "*", features = ["color"] }
 
 [features]
 default = ["zip"]

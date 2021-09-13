@@ -416,7 +416,7 @@ impl Z80 {
                 }
             }
             _ => {
-                log!("unimplemented opcode ED {:02x} pc={:04x}", c, self.pc.as_u16());
+                log::warn!("unimplemented opcode ED {:02x} pc={:04x}", c, self.pc.as_u16());
                 0
             },
         }

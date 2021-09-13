@@ -230,10 +230,10 @@ fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> anyhow::Result<Vec<Block>
         let name = ze.name();
         let name_l = name.to_ascii_lowercase();
         if name_l.ends_with(".tap") {
-            log!("unzipping TAP {}", name);
+            log::debug!("unzipping TAP {}", name);
             return new_tap(&mut ze);
         } else if name_l.ends_with(".tzx") {
-            log!("unzipping TZX {}", name);
+            log::debug!("unzipping TZX {}", name);
             return new_tzx(&mut ze, is128k);
         }
     }
@@ -268,7 +268,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
     }
     let major = sig[8];
     let minor = sig[9];
-    log!("tzx version: {}.{}", major, minor);
+    log::info!("tzx version: {}.{}", major, minor);
 
     #[derive(Clone)]
     enum GroupParse {
@@ -305,7 +305,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
         }
         fn group_start(&mut self, text: String) {
             if self.in_group() {
-                log!("nested group not allowed");
+                log::error!("nested group not allowed");
             } else {
                 self.group_name = Some(GroupParse::First(text));
             }
@@ -314,7 +314,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             if self.in_group() {
                 self.group_name = None;
             } else {
-                log!("group end without start");
+                log::error!("group end without start");
             }
         }
         fn in_group(&self) -> bool {
@@ -329,14 +329,14 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
         }
         fn text_description(&mut self, text: String) {
             if self.in_group() {
-                log!("text description inside a group");
+                log::error!("text description inside a group");
             } else {
                 self.group_name = Some(GroupParse::SingleBlockName(text));
             }
         }
         fn loop_start(&mut self, reps: u16) {
             if self.loop_start.is_some() {
-                log!("nested loop");
+                log::error!("nested loop");
             } else {
                 self.loop_start = Some((self.blocks.len(), reps));
             }
@@ -355,7 +355,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                     }
                 }
                 None => {
-                    log!("loop end without start");
+                    log::error!("loop end without start");
                 }
             }
         }
@@ -378,7 +378,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let pause = u32::from(r.read_u16()?) * 3500; // ms -> T
                 let block_len = r.read_u16()?;
                 let data = r.read_vec(usize::from(block_len))?;
-                log!("standard block P:{} D:{}", pause as f32 / 3_500_000.0, data.len());
+                log::debug!("standard block P:{} D:{}", pause as f32 / 3_500_000.0, data.len());
                 let mut block = Block::standard_data_block(data);
                 block.pause = Duration::T(pause);
                 parser.add_block(block);
@@ -396,7 +396,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let num1 = usize::from(r.read_u8()?);
                 let num = num0 | (num1 << 16);
                 let data = r.read_vec(num)?;
-                log!("turbo speed data block P:{}*{} S1:{} S2:{} 0:{} 1:{} L:{} P:{} D:{}",
+                log::debug!("turbo speed data block P:{}*{} S1:{} S2:{} 0:{} 1:{} L:{} P:{} D:{}",
                          len_pilot, num_pilots,
                          len_sync1, len_sync2,
                          len_zero, len_one,
@@ -418,7 +418,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             0x12 => { //pure tone
                 let len_tone = u32::from(r.read_u16()?);
                 let num_tones = u32::from(r.read_u16()?);
-                log!("pure tone {} {}", len_tone, num_tones);
+                log::debug!("pure tone {} {}", len_tone, num_tones);
                 let block = Block::pure_tone_block(len_tone, num_tones);
                 parser.add_block(block);
             }
@@ -428,13 +428,13 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 for _ in 0..num {
                     pulses.push(r.read_u16()?);
                 }
-                log!("pulse sequence {:?}", pulses);
+                log::debug!("pulse sequence {:?}", pulses);
                 for p in pulses.chunks(2) {
                     if p.len() == 2 {
                         let block = Block::single_tone_block(u32::from(p[0]), u32::from(p[1]));
                         parser.add_block(block);
                     } else {
-                        log!("odd pulse sequence unimplemented");
+                        log::debug!("odd pulse sequence unimplemented");
                     }
                 }
             }
@@ -447,7 +447,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let num1 = usize::from(r.read_u8()?);
                 let num = num0 | (num1 << 16);
                 let data = r.read_vec(num)?;
-                log!("pure data block 0:{} 1:{} L:{} P:{} D:{}",
+                log::debug!("pure data block 0:{} 1:{} L:{} P:{} D:{}",
                      len_zero, len_one, bits_last,
                      pause as f32 / 3_500_000.0, num);
                 let block = Block::pure_data_block(len_zero, len_one, bits_last, pause, data);
@@ -460,11 +460,11 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             0x20 => { //pause (stop)
                 let pause = u32::from(r.read_u16()?) * 3500; // ms -> T;
                 if pause == 0 {
-                    log!("stop tape");
+                    log::debug!("stop tape");
                     let block = Block::stop_block();
                     parser.add_block(block);
                 } else {
-                    log!("pause {}", pause);
+                    log::debug!("pause {}", pause);
                     let block = Block::pause_block(pause);
                     parser.add_block(block);
                 }
@@ -472,21 +472,21 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             0x21 => { //group start
                 let len = r.read_u8()?;
                 let text = r.read_string(usize::from(len))?;
-                log!("group start: {}", text);
+                log::debug!("group start: {}", text);
                 parser.group_start(text);
             }
             0x22 => { //group end
-                log!("group end");
+                log::debug!("group end");
                 parser.group_end();
             }
             //0x23 => {} //jump to block
             0x24 => { //loop start
                 let repetitions = r.read_u16()?;
-                log!("loop start {}", repetitions);
+                log::debug!("loop start {}", repetitions);
                 parser.loop_start(repetitions);
             }
             0x25 => { //loop end
-                log!("loop end");
+                log::debug!("loop end");
                 parser.loop_end();
             }
             //0x26 => {} //call sequence
@@ -497,7 +497,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 if len > 0 {
                     return Err(anyhow!("invalid TAP-stop48k block"));
                 }
-                log!("stop tape if 48k");
+                log::debug!("stop tape if 48k");
                 if !is128k {
                     let block = Block::stop_block();
                     parser.add_block(block);
@@ -507,7 +507,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             0x30 => { //text description
                 let len = r.read_u8()?;
                 let text = r.read_string(usize::from(len))?;
-                log!("text description: {}", text);
+                log::debug!("text description: {}", text);
                 parser.text_description(text);
             }
             //0x31 => {} //message block
@@ -520,7 +520,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                     let id = ri.read_u8()?;
                     let ilen = ri.read_u8()?;
                     let itext = ri.read_string(usize::from(ilen))?;
-                    log!("archive info {:02x}: {}", id, itext);
+                    log::debug!("archive info {:02x}: {}", id, itext);
                 }
             }
             //0x33 => {} //hardware type
@@ -529,7 +529,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             //0x40 => {} //snapshot block
             //0x5a => {} //glue block
             x => {
-                log!("*** unknown chunk type: 0x{:02x}", x);
+                log::debug!("*** unknown chunk type: 0x{:02x}", x);
             }
         }
     }
