@@ -778,12 +778,16 @@ function handleSnapshot(evt) {
 }
 
 function handleFullscreen(evt) {
-    let fs = g_realCanvas.requestFullscreen ||
-             g_realCanvas.mozRequestFullScreen ||
-             g_realCanvas.webkitRequestFullScreen ||
-             g_realCanvas.msRequestFullscreen;
-    if (fs)
-        fs.call(g_realCanvas);
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else {
+        let fs = g_realCanvas.requestFullscreen ||
+            g_realCanvas.mozRequestFullScreen ||
+            g_realCanvas.webkitRequestFullScreen ||
+            g_realCanvas.msRequestFullscreen;
+        if (fs)
+            fs.call(g_realCanvas);
+    }
 }
 
 function handleTurbo(evt) {
