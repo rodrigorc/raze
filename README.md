@@ -10,7 +10,7 @@ R.A.Z.E. stands for "Rusty Attempt to a Z80 Emulator", o something like that. It
 
 ## Controls
 
-You can use the keyboard mostly normally; right-control key is mapped to SymbolShift. The joystick emulation is mapped from the cursor keys for direction and left-control for fire. You can choose the type of joystick emulated in the drop-down menu `Cursor keys`.
+You can use the keyboard mostly normally; SymbolShift is mapped to the right-control key and to the two Alt keys. The joystick emulation is mapped from the cursor keys for direction and left-control for fire. You can choose the type of joystick emulated in the drop-down menu `Cursor keys`.
 
 There is also experimental support for gamepads: The gamepad will always emulate a Kempston joystick, great for multiplayer games. Remember that this is experimental, so your controller may or may not work. Patches are welcomed!
 

@@ -645,6 +645,8 @@ function getKeyCode(ev) {
     case "Space":
         return 0x70;
     case "ControlRight":
+    case "AltLeft":
+    case "AltRight":
         return 0x71;
     case "KeyM":
         return 0x72;
