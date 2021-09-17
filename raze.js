@@ -428,6 +428,14 @@ function onOSKeyUp(ev) {
     ev.preventDefault();
     if (ev.type == 'mouseup' && this.classList.contains('sticky') && this.classList.contains('pressed2')) {
         this.classList.remove('pressed2');
+        //if symbolshift is pressed, caps-shift is not sticky
+        if (key == 0x08 && ev.type == 'mouseup') {
+            let ss = document.getElementById('ss');
+            if (ss.classList.contains('pressed')) {
+                this.classList.remove('pressed');
+                wasm_bindgen.wasm_key_up(g_game, key);
+            }
+        }
     } else {
         this.classList.remove('pressed');
         wasm_bindgen.wasm_key_up(g_game, key);
