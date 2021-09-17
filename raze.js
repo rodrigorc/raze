@@ -223,9 +223,9 @@ async function onDocumentLoad() {
     document.getElementById('turbo').addEventListener('click', handleTurbo, false);
     document.getElementById('poke').addEventListener('click', handlePoke, false);
     document.getElementById('peek').addEventListener('click', handlePeek, false);
-    let dither = document.getElementById('dither');
-    dither.addEventListener('click', function(evt) { handleDither.call(this, evt, g_gl) }, false);
-    handleDither.call(dither, null, g_gl)
+    document.getElementById('toggle_kbd').addEventListener('click', handleToggleKbd, false);
+    document.getElementById('dither').addEventListener('click', handleDither, false);
+    setDither(false, g_gl);
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
@@ -245,13 +245,15 @@ async function onDocumentLoad() {
         let joyFireCtx = joyFire.getContext('2d');
         drawJoystickFire(joyFireCtx, false);
 
-        keyboard.style.display = 'block';
         //keyboard
         keyboard.querySelectorAll('.key').forEach(key => {
             key.addEventListener('touchstart', onOSKeyDown, false);
             key.addEventListener('touchend', onOSKeyUp, false);
         });
+
         //joystick
+        let joystick = document.getElementById('joystick')
+        joystick.style.display = 'grid';
         joyBtns.addEventListener('touchstart', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchmove', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchend', onOSJoyUp.bind(joyBtnsCtx), false);
@@ -273,6 +275,13 @@ async function onDocumentLoad() {
         keyboard.addEventListener('touchend', ev => {
             ev.preventDefault();
         }, false);
+    } else {
+        let keys = document.getElementsByClassName('key');
+        for (let i = 0; i < keys.length; ++i) {
+            let key = keys[i];
+            key.addEventListener('mousedown', onOSKeyDown, false);
+            key.addEventListener('mouseup', onOSKeyUp, false);
+        }
     }
 }
 
@@ -402,17 +411,27 @@ function onOSJoyUp(ev) {
 }
 
 function onOSKeyDown(ev) {
-    this.classList.add('pressed');
-    ev.preventDefault();
+    //mouse events obey sticky keys, touch events do not
     let key = parseInt(this.dataset.code);
-    wasm_bindgen.wasm_key_down(g_game, key);
+    ev.preventDefault();
+    if (!this.classList.contains('pressed2') && !this.classList.contains('pressed')) {
+        this.classList.add('pressed');
+        wasm_bindgen.wasm_key_down(g_game, key);
+        if (ev.type == 'mousedown' && this.classList.contains('sticky')) {
+            this.classList.add('pressed2');
+        }
+    }
 }
 
 function onOSKeyUp(ev) {
-    this.classList.remove('pressed');
-    ev.preventDefault();
     let key = parseInt(this.dataset.code);
-    wasm_bindgen.wasm_key_up(g_game, key);
+    ev.preventDefault();
+    if (ev.type == 'mouseup' && this.classList.contains('sticky') && this.classList.contains('pressed2')) {
+        this.classList.remove('pressed2');
+    } else {
+        this.classList.remove('pressed');
+        wasm_bindgen.wasm_key_up(g_game, key);
+    }
 }
 
 function onKeyDown(ev) {
@@ -423,15 +442,20 @@ function onKeyDown(ev) {
         handleSnapshot(ev);
         ev.preventDefault();
         return;
+    case "F7":
+        document.getElementById('toggle_kbd').click();
+        ev.preventDefault();
+        return;
     case "F8":
         document.getElementById('dither').click();
+        ev.preventDefault();
         return;
     case "F9":
         handleLoadLastSnapshot(ev);
         ev.preventDefault();
         return;
     case "F10":
-        document.getElementById('turbo').checked = g_turbo = true;
+        setTurbo(true);
         ev.preventDefault();
         return;
     case "F11":
@@ -454,7 +478,7 @@ function onKeyDown(ev) {
 function onKeyUp(ev) {
     switch (ev.code) {
     case "F10":
-        document.getElementById('turbo').checked = g_turbo = false;
+        setTurbo(false);
         ev.preventDefault();
         return;
     }
@@ -793,7 +817,17 @@ function handleFullscreen(evt) {
 }
 
 function handleTurbo(evt) {
-    g_turbo = this.checked;
+    setTurbo(!g_turbo);
+}
+
+function setTurbo(mode) {
+    g_turbo = mode;
+    let turbo = document.getElementById('turbo');
+    if (g_turbo) {
+        turbo.classList.add('active');
+    } else {
+        turbo.classList.remove('active');
+    }
 }
 
 function handlePoke(evt) {
@@ -814,15 +848,40 @@ function handlePeek(evt) {
     document.getElementById('byte').value = value;
 }
 
-function handleDither(evt, gl, ctx) {
-    if (gl) {
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.checked? gl.LINEAR : gl.NEAREST);
+function handleToggleKbd(evt) {
+    let keyboard = document.getElementById('keyboard');
+    if (this.classList.contains('active')) {
+        this.classList.remove('active');
+        keyboard.style.display = 'none'
     } else {
-        let canvas = document.getElementById('game-layer');
-        if (this.checked)
-            canvas.classList.remove('pixelated');
-        else
-            canvas.classList.add('pixelated');
+        this.classList.add('active');
+        keyboard.style.display = 'block'
+    }
+}
+
+function handleDither(evt) {
+    if (this.classList.contains('active')) {
+        this.classList.remove('active');
+        setDither(false, g_gl);
+    } else {
+        this.classList.add('active');
+        setDither(true, g_gl);
+    }
+}
+
+function setDither(dither, gl) {
+    if (dither) {
+        if (gl) {
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        } else {
+            document.getElementById('game-layer').classList.remove('pixelated');
+        }
+    } else {
+        if (gl) {
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        } else {
+            document.getElementById('game-layer').classList.add('pixelated');
+        }
     }
 }
 
