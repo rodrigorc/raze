@@ -1,5 +1,5 @@
 body {
-    background: gray;
+    background: darkgray;
 }
 * {
     font-family: monospace;
@@ -25,7 +25,7 @@ h1 span.version {
 #buttons {
     display: grid;
     grid-gap: 5px;
-    /*grid-template-columns: 20% 20% 20% 20% 20%;*/
+    grid-template-columns: 25% 25% 25% 25%;
 }
 #buttons span {
     text-align: center;
@@ -50,6 +50,9 @@ h1 span.version {
 }
 #load_snapshot {
     grid-column: 3;
+}
+#toggle_kbd {
+    grid-column: 4;
 }
 #fullscreen {
     grid-column: 1;
@@ -92,6 +95,11 @@ canvas.pixelated {
 }
 button {
     background: lightgray;
+    padding: 5px 10px;
+}
+button.active {
+    background: white;
+    border-style: inset;
 }
 label, input {
     vertical-align: middle;
@@ -99,55 +107,158 @@ label, input {
 input, select {
     background: white;
 }
+select {
+    padding: 5px 10px;
+}
 #tape button.selected {
     background: lightblue;
 }
 button:hover {
     background: lightgray;
 }
+button:hover.active {
+    background: white;
+}
 #keyboard {
     display: none;
-    height: 600px;
 }
 #keys {
-    display: grid;
-    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
-    grid-gap: 2% 1%;
-}
-.key {
+    margin: 10px 0;
+    padding: 5px;
     background-color: black;
+}
+
+#keys > div {
+    display: grid;
+    grid-gap: 1%;
+}
+#row1 {
+    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    padding: 5px 10% 0 0%;
+}
+#row2 {
+    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    padding: 5px 5% 0 5%;
+}
+#row3 {
+    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    padding: 5px 0% 0 10%;
+}
+#row4 {
+    grid-template-columns: 13% 8% 8% 8% 8% 8% 8% 8% 8% 13%;
+    padding: 5px 0% 0 0%;
+}
+
+.key {
+    font-family: monospace;
+    background-color: #707070;
     color: white;
     text-align: center;
-    padding: 15px 0;
-    font-size: 20px;
+    padding: 2px 0;
+    font-size: 25px;
     cursor: default;
+    display: grid;
+    grid-template-rows: 70% 30%;
+    grid-template-columns: 50% 50%;
 }
-.key.small {
+
+#row1 .key {
+    grid-template-rows: 50% 50%;
+    padding-bottom: 14%;
+}
+.key.caps {
     font-size: 15px;
-    padding: 10px 0;
+    text-align: center;
+    grid-template-rows: 45% 45%;
+    grid-template-columns: 100%;
+    padding-top: 5%;
 }
+.key.space {
+    font-size: 15px;
+    text-align: center;
+    grid-template-rows: 30% 70%;
+    grid-template-columns: 100%;
+}
+.key.symbolshift {
+    color: red;
+    font-size: 15px;
+    text-align: center;
+    grid-template-rows: 50% 50%;
+    grid-template-columns: 100%;
+    padding-top: 10%;
+}
+.key.enter {
+    font-size: 15px;
+    text-align: center;
+    display: block;
+    padding: 20% 0;
+}
+
+.key .ss {
+    font-size: 12px;
+    color: red;
+}
+.key .ss.big {
+    font-size: 15px;
+    font-weight: bold;
+}
+.key .k {
+    font-size: 10px;
+    text-align: right;
+    grid-column-start: 1;
+    grid-column-end: 3;
+    padding-right: 10%;
+    font-weight: bold;
+}
+.key .s1 {
+    grid-row: 1;
+}
+.key .s2 {
+    grid-row: 2;
+}
+
+#row1 .n {
+    grid-column: 1;
+    grid-row-start: 1;
+    grid-row-end: 3;
+}
+#row1 .g {
+    font-size: 15px;
+    grid-row: 1;
+    grid-column: 2;
+}
+#row1 .ss {
+    font-size: 15px;
+    grid-column: 2;
+    grid-row: 2;
+}
+.ktop {
+    padding-left: 5%;
+    color: yellow;
+    font-size: 10px;
+}
+#row1 .ktop {
+    color: white;
+}
+.kbottom {
+    padding-left: 5%;
+    color: salmon;
+    font-size: 10px;
+}
+
+.key.space .s1 {
+    font-size: 12px;
+}
+.key.space .s2 {
+    font-size: 22px;
+}
+
 .key.pressed {
     background-color: white;
     color: black;
 }
-.row1 {
-    grid-row-start: 1;
-    grid-row-end: 2;
-}
-.row2 {
-    grid-row-start: 2;
-    grid-row-end: 3;
-}
-.row3 {
-    grid-row-start: 3;
-    grid-row-end: 4;
-}
-.row4 {
-    grid-row-start: 4;
-    grid-row-end: 5;
-}
 #joystick {
-    display: grid;
+    display: none;
     padding-top: 25px;
     align-items: center;
     justify-items: center;
