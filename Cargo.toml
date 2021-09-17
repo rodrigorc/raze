@@ -1,6 +1,6 @@
 [package]
 name = "raze"
-version = "1.5.0"
+version = "1.6.0"
 authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
 edition = "2018"
 description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
