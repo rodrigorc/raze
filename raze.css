@@ -237,6 +237,10 @@ button:hover.active {
     color: yellow;
     font-size: 10px;
 }
+.color {
+    padding-left: 5%;
+    font-size: 10px;
+}
 #row1 .ktop {
     color: white;
 }
