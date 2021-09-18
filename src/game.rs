@@ -134,14 +134,14 @@ impl Bus for Ula {
                         }
                     }
                 }
-                0xff => { //reads stale data from the bus (last attr byte?)
+                0xff => { //reads stale data from the floating bus (last attr byte?)
                     let row = self.time / 224;
                     let ofs = self.time % 224;
                     r = if (64..256).contains(&row) && ofs < 128 {
                         let row = row - 64;
                         let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
-                        let addr = (0x4000 + 192 * 32) + 32 * row + ofs;
-                        self.memory.peek_no_delay(addr as u16)
+                        let addr = 32 * 192 + 32 * (row / 8) + ofs;
+                        self.memory.video_memory()[addr as usize]
                     } else { //borders or retraces
                         0xff
                     }
