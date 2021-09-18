@@ -280,16 +280,16 @@ async function init(input) {
     imports.wbg.__wbindgen_object_drop_ref = function(arg0) {
         takeObject(arg0);
     };
-    imports.wbg.__wbg_onTapeBlock_74aa476129533ecd = function(arg0) {
+    imports.wbg.__wbg_onTapeBlock_8b12f1eb625e5523 = function(arg0) {
         onTapeBlock(arg0 >>> 0);
     };
-    imports.wbg.__wbg_putSoundData_1678e02fd78e97ea = function(arg0, arg1) {
+    imports.wbg.__wbg_putSoundData_55406bd1881a7c8e = function(arg0, arg1) {
         putSoundData(getArrayF32FromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_putImageData_d4ec1d920a7f9b59 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_putImageData_0a1563610871bc57 = function(arg0, arg1, arg2, arg3) {
         putImageData(arg0, arg1, getArrayU8FromWasm0(arg2, arg3));
     };
-    imports.wbg.__wbg_alert_e51dee55bbb4132b = function(arg0, arg1) {
+    imports.wbg.__wbg_alert_a6e31580be16eb67 = function(arg0, arg1) {
         alert(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {

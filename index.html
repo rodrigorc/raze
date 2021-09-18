@@ -16,7 +16,7 @@
 </head>
 <body>
 <style>#forkongithub a{background:#000;color:#fff;text-decoration:none;font-family:arial,sans-serif;text-align:center;font-weight:bold;padding:5px 40px;font-size:1rem;line-height:2rem;position:relative;transition:0.5s;}#forkongithub a:hover{background:#c11;color:#fff;}#forkongithub a::before,#forkongithub a::after{content:"";width:100%;display:block;position:absolute;top:1px;left:0;height:1px;background:#fff;}#forkongithub a::after{bottom:1px;top:auto;}@media screen and (min-width:800px){#forkongithub{position:absolute;display:block;top:0;right:0;width:200px;overflow:hidden;height:200px;z-index:9999;}#forkongithub a{width:200px;position:absolute;top:60px;right:-60px;transform:rotate(45deg);-webkit-transform:rotate(45deg);-ms-transform:rotate(45deg);-moz-transform:rotate(45deg);-o-transform:rotate(45deg);box-shadow:4px 4px 10px rgba(0,0,0,0.8);}}</style><span id="forkongithub"><a href="https://github.com/rodrigorc/raze">Fork me on GitHub</a></span>
-<h1>R.A.Z.E. A ZX Spectrum Emulator <span class="version">v1.6</span></h1>
+<h1>R.A.Z.E. A ZX Spectrum Emulator <span class="version">v1.7</span></h1>
 <div id="stage">
   <canvas id="game-layer-3d" width="798" height="600"></canvas>
   <canvas id="game-layer" width="266" height="200" style="display:none" class="pixelated"></canvas>
@@ -26,16 +26,16 @@
   <div id="keyboard">
       <div id="keys">
           <div id="row1">
-              <div><div style="color:blue">BLUE</div><div class="ktop">EDIT</div><div class="key" data-code="0x30"><div class="n">1</div><div class="ss big">!</div><div class="g">▝</div></div><div class="kbottom">DEF FN</div></div>
-              <div><div style="color:red">RED</div><div class="ktop">CAPS LOCK</div><div class="key" data-code="0x31"><div class="n">2</div><div class="ss big">@</div><div class="g">▘</div></div><div class="kbottom">FN</div></div>
-              <div><div style="color:magenta">MAGENTA</div><div class="ktop">TRUE VIDEO</div><div class="key" data-code="0x32"><div class="n">3</div><div class="ss big">#</div><div class="g">▀</div></div><div class="kbottom">LINE</div></div>
-              <div><div style="color:green">GREEN</div><div class="ktop">INV. VIDEO</div><div class="key" data-code="0x33"><div class="n">4</div><div class="ss big">$</div><div class="g">▗</div></div><div class="kbottom">OPEN#</div></div>
-              <div><div style="color:cyan">CYAN</div><div class="ktop">◀</div><div class="key" data-code="0x34"><div class="n">5</div><div class="ss big">%</div><div class="g">▐</div></div><div class="kbottom">CLOSE#</div></div>
-              <div><div style="color:yellow">YELLOW</div><div class="ktop">▼</div><div class="key" data-code="0x44"><div class="n">6</div><div class="ss big">&amp;</div><div class="g">▚</div></div><div class="kbottom">MOVE</div></div>
-              <div><div style="color:white">WHITE</div><div class="ktop">▲</div><div class="key" data-code="0x43"><div class="n">7</div><div class="ss big">'</div><div class="g">▜</div></div><div class="kbottom">ERASE</div></div>
+              <div><div class="color" style="color:blue">BLUE</div><div class="ktop">EDIT</div><div class="key" data-code="0x30"><div class="n">1</div><div class="ss big">!</div><div class="g">▝</div></div><div class="kbottom">DEF FN</div></div>
+              <div><div class="color" style="color:red">RED</div><div class="ktop">CAPS&nbsp;LOCK</div><div class="key" data-code="0x31"><div class="n">2</div><div class="ss big">@</div><div class="g">▘</div></div><div class="kbottom">FN</div></div>
+              <div><div class="color" style="color:magenta">MAGENTA</div><div class="ktop">TRUE&nbsp;VIDEO</div><div class="key" data-code="0x32"><div class="n">3</div><div class="ss big">#</div><div class="g">▀</div></div><div class="kbottom">LINE</div></div>
+              <div><div class="color" style="color:green">GREEN</div><div class="ktop">INV.&nbsp;VIDEO</div><div class="key" data-code="0x33"><div class="n">4</div><div class="ss big">$</div><div class="g">▗</div></div><div class="kbottom">OPEN#</div></div>
+              <div><div class="color" style="color:cyan">CYAN</div><div class="ktop">◀</div><div class="key" data-code="0x34"><div class="n">5</div><div class="ss big">%</div><div class="g">▐</div></div><div class="kbottom">CLOSE#</div></div>
+              <div><div class="color" style="color:yellow">YELLOW</div><div class="ktop">▼</div><div class="key" data-code="0x44"><div class="n">6</div><div class="ss big">&amp;</div><div class="g">▚</div></div><div class="kbottom">MOVE</div></div>
+              <div><div class="color" style="color:white">WHITE</div><div class="ktop">▲</div><div class="key" data-code="0x43"><div class="n">7</div><div class="ss big">'</div><div class="g">▜</div></div><div class="kbottom">ERASE</div></div>
               <div><div>&nbsp;</div><div class="ktop">▶</div><div class="key" data-code="0x42"><div class="n">8</div><div class="ss big">(</div><div class="g">█</div></div><div class="kbottom">POINT</div></div>
               <div><div>&nbsp;</div><div class="ktop">GRAPHICS</div><div class="key" data-code="0x41"><div class="n">9</div><div class="ss big">)</div><div class="g">&nbsp;</div></div><div class="kbottom">CAT</div></div>
-              <div><div style="color:black; background:white">BLACK</div><div class="ktop">DELETE</div><div class="key" data-code="0x40"><div class="n">0</div><div class="ss big">_</div><div class="g">&nbsp;</div></div><div class="kbottom">FORMAT</div></div>
+              <div><div class="color" style="color:black; background:white; margin-right:25%">BLACK</div><div class="ktop">DELETE</div><div class="key" data-code="0x40"><div class="n">0</div><div class="ss big">_</div><div class="g">&nbsp;</div></div><div class="kbottom">FORMAT</div></div>
           </div>
           <div id="row2">
               <div><div class="ktop">SIN</div><div class="key" data-code="0x20"><div>Q</div><div class="ss big">&lt;=</div><div class="k">PLOT</div></div><div class="kbottom">ASN</div></div>
