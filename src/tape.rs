@@ -55,6 +55,15 @@ struct TurboDataParams {
     pause: u32,
     data: Vec<u8>,
 }
+struct GeneralizedDataParams {
+    pilot_def: Vec<Vec<u16>>,
+    pilot: Vec<(u8, u16)>, //(sym, rep)
+    data_def: Vec<Vec<u16>>,
+    data: Vec<u8>,
+    nb: u32,
+    totd: u32,
+    pause: u32,
+}
 
 impl Block {
     fn standard_data_block(data: Vec<u8>) -> Block {
@@ -71,7 +80,105 @@ impl Block {
             data,
         })
     }
-    #[allow(clippy::too_many_arguments)]
+    fn generalized_data_block(par: GeneralizedDataParams) -> Block {
+        let mut tones = Vec::new();
+        for (tone_sym, tone_rep) in par.pilot {
+            let sym = &par.pilot_def[usize::from(tone_sym)];
+            match sym.as_slice() {
+                &[len] | &[len, 0] => {
+                    tones.push(Tone {
+                        num: u32::from(tone_rep) + 1 / 2,
+                        len1: u32::from(len),
+                        len2: u32::from(len),
+                    });
+                }
+                &[len1, len2] => {
+                    tones.push(Tone {
+                        num: u32::from(tone_rep),
+                        len1: u32::from(len1),
+                        len2: u32::from(len2),
+                    });
+                }
+                _ => {
+                    log::error!("pilot sym length > 2 unimplemented");
+                    return Block::stop_block();
+                }
+            }
+        }
+        let mut len_zero = 0;
+        let mut len_one = 0;
+        let mut data = Vec::new();
+        let mut bits_last = 0;
+        //Is this block representable as standard data?
+        if par.data_def.len() == 2 &&
+            par.data_def[0].len() == 2 &&
+            par.data_def[1].len() == 2 &&
+            par.data_def[0][0] == par.data_def[0][1] &&
+            par.data_def[1][0] == par.data_def[1][1]
+        {
+            len_zero = u32::from(par.data_def[0][0]);
+            len_one = u32::from(par.data_def[1][0]);
+            data = par.data;
+            bits_last = (par.totd % 8) as u8;
+            if bits_last == 0 {
+                bits_last = 8;
+            }
+        } else {
+            //if not, use the tones array
+            let mask = (1 << par.nb) - 1;
+            match par.data_def[0].len() {
+                //If each symbol is 2 lenghts, then one data maps to one Tone
+                2 => {
+                    for i in 0..par.totd {
+                        let bit = i * par.nb;
+                        let byte = bit / 8;
+                        let byte_r = bit % 8;
+                        let b = par.data[byte as usize] >> (7 - byte_r) & mask;
+                        let sym = &par.data_def[usize::from(b)];
+
+                        tones.push(Tone {
+                            num: 1,
+                            len1: u32::from(sym[0]),
+                            len2: u32::from(sym[1]),
+                        });
+                    }
+                }
+                //If each symbol is 1 lenght, then map data in pairs: two data to one Tone
+                1 => {
+                    for i in 0..par.totd / 2 {
+                        let bit = 2 * i * par.nb;
+                        let byte = bit / 8;
+                        let byte_r = bit % 8;
+                        let b0 = par.data[byte as usize] >> (7 - byte_r) & mask;
+                        let sym0 = &par.data_def[usize::from(b0)];
+
+                        let b1 = par.data[byte as usize] >> (7 - byte_r - 1) & mask;
+                        let sym1 = &par.data_def[usize::from(b1)];
+
+                        tones.push(Tone {
+                            num: 1,
+                            len1: u32::from(sym0[0]),
+                            len2: u32::from(sym1[0]),
+                        });
+                    }
+                }
+                _ => {
+                    log::error!("data sym length > 2 unimplemented");
+                    return Block::stop_block();
+                }
+            }
+        }
+        Block {
+            name: None,
+            selectable: true,
+            tones,
+            len_zero,
+            len_one,
+            bits_last,
+            pause: Duration::T(par.pause),
+            data,
+        }
+    }
     fn turbo_data_block(par: TurboDataParams) -> Block {
         //num_pilots counts the half pulses, so divide by 2
         //If num_pilots is odd, add a pair. The proper thing to do would be to add a half tone
@@ -456,7 +563,78 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             //0x15 => {} //direct recording
             //0x16 | 0x17 => {} //C64?
             //0x18 => {} //CSW Recording
-            //0x19 => {} //generalized data block
+            0x19 => { //generalized data block
+                let len = r.read_u32()?;
+                let pause = u32::from(r.read_u16()?) * 3500; // ms -> T;
+                let totp = r.read_u32()?;
+                let npp = r.read_u8()?;
+                let asp = r.read_u8()?;
+                let asp = if asp == 0 { 0xff } else { asp };
+                let totd = r.read_u32()?;
+                let npd = r.read_u8()?;
+                let asd = r.read_u8()?;
+                let asd = if asd == 0 { 0xff } else { asd };
+                log::debug!("generalized data block: len={}, pause={}, totp={}, npp={}, asp={}, totd={}, npd={}, asd={}",
+                    len, pause, totp, npp, asp, totd, npd, asd
+                );
+                let mut pilot_def = Vec::new();
+                let mut pilot = Vec::with_capacity(totp as usize);
+                if totp > 0 {
+                    pilot_def.reserve(usize::from(asp));
+                    for _ in 0..asp {
+                        let flag = r.read_u8()?;
+                        if flag != 0 {
+                            log::warn!("generalized data block flags != 0 not supported");
+                        }
+                        let mut pulse = Vec::with_capacity(usize::from(npp));
+                        for _ in 0..npp {
+                            let pulse_len = r.read_u16()?;
+                            pulse.push(pulse_len);
+                        }
+                        pilot_def.push(pulse);
+                    }
+                    for _ in 0..totp {
+                        let sym = r.read_u8()?;
+                        let rep = r.read_u16()?;
+                        pilot.push((sym, rep));
+                    }
+                }
+                let mut data_def = Vec::new();
+                let mut data = Vec::new();
+                //bits per symbol
+                let nb = 8 - (asd - 1).leading_zeros(); // ceil(log2(asd))
+                if totd > 0 {
+                    data_def.reserve(usize::from(asd));
+                    for _ in 0..asd {
+                        let flag = r.read_u8()?;
+                        if flag != 0 {
+                            log::warn!("generalized data block flags != 0 not supported");
+                        }
+                        let mut pulse = Vec::with_capacity(usize::from(npd));
+                        for _ in 0..npd {
+                            let pulse_len = r.read_u16()?;
+                            pulse.push(pulse_len);
+                        }
+                        data_def.push(pulse);
+                    }
+                    let bytes = (nb * totd + 7) / 8;
+                    data.reserve(bytes as usize);
+                    for _ in 0..bytes {
+                        let sym = r.read_u8()?;
+                        data.push(sym);
+                    }
+                }
+                let block = Block::generalized_data_block(GeneralizedDataParams {
+                    pilot_def,
+                    pilot,
+                    data_def,
+                    data,
+                    nb,
+                    totd,
+                    pause,
+                });
+                parser.add_block(block);
+            }
             0x20 => { //pause (stop)
                 let pause = u32::from(r.read_u16()?) * 3500; // ms -> T;
                 if pause == 0 {
@@ -516,7 +694,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let info = r.read_vec(usize::from(len))?;
                 let ri = &mut info.as_slice();
                 let num = ri.read_u8()?;
-                for _i in 0..num {
+                for _ in 0..num {
                     let id = ri.read_u8()?;
                     let ilen = ri.read_u8()?;
                     let itext = ri.read_string(usize::from(ilen))?;
@@ -605,7 +783,11 @@ impl Tape {
                     //let the user select the header, this one is not so useful
                     block.selectable = false;
                 }
-                Some(format!("{} bytes", block.data.len()))
+                if block.data.is_empty() {
+                    Some(format!("{} bytes", block.tones.len() / 8)) //assume 8 tones = 1 byte, for presentation purposes
+                } else {
+                    Some(format!("{} bytes", block.data.len()))
+                }
             };
             if block.name.is_none() {
                 block.name = name;
