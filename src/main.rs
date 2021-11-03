@@ -23,7 +23,7 @@ mod tape;
 fn main() -> anyhow::Result<()> {
 
     let mut args = env::args_os();
-    let _program = args.next().ok_or(anyhow!("Missing command line argument"))?;
+    let _program = args.next().ok_or_else(|| anyhow!("Missing command line argument"))?;
 
 
     let load = args.next().unwrap();

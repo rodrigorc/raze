@@ -24,11 +24,11 @@ fn main() -> Result<()> {
 fn help() -> Result<()> {
     println!("USAGE: ");
     println!("    xtask [TASK]");
-    println!("");
+    println!();
     println!("Available TASKs:");
     println!("    pack      💼 Compile and wasm-pack. Can Add --debug or --release (default).");
     println!("    deploy    🚀 Update the DEMO worktree");
-    println!("");
+    println!();
     Ok(())
 }
 
