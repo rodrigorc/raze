@@ -87,7 +87,7 @@ impl Block {
             match sym.as_slice() {
                 &[len] | &[len, 0] => {
                     tones.push(Tone {
-                        num: u32::from(tone_rep) + 1 / 2,
+                        num: u32::from(tone_rep + 1) / 2,
                         len1: u32::from(len),
                         len2: u32::from(len),
                     });
