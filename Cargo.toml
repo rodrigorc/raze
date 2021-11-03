@@ -2,7 +2,7 @@
 name = "raze"
 version = "1.7.0"
 authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
 repository = "https://github.com/rodrigorc/raze"
 license = "MIT"
