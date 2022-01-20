@@ -33,7 +33,10 @@ wasm-bindgen = "*"
 anyhow = "*"
 log = "*"
 console_log = { version = "*", features = ["color"] }
+web-sys = "*"
+flate2 = { version = "*", optional = true }
 
 [features]
-default = ["zip"]
+default = ["compression"]
+compression = ["zip", "flate2"]
 dump_ops = []

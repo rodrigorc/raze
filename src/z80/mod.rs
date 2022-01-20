@@ -26,6 +26,18 @@ pub trait Bus {
         let addr = addr.wrapping_add(1);
         self.poke(addr, (data >> 8) as u8);
     }
+    fn inc_fetch_count(&mut self, _reason: FetchReason) {}
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum FetchReason {
+    Fetch,
+    Halt,
+    IXPrefix,
+    IYPrefix,
+    CBPrefix,
+    EDPrefix,
+    Interrupt,
 }
 
 const FLAG_S  : u8 = 0b1000_0000;
@@ -289,8 +301,9 @@ impl Z80 {
         (self.r_ & 0x7f) | if self.r7 { 0x80 } else { 0x00 }
     }
     #[inline]
-    fn inc_r(&mut self) {
+    fn inc_r(&mut self, bus: &mut impl Bus, reason: FetchReason) {
         self.r_ = self.r_.wrapping_add(1);
+        bus.inc_fetch_count(reason);
     }
     fn set_r(&mut self, r: u8) {
         self.r_ = r;
@@ -622,15 +635,15 @@ impl Z80 {
     pub fn exec(&mut self, bus: &mut impl Bus) -> u32 {
         let mut c = match self.next_op {
             NextOp::Fetch => {
-                self.inc_r();
+                self.inc_r(bus, FetchReason::Fetch);
                 self.fetch(bus)
             }
             NextOp::Halt => {
-                self.inc_r();
+                self.inc_r(bus, FetchReason::Halt);
                 0x00 //NOP
             }
             NextOp::Interrupt => {
-                self.inc_r();
+                self.inc_r(bus, FetchReason::Interrupt);
                 self.next_op = NextOp::Fetch;
                 self.iff1 = false;
                 match self.im {
@@ -660,13 +673,13 @@ impl Z80 {
                 0xdd => {
                     prefix = XYPrefix::IX;
                     t += 4;
-                    self.inc_r();
+                    self.inc_r(bus, FetchReason::IXPrefix);
                     self.fetch(bus)
                 }
                 0xfd => {
                     prefix = XYPrefix::IY;
                     t += 4;
-                    self.inc_r();
+                    self.inc_r(bus, FetchReason::IYPrefix);
                     self.fetch(bus)
                 }
                 _ => break c

@@ -18,9 +18,9 @@ In the buttons below you can find the shortcut keys for some useful functions (s
 
 ## What can it do
 
-R.A.Z.E. emulates the ZX Spectrum 48K and 128K more or less completely. It supports loading TAP and TZX tape dumps, and Z80 snapshots. It is also able to save snapshots using the same format.
+R.A.Z.E. emulates the ZX Spectrum 48K and 128K more or less completely. It supports loading TAP and TZX tape dumps, Z80 snapshots and RZX recordings. It is also able to save snapshots using the Z80 format.
 
-You can also load ZIP files with tapes or snapshots inside. Just do not open a ZIP with several valid files, because it won't know what to do with them.
+You can also load ZIP files with tapes, snapshots or recordings inside. Just do not open a ZIP with several valid files, because it won't know what to do with them.
 
 What works and what not
 

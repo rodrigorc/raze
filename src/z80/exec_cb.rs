@@ -6,7 +6,7 @@ impl Z80 {
         let (addr, t) = self.hlx_addr(prefix, bus);
         let c = self.fetch(bus);
         if prefix == XYPrefix::None {
-            self.inc_r();
+            self.inc_r(bus, FetchReason::CBPrefix);
         }
         match c {
             0x00 => { //RLC B

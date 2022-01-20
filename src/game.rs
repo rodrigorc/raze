@@ -1,9 +1,9 @@
-use crate::js;
-use crate::z80::{Z80, Bus, Z80FileVersion};
+use crate::z80::{self, Z80, Bus, Z80FileVersion};
 use crate::memory::Memory;
 use crate::tape::{Tape, TapePos};
 use crate::psg::Psg;
 use crate::speaker::Speaker;
+use crate::rzx;
 use std::io::{Cursor, Write, Read};
 use std::borrow::Cow;
 use anyhow::anyhow;
@@ -14,28 +14,26 @@ static ROM_128_0: &[u8] = include_bytes!("128-0.rom");
 static ROM_128_1: &[u8] = include_bytes!("128-1.rom");
 static ROM_48: &[u8] = include_bytes!("48k.rom");
 
-#[repr(C)]
-#[derive(Copy, Clone, PartialEq, Eq)]
-struct Pixel(u8,u8,u8,u8);
-
-//Palette of colors: 2 intensities, each with 8 basic colors
-const PALETTE : [[Pixel; 8]; 2] = [
-    [Pixel(0,0,0,0xff), Pixel(0,0,0xd7,0xff), Pixel(0xd7,0,0,0xff), Pixel(0xd7,0,0xd7,0xff), Pixel(0,0xd7,0,0xff), Pixel(0,0xd7,0xd7,0xff), Pixel(0xd7,0xd7,0,0xff), Pixel(0xd7,0xd7,0xd7,0xff)],
-    [Pixel(0,0,0,0xff), Pixel(0,0,0xff,0xff), Pixel(0xff,0,0,0xff), Pixel(0xff,0,0xff,0xff), Pixel(0,0xff,0,0xff), Pixel(0,0xff,0xff,0xff), Pixel(0xff,0xff,0,0xff), Pixel(0xff,0xff,0xff,0xff)],
-];
-
-const BLACK_PIXEL: Pixel = PALETTE[0][0];
-
 //margins
 const BX0: usize = 5;
 const BX1: usize = 5;
 const BY0: usize = 4;
 const BY1: usize = 4;
 
-const SCREEN_SIZE: usize = (BX0 + 256 + BX1) * (BY0 + 192 + BY1); //256x192 plus border
+ //256x192 plus border
+const SCREEN_WIDTH: usize = BX0 + 256 + BX1;
+const SCREEN_HEIGHT: usize = BY0 + 192 + BY1;
+const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 
-fn black_screen() -> [Pixel; SCREEN_SIZE] {
-    [BLACK_PIXEL; SCREEN_SIZE]
+fn black_screen<PIX: Copy>(palette: &[[PIX; 8]; 2]) -> [PIX; SCREEN_SIZE] {
+    [palette[0][0]; SCREEN_SIZE]
+}
+
+struct RzxInfo {
+    frames: Vec<rzx::InputFrame>,
+    frame_idx: usize,
+    frame_data_idx: usize,
+    in_idx: usize,
 }
 
 struct Ula {
@@ -45,10 +43,12 @@ struct Ula {
     frame_counter: u32,
     time: i32,
     tape: Option<(Tape, Option<TapePos>)>,
-    border: Pixel,
+    border: u8,
     ear: bool,
     mic: bool,
     psg: Option<Psg>,
+    fetch_count: u32,
+    rzx_info: Option<RzxInfo>,
 }
 
 impl Ula {
@@ -57,7 +57,7 @@ impl Ula {
         self.delay = 0;
         r
     }
-    pub fn add_time(&mut self, t: u32) {
+    pub fn add_time(&mut self, t: u32, gui: &mut impl Gui) {
         self.time += t as i32;
         self.tape = match self.tape.take() {
             Some((tape, Some(pos))) => {
@@ -72,7 +72,7 @@ impl Ula {
                     index_post = 0xffff_ffff;
                 }
                 if index_pre != index_post {
-                    js::onTapeBlock(index_post);
+                    gui.on_tape_block(index_post);
                 }
                 Some((tape, next))
             }
@@ -86,6 +86,52 @@ impl Ula {
             Some(psg) => v + psg.next_sample(t),
         }
     }
+    fn has_to_interrupt(&self) -> bool {
+        if let Some(rzx) = &self.rzx_info {
+            let frame = &rzx.frames[rzx.frame_idx];
+            self.fetch_count >= frame.fetch_count as u32
+        } else {
+            self.time >= TIME_TO_INT
+        }
+    }
+    fn update_time_after_exec(&mut self, t: &mut u32, gui: &mut impl Gui) {
+        //contended memory and IO
+        let delay_m = self.memory.take_delay();
+        let delay_io = self.take_delay();
+        if self.time >= 224*64 && self.time < 224*256 && self.time % 224 < 128 {
+            //each row is 224 T, 128 are the real pixels where contention occurs
+            //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
+            //estimation
+            match delay_m + delay_io {
+                0 => (),
+                1 => *t += 4, //only 1 contention: these many Ts on average
+                x => *t += 6*x - 2, //more than 1 contention: they use to chain so max up all but the first one
+            }
+        }
+        self.add_time(*t, gui);
+    }
+
+    fn post_interrupt(&mut self, gui: &mut impl Gui) {
+        if let Some(rzx) = &mut self.rzx_info {
+            self.fetch_count = 0;
+            self.time = 0;
+
+            rzx.frame_idx += 1;
+            if rzx.frame_idx >= rzx.frames.len() {
+                self.rzx_info = None;
+                gui.on_rzx_running(false);
+                return;
+            }
+            rzx.in_idx = 0;
+            let frame = &rzx.frames[rzx.frame_idx];
+            if matches!(frame.in_values, rzx::InValues::Data(_)) {
+                rzx.frame_data_idx = rzx.frame_idx;
+            }
+        } else {
+            //we drag the excess T to the next loop
+            self.time -= TIME_TO_INT;
+        }
+    }
 }
 
 impl Bus for Ula {
@@ -96,6 +142,27 @@ impl Bus for Ula {
         self.memory.poke(addr, value);
     }
     fn do_in(&mut self, port: impl Into<u16>) -> u8 {
+        if let Some(rzx) = &mut self.rzx_info {
+            let frame = &rzx.frames[rzx.frame_data_idx];
+            let b = match &frame.in_values {
+                rzx::InValues::RepeatLast => {
+                    log::error!("rzx repeatlast?");
+                    0 //should not happen
+                }
+                rzx::InValues::Data(d) => {
+                    if rzx.in_idx < d.len() {
+                        let b = d[rzx.in_idx];
+                        rzx.in_idx += 1;
+                        b
+                    } else {
+                        log::error!("rzx in underflow {}/{}: {}<{}", rzx.frame_idx, rzx.frame_data_idx, rzx.in_idx, d.len());
+                        rzx.in_idx += 1;
+                        0 //should not happen
+                    }
+                }
+            };
+            return b;
+        }
         let port = port.into();
         let lo = port as u8;
         let hi = (port >> 8) as u8;
@@ -166,9 +233,7 @@ impl Bus for Ula {
             if (0x4000..0x8000).contains(&port) {
                 self.delay += 1;
             }
-            let border = value & 7;
-            //Border is never bright
-            self.border = PALETTE[0][border as usize];
+            self.border = value & 7;
             self.ear = (value & 0x10) != 0;
             self.mic = (value & 0x08) != 0;
         } else {
@@ -217,22 +282,39 @@ impl Bus for Ula {
             }
         }
     }
+    fn inc_fetch_count(&mut self, reason: z80::FetchReason) {
+        if reason != z80::FetchReason::Interrupt {
+            self.fetch_count += 1;
+        }
+    }
 }
 
-pub struct Game {
+pub trait Gui {
+    type Pixel: Copy;
+
+    //Palette of colors: 2 intensities, each with 8 basic colors
+    fn palette(&self) -> &[[Self::Pixel; 8]; 2];
+    fn on_rzx_running(&mut self, running: bool);
+    fn on_tape_block(&mut self, index: usize);
+    fn put_sound_data(&mut self, data: &[f32]);
+    fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]);
+}
+
+pub struct Game<GUI: Gui> {
     is128k: bool,
     z80: Z80,
     ula: Ula,
     speaker: Speaker,
-    image: [Pixel; SCREEN_SIZE],
+    image: [GUI::Pixel; SCREEN_SIZE],
+    gui: GUI,
 }
 
-fn write_border_row(y: usize, border: Pixel, ps: &mut [Pixel]) {
-    let prow = &mut ps[(BX0 + 256 + BX1) * y .. (BX0 + 256 + BX1) * (y+1)];
+fn write_border_row<PIX: Copy>(y: usize, border: PIX, ps: &mut [PIX]) {
+    let prow = &mut ps[SCREEN_WIDTH * y .. SCREEN_WIDTH * (y+1)];
     prow.fill(border);
 }
 
-fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
+fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], palette: &[[PIX; 8]; 2], ps: &mut [PIX]) {
     let y = y as usize;
     let orow = match y {
         0..=63 => {
@@ -251,7 +333,7 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
         _ => unreachable!()
     };
     let ym = y + BY0;
-    let prow_full = &mut ps[(BX0 + 256 + BX1) * ym .. (BX0 + 256 + BX1) * (ym + 1)];
+    let prow_full = &mut ps[SCREEN_WIDTH * ym .. SCREEN_WIDTH * (ym + 1)];
     prow_full[.. BX0].fill(border);
     prow_full[BX0 + 256 ..].fill(border);
     let prow = &mut prow_full[BX0 .. BX0 + 256];
@@ -271,9 +353,9 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
                 .zip(prow.chunks_mut(8))
     {
         let bright = (attr & 0b01_000_000) != 0;
-        let palette = &PALETTE[bright as usize];
-        let ink = palette[(attr & 0b00_000_111) as usize];
-        let paper = palette[((attr & 0b00_111_000) >> 3) as usize];
+        let colors = &palette[bright as usize];
+        let ink = colors[(attr & 0b00_000_111) as usize];
+        let paper = colors[((attr & 0b00_111_000) >> 3) as usize];
         let inv = inv && (attr & 0b10_000_000) != 0;
         let mut bits = if inv { bits ^ 0xff } else { bits };
         pixels.fill_with(|| {
@@ -284,20 +366,20 @@ fn write_screen_row(y: usize, border: Pixel, inv: bool, data: &[u8], ps: &mut [P
     }
 }
 
-fn write_screen(border: Pixel, inv: bool, data: &[u8], ps: &mut [Pixel]) {
+fn write_screen<PIX: Copy>(border: PIX, palette: &[[PIX; 8]; 2], inv: bool, data: &[u8], ps: &mut [PIX]) {
     for y in 0..BY0 {
         write_border_row(y, border, ps);
     }
     for y in 0..192 {
-        write_screen_row(y, border, inv, data, ps);
+        write_screen_row(y, border, inv, data, palette, ps);
     }
     for y in 0..BY1 {
         write_border_row(BY0 + 192 + y, border, ps);
     }
 }
 
-impl Game {
-    pub fn new(is128k: bool) -> Game {
+impl<GUI: Gui> Game<GUI> {
+    pub fn new(is128k: bool, mut gui: GUI) -> Game<GUI> {
         log::info!("Go!");
         let memory;
         let psg;
@@ -309,6 +391,7 @@ impl Game {
             psg = None;
         };
         let z80 = Z80::new();
+        gui.on_rzx_running(false);
         Game {
             is128k,
             z80,
@@ -319,13 +402,16 @@ impl Game {
                 frame_counter: 0,
                 time: 0,
                 tape: None,
-                border: BLACK_PIXEL,
+                border: 0,
                 ear: false,
                 mic: false,
                 psg,
+                fetch_count: 0,
+                rzx_info: None,
             },
             speaker: Speaker::new(),
-            image: black_screen()
+            image: black_screen(gui.palette()),
+            gui,
         }
     }
     pub fn is_128k(&self) -> bool {
@@ -341,37 +427,27 @@ impl Game {
             let inverted = self.ula.frame_counter % 32 < 16;
             let mut screen_time = 0;
             let mut screen_row = 0;
-            while self.ula.time < TIME_TO_INT {
+            while !self.ula.has_to_interrupt() {
                 let mut t = self.z80.exec(&mut self.ula);
                 //self.z80._dump_regs();
-                //contended memory and IO
-                let delay_m = self.ula.memory.take_delay();
-                let delay_io = self.ula.take_delay();
-                if self.ula.time >= 224*64 && self.ula.time < 224*256 && self.ula.time % 224 < 128 {
-                    //each row is 224 T, 128 are the real pixels where contention occurs
-                    //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
-                    //estimation
-                    match delay_m + delay_io {
-                        0 => (),
-                        1 => t += 4, //only 1 contention: these many Ts on average
-                        x => t += 6*x - 2, //more than 1 contention: they use to chain so max up all but the first one
-                    }
-                }
-                self.ula.add_time(t);
+                self.ula.update_time_after_exec(&mut t, &mut self.gui);
 
                 if !turbo {
                     let sample = self.ula.audio_sample(t as i32);
                     self.speaker.push_sample(sample, t as i32);
+                    //Border is never bright
+                    let palette = self.gui.palette();
+                    let border = palette[0][self.ula.border as usize];
                     screen_time += t as i32;
                     while screen_time >= 224 {
                         screen_time -= 224;
                         match screen_row {
                             60..=63 | 256..=259 => {
-                                write_border_row(screen_row - 60, self.ula.border, &mut self.image);
+                                write_border_row(screen_row - 60, border, &mut self.image);
                             }
                             64..=255 => {
                                 let screen = self.ula.memory.video_memory();
-                                write_screen_row(screen_row - 64, self.ula.border, inverted, screen, &mut self.image);
+                                write_screen_row(screen_row - 64, border, inverted, screen, palette, &mut self.image);
                             }
                             _ => {}
                         }
@@ -380,20 +456,22 @@ impl Game {
                 }
             }
             self.z80.interrupt();
-            //we drag the excess T to the next loop
-            self.ula.time -= TIME_TO_INT;
+            self.ula.post_interrupt(&mut self.gui);
         }
         if turbo {
             let screen = self.ula.memory.video_memory();
-            write_screen(self.ula.border, false, screen, &mut self.image);
+            //Border is never bright
+            let palette = self.gui.palette();
+            let border = palette[0][self.ula.border as usize];
+            write_screen(border, palette, false, screen, &mut self.image);
         } else {
             //adding samples should be rarely necessary, so use lazy generation
             let ula = &mut self.ula;
             let audio = self.speaker.complete_frame(TIME_TO_INT, || ula.audio_sample(0));
-            js::putSoundData(audio);
+            self.gui.put_sound_data(audio);
             self.speaker.clear();
         }
-        js::put_image_data((BX0 + 256 + BX1) as i32, (BY0 + 192 + BY1) as i32, &self.image);
+        self.gui.put_image_data(SCREEN_WIDTH, SCREEN_HEIGHT, &self.image);
     }
     //Every byte in key is a key pressed:
     //  * low nibble: key number (0..5)
@@ -421,6 +499,10 @@ impl Game {
     }
     pub fn poke(&mut self, addr: u16, value: u8) {
         self.ula.memory.poke(addr, value);
+    }
+    pub fn stop_rzx_replay(&mut self) {
+        self.ula.rzx_info = None;
+        self.gui.on_rzx_running(false);
     }
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
@@ -461,7 +543,7 @@ impl Game {
     pub fn tape_seek(&mut self, index: usize) {
         self.ula.tape = match self.ula.tape.take() {
             Some((tape, _)) => {
-                js::onTapeBlock(index);
+                self.gui.on_tape_block(index);
                 Some((tape, Some(TapePos::new_at_block(index))))
             }
             None => None
@@ -484,7 +566,7 @@ impl Game {
         let header_extra = if banks_plus2 == 0 { 23 } else { 55 };
         let mut data = vec![0; HEADER + header_extra];
         self.z80.snapshot(&mut data);
-        data[12] |= (PALETTE[0].iter().position(|c| *c == self.ula.border).unwrap_or(0) as u8) << 1;
+        data[12] |= self.ula.border << 1;
 
         //extended header block
         //len of the block
@@ -497,7 +579,7 @@ impl Game {
         //memory map
         data[35] = if self.is128k { self.ula.memory.last_banks() } else { 0 };
         //36
-        data[37] = 3 | // R emulation | LDIR emulation 
+        data[37] = 3 | // R emulation | LDIR emulation
                    (if !self.is128k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
         //psg
         if let Some(ref psg) = self.ula.psg {
@@ -548,7 +630,7 @@ impl Game {
                     data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
                 }
             }
-            
+
             let len = (data.len() - start - 3) as u16;
             data[start] = len as u8;
             data[start + 1] = (len >> 8) as u8;
@@ -567,16 +649,37 @@ impl Game {
         }
         data
     }
-    pub fn load_snapshot(data: &[u8]) -> anyhow::Result<Game> {
-        let data = match snapshot_from_zip(data) {
+    pub fn load_snapshot(data: &[u8], gui: GUI) -> anyhow::Result<Game<GUI>> {
+        let mut data = match snapshot_from_zip(data) {
             Ok(v) => Cow::Owned(v),
             Err(_) => Cow::Borrowed(data),
         };
+
+        //Check if it is a RZX first
+        let rzx = rzx::Rzx::new(&mut data.as_ref()).ok();
+        let mut rzx_input = None;
+
+        if let Some(rzx) = rzx {
+            for b in rzx.blocks {
+                match b {
+                    rzx::Block::Snapshot(ss) => {
+                        data = Cow::Owned(ss.data);
+                    }
+                    rzx::Block::Input(input) => {
+                        if !input.frames.is_empty() {
+                            rzx_input = Some(input.frames);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         let file_too_short_error = || anyhow!("invalid z80 format: file too short");
         let data_z80 = data.get(..34).ok_or_else(file_too_short_error)?;
         let (z80, version) = Z80::load_snapshot(data_z80)?;
         log::debug!("z80 version {:?}", version);
-        let border = PALETTE[0][((data_z80[12] >> 1) & 7) as usize];
+        let border = (data_z80[12] >> 1) & 7;
         let (hdr, mem) = match version {
             Z80FileVersion::V1 => {
                 (&[] as &[u8], data.get(30..).ok_or_else(file_too_short_error)?)
@@ -733,7 +836,7 @@ impl Game {
                 }
             }
         }
-        let game = Game {
+        let mut game = Game {
             is128k,
             z80,
             ula: Ula {
@@ -747,10 +850,14 @@ impl Game {
                 ear: false,
                 mic: false,
                 psg,
+                fetch_count: 0,
+                rzx_info: rzx_input.map(|frames| RzxInfo { frames, frame_idx: 0, frame_data_idx: 0, in_idx: 0 }),
             },
             speaker: Speaker::new(),
-            image: black_screen(),
+            image: black_screen(gui.palette()),
+            gui,
         };
+        game.gui.on_rzx_running(game.ula.rzx_info.is_some());
         Ok(game)
     }
 }
@@ -762,14 +869,16 @@ fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     for i in 0 .. zip.len() {
         let mut ze = zip.by_index(i)?;
         let name = ze.name();
-        if name.to_ascii_lowercase().ends_with(".z80") {
+        let lowname = name.to_ascii_lowercase();
+        if lowname.ends_with(".z80") ||
+           lowname.ends_with(".rzx") {
             log::debug!("unzipping Z80 {}", name);
             let mut res = Vec::new();
             ze.read_to_end(&mut res)?;
             return Ok(res);
         }
     }
-    Err(anyhow!("ZIP file does not contain any *.z80 file"))
+    Err(anyhow!("ZIP file does not contain any *.z80 or *.rzx file"))
 }
 
 #[cfg(not(feature="zip"))]

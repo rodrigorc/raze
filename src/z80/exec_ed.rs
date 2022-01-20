@@ -4,7 +4,7 @@ impl Z80 {
     pub(super) fn exec_ed(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
         let c = self.fetch(bus);
         if prefix == XYPrefix::None {
-            self.inc_r();
+            self.inc_r(bus, FetchReason::EDPrefix);
         }
         match c {
             0x40 => { //IN B,(C)
