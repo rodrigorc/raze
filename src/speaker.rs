@@ -57,8 +57,7 @@ impl Speaker {
     pub fn clear(&mut self) {
         self.audio.clear();
     }
-    pub fn push_sample(&mut self, sample: i16, t: i32) {
-        let sample = i32::from(sample);
+    pub fn push_sample(&mut self, sample: i32, t: i32) {
         self.audio_time += t;
         self.audio_accum += t * sample;
         while self.audio_time >= AUDIO_SAMPLE {
@@ -69,7 +68,7 @@ impl Speaker {
             self.audio_accum = audio_excess;
         }
     }
-    pub fn complete_frame(&mut self, full_time: i32, mut sample_fn: impl FnMut() -> i16) -> &mut [f32] {
+    pub fn complete_frame(&mut self, full_time: i32, mut sample_fn: impl FnMut() -> i32) -> &mut [f32] {
         while self.audio.len() < (full_time / AUDIO_SAMPLE / RATE_MULTIPLIER) as usize {
             let s = sample_fn();
             self.push_sample(s, AUDIO_SAMPLE - self.audio_time);

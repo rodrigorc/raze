@@ -1,8 +1,8 @@
 //Emulation of the AY-3-8910 programmable sound generator
 
 struct FreqGen {
-    divisor: i32,
-    phase: i32,
+    divisor: u32,
+    phase: u32,
 }
 
 impl FreqGen {
@@ -13,10 +13,10 @@ impl FreqGen {
         }
     }
     fn set_freq(&mut self, freq: u16) {
-        self.divisor = 32 * i32::from(freq);
+        self.divisor = 32 * u32::from(freq);
         self.phase = 0;
     }
-    fn next_sample(&mut self, t: i32) -> bool {
+    fn next_sample(&mut self, t: u32) -> bool {
         self.phase += t;
         while self.phase > self.divisor {
             self.phase -= self.divisor;
@@ -26,10 +26,10 @@ impl FreqGen {
 }
 
 struct NoiseGen {
-    divisor: i32,
+    divisor: u32,
     shift: u32,
     level: bool,
-    phase: i32,
+    phase: u32,
 }
 
 impl NoiseGen {
@@ -42,10 +42,10 @@ impl NoiseGen {
         }
     }
     fn set_freq(&mut self, freq: u8) {
-        self.divisor = 32 * i32::from(freq);
+        self.divisor = 32 * u32::from(freq);
         //log!("noise div {}", self.divisor);
     }
-    fn next_sample(&mut self, t: i32) -> bool {
+    fn next_sample(&mut self, t: u32) -> bool {
         self.phase += t;
         while self.phase > self.divisor {
             self.phase -= self.divisor;
@@ -80,8 +80,8 @@ enum EnvShape {
 }
 
 struct Envelope {
-    divisor: i32,
-    phase: i32,
+    divisor: u32,
+    phase: u32,
     shape: EnvShape,
     step: u8,
     block: EnvBlock,
@@ -100,7 +100,7 @@ impl Envelope {
     }
     fn set_freq_shape(&mut self, freq: u16, shape: u8) {
         use self::{EnvShape::*, EnvBlock::*};
-        self.divisor = 32 * i32::from(freq);
+        self.divisor = 32 * u32::from(freq);
         self.phase = 0;
         self.step = 0;
         let (shape, block) = match shape & 0x0f {
@@ -117,7 +117,7 @@ impl Envelope {
         self.shape = shape;
         self.block = block;
     }
-    fn next_sample(&mut self, t: i32) -> u8 {
+    fn next_sample(&mut self, t: u32) -> u8 {
         use self::{EnvShape::*, EnvBlock::*};
         self.phase += t;
         while self.phase > self.divisor {
@@ -244,7 +244,7 @@ impl Psg {
             _ => {}
         }
     }
-    pub fn next_sample(&mut self, t: i32) -> i16 {
+    pub fn next_sample(&mut self, t: u32) -> u16 {
         //Reg 0x07 is a bitmask that _disables_ what is to be mixed to the final output:
         // * 0b0000_0001: do not mix freq_a
         // * 0b0000_0010: do not mix freq_b
@@ -278,7 +278,7 @@ impl Psg {
         let env = self.envelope.next_sample(t);
 
         // Add the enabled channels, pondering the volume and the envelope
-        let mut res : i16 = 0;
+        let mut res : u16 = 0;
         if chan_a {
             let v = self.reg[0x08];
             let vol = Self::volume(v, env);
@@ -296,7 +296,7 @@ impl Psg {
         }
         res
     }
-    fn volume(v: u8, env: u8) -> i16 {
+    fn volume(v: u8, env: u8) -> u16 {
         let v = if v & 0x10 != 0 {
             env
         } else {
@@ -305,7 +305,7 @@ impl Psg {
         //The volume curve is an exponential where each level is sqrt(2) lower than the next,
         //but with an offset so that the first one is 0. computed with this python line:
         //>>> [round(8192*exp(i/2-7.5)) for i in range(0, 16)]
-        const LEVELS: [i16; 16] = [5, 7, 12, 20, 33, 55, 91, 150, 247, 408, 672, 1109, 1828, 3014, 4969, 8192];
+        const LEVELS: [u16; 16] = [5, 7, 12, 20, 33, 55, 91, 150, 247, 408, 672, 1109, 1828, 3014, 4969, 8192];
         LEVELS[usize::from(v)]
     }
     fn freq_12(a: u8, b: u8) -> u16 {
@@ -316,7 +316,7 @@ impl Psg {
         let n = u16::from(a) | (u16::from(b) << 8);
         if n == 0 { 1 } else { n }
     }
-    fn channel(tone_enabled: bool, noise_enabled: bool, freq: &mut FreqGen, noise: bool, t: i32) -> bool {
+    fn channel(tone_enabled: bool, noise_enabled: bool, freq: &mut FreqGen, noise: bool, t: u32) -> bool {
         if tone_enabled {
             let tone = freq.next_sample(t);
             if noise_enabled {

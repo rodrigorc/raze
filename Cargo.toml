@@ -26,6 +26,7 @@ required-features = ["dump_ops"]
 lto = true
 panic = "abort"
 opt-level = 3
+overflow-checks = false
 
 [dependencies]
 zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
