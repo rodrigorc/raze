@@ -34,7 +34,7 @@ impl game::Gui for ConsoleGui {
     fn palette(&self) -> &[[Self::Pixel; 8]; 2] {
         &PALETTE
     }
-    fn on_rzx_running(&mut self, _running: bool) {
+    fn on_rzx_running(&mut self, _running: bool, _percent: u32) {
     }
 
     fn on_tape_block(&mut self, _index: usize) {

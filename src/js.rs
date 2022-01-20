@@ -19,7 +19,7 @@ extern "C" {
     pub fn putImageData(w: i32, h: i32, data: &[u8]);
     pub fn putSoundData(data: &[f32]);
     pub fn onTapeBlock(index: usize);
-    pub fn onRZXRunning(is_running: bool);
+    pub fn onRZXRunning(is_running: bool, percent: u32);
 }
 
 pub fn alert(s: impl AsRef<str>) {
@@ -83,8 +83,8 @@ impl Gui for JSGui {
     fn on_tape_block(&mut self, index: usize) {
         onTapeBlock(index);
     }
-    fn on_rzx_running(&mut self, running: bool) {
-        onRZXRunning(running);
+    fn on_rzx_running(&mut self, running: bool, percent: u32) {
+        onRZXRunning(running, percent);
     }
 }
 

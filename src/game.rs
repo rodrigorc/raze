@@ -116,10 +116,11 @@ impl Ula {
             self.fetch_count = 0;
             self.time = 0;
 
+            let total_frames = rzx.frames.len();
             rzx.frame_idx += 1;
-            if rzx.frame_idx >= rzx.frames.len() {
+            if rzx.frame_idx >= total_frames {
                 self.rzx_info = None;
-                gui.on_rzx_running(false);
+                gui.on_rzx_running(false, 0);
                 return;
             }
             rzx.in_idx = 0;
@@ -127,6 +128,7 @@ impl Ula {
             if matches!(frame.in_values, rzx::InValues::Data(_)) {
                 rzx.frame_data_idx = rzx.frame_idx;
             }
+            gui.on_rzx_running(true, (rzx.frame_idx * 100).checked_div(total_frames).unwrap_or(0) as u32);
         } else {
             //we drag the excess T to the next loop
             self.time -= TIME_TO_INT;
@@ -294,7 +296,7 @@ pub trait Gui {
 
     //Palette of colors: 2 intensities, each with 8 basic colors
     fn palette(&self) -> &[[Self::Pixel; 8]; 2];
-    fn on_rzx_running(&mut self, running: bool);
+    fn on_rzx_running(&mut self, running: bool, percent: u32);
     fn on_tape_block(&mut self, index: usize);
     fn put_sound_data(&mut self, data: &[f32]);
     fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]);
@@ -391,7 +393,7 @@ impl<GUI: Gui> Game<GUI> {
             psg = None;
         };
         let z80 = Z80::new();
-        gui.on_rzx_running(false);
+        gui.on_rzx_running(false, 0);
         Game {
             is128k,
             z80,
@@ -502,7 +504,7 @@ impl<GUI: Gui> Game<GUI> {
     }
     pub fn stop_rzx_replay(&mut self) {
         self.ula.rzx_info = None;
-        self.gui.on_rzx_running(false);
+        self.gui.on_rzx_running(false, 0);
     }
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
@@ -857,7 +859,7 @@ impl<GUI: Gui> Game<GUI> {
             image: black_screen(gui.palette()),
             gui,
         };
-        game.gui.on_rzx_running(game.ula.rzx_info.is_some());
+        game.gui.on_rzx_running(game.ula.rzx_info.is_some(), 0);
         Ok(game)
     }
 }

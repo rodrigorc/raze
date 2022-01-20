@@ -78,14 +78,15 @@ export function onTapeBlock(index) {
     }
 }
 
-export function onRZXRunning(isRunning) {
-    console.log("RZX running", isRunning);
+export function onRZXRunning(isRunning, percent) {
+    //console.log("RZX running", isRunning);
     let btn = document.getElementById('rzx_replay');
     if (isRunning) {
         btn.style.display = 'block';
     } else {
         btn.style.display = 'none';
     }
+    btn.innerText = "Stop replay (" + percent + "%)";
 }
 
 export function putSoundData(slice) {
