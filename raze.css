@@ -57,6 +57,12 @@ h1 span.version {
 #fullscreen {
     grid-column: 1;
 }
+#rzx_replay {
+    grid-column: 2;
+    background: red;
+    color: white;
+    display: none;
+}
 #buttons #cursor_keys_p {
     grid-column-start: 3;
     grid-column-end: 5;

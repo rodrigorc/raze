@@ -1,4 +1,4 @@
-import { putImageData, putSoundData, onTapeBlock } from '../raze.js';
+import { putImageData, putSoundData, onTapeBlock, onRZXRunning } from '../raze.js';
 
 let wasm;
 
@@ -224,6 +224,13 @@ export function wasm_poke(game, addr, value) {
     wasm.wasm_poke(game, addr, value);
 }
 
+/**
+* @param {number} game
+*/
+export function wasm_stop_rzx_replay(game) {
+    wasm.wasm_stop_rzx_replay(game);
+}
+
 let cachegetFloat32Memory0 = null;
 function getFloat32Memory0() {
     if (cachegetFloat32Memory0 === null || cachegetFloat32Memory0.buffer !== wasm.memory.buffer) {
@@ -280,34 +287,37 @@ async function init(input) {
     imports.wbg.__wbindgen_object_drop_ref = function(arg0) {
         takeObject(arg0);
     };
-    imports.wbg.__wbg_onTapeBlock_8b12f1eb625e5523 = function(arg0) {
+    imports.wbg.__wbg_onRZXRunning_1a1205720465a0ed = function(arg0, arg1) {
+        onRZXRunning(arg0 !== 0, arg1 >>> 0);
+    };
+    imports.wbg.__wbg_onTapeBlock_4744c9da02523482 = function(arg0) {
         onTapeBlock(arg0 >>> 0);
     };
-    imports.wbg.__wbg_putSoundData_55406bd1881a7c8e = function(arg0, arg1) {
+    imports.wbg.__wbg_putSoundData_48621b9ae342dc32 = function(arg0, arg1) {
         putSoundData(getArrayF32FromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_putImageData_0a1563610871bc57 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_putImageData_5de2616424a06d4e = function(arg0, arg1, arg2, arg3) {
         putImageData(arg0, arg1, getArrayU8FromWasm0(arg2, arg3));
     };
-    imports.wbg.__wbg_alert_a6e31580be16eb67 = function(arg0, arg1) {
+    imports.wbg.__wbg_alert_dd86ea2e00a7590e = function(arg0, arg1) {
         alert(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
         throw new Error(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_debug_f6147a62af5fb117 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_debug_6df4b1a327dd2e94 = function(arg0, arg1, arg2, arg3) {
         console.debug(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_error_8b4a1487636c965d = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_error_644d3bc8c0537e80 = function(arg0, arg1, arg2, arg3) {
         console.error(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_info_74a03c22e1fa6688 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_info_8bed0988e7416289 = function(arg0, arg1, arg2, arg3) {
         console.info(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_log_ad41dbc3d891c2dc = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_log_681299aef22afa27 = function(arg0, arg1, arg2, arg3) {
         console.log(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_warn_c1cc594c33944c11 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_warn_ca021eeadd0df9cd = function(arg0, arg1, arg2, arg3) {
         console.warn(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
 

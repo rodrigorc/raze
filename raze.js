@@ -78,6 +78,17 @@ export function onTapeBlock(index) {
     }
 }
 
+export function onRZXRunning(isRunning, percent) {
+    //console.log("RZX running", isRunning);
+    let btn = document.getElementById('rzx_replay');
+    if (isRunning) {
+        btn.style.display = 'block';
+    } else {
+        btn.style.display = 'none';
+    }
+    btn.innerText = "Stop replay (" + percent + "%)";
+}
+
 export function putSoundData(slice) {
     let asrc = g_actx.createBufferSource();
     let freq;
@@ -220,6 +231,7 @@ async function onDocumentLoad() {
     document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
     document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
+    document.getElementById('rzx_replay').addEventListener('click', handleRZXReplay, false);
     document.getElementById('turbo').addEventListener('click', handleTurbo, false);
     document.getElementById('poke').addEventListener('click', handlePoke, false);
     document.getElementById('peek').addEventListener('click', handlePeek, false);
@@ -775,7 +787,7 @@ function handleLoadSnapshotSelect(evt) {
 function handleLoadSnapshot(evt) {
     let x = document.createElement("input");
     x.type = "file";
-    x.accept = [".z80", ".zip"];
+    x.accept = [".z80", ".rzx", ".zip"];
     x.addEventListener('change', handleLoadSnapshotSelect, false);
     x.click();
 }
@@ -822,6 +834,10 @@ function handleFullscreen(evt) {
         if (fs)
             fs.call(g_realCanvas);
     }
+}
+
+function handleRZXReplay(evt) {
+    wasm_bindgen.wasm_stop_rzx_replay(g_game);
 }
 
 function handleTurbo(evt) {
