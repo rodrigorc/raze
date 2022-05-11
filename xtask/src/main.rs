@@ -1,5 +1,5 @@
 use std::error::Error;
-use xshell::{Cmd, cwd, mkdir_p, cp, read_file, write_file};
+use xshell::{Shell};
 
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -33,6 +33,7 @@ fn help() -> Result<()> {
 }
 
 fn do_pack(args: &[String]) -> Result<()> {
+    let sh = Shell::new()?;
     let mut mode = "--release";
     for arg in args {
         match arg.as_str() {
@@ -41,7 +42,7 @@ fn do_pack(args: &[String]) -> Result<()> {
             arg => return Err(format!("unknown argument '{}'", arg).into())
         }
     }
-    Cmd::new("wasm-pack")
+    sh.cmd("wasm-pack")
         .arg("build")
         .arg("--no-typescript")
         .arg("--target=web")
@@ -51,26 +52,27 @@ fn do_pack(args: &[String]) -> Result<()> {
 }
 
 fn do_deploy() -> Result<()> {
-    let dst = cwd()?.join("DEMO");
-    mkdir_p(&dst)?;
+    let sh = Shell::new()?;
+    let dst = sh.current_dir().join("DEMO");
+    sh.create_dir(&dst)?;
     let pkg = dst.join("pkg");
-    mkdir_p(&pkg)?;
+    sh.create_dir(&pkg)?;
 
     //sed -e '/<head>/r track.html' index.html > DEMO/index.html
-    let track = read_file("track.html")?;
-    let index = read_file("index.html")?;
+    let track = sh.read_file("track.html")?;
+    let index = sh.read_file("index.html")?;
     let marker = "<head>\n";
     let pos = index.find(marker).ok_or("<head> not found in index.html")? + marker.len();
     let new_index = String::from(&index[..pos]) + &track + &index[pos..];
 
-    write_file(dst.join("index.html"), new_index)?;
+    sh.write_file(dst.join("index.html"), new_index)?;
 
-    cp("raze.js", &dst)?;
-    cp("raze.css", &dst)?;
-    cp("favicon.png", &dst)?;
-    cp("base64.js", &dst)?;
-    cp("pkg/raze_bg.wasm", &pkg)?;
-    cp("pkg/raze.js", &pkg)?;
+    sh.copy_file("raze.js", &dst)?;
+    sh.copy_file("raze.css", &dst)?;
+    sh.copy_file("favicon.png", &dst)?;
+    sh.copy_file("base64.js", &dst)?;
+    sh.copy_file("pkg/raze_bg.wasm", &pkg)?;
+    sh.copy_file("pkg/raze.js", &pkg)?;
     println!("Deployed to {:?}! 👍", dst.to_string_lossy());
     Ok(())
 }
