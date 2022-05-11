@@ -3,11 +3,12 @@ use super::*;
 impl Z80 {
     #[allow(clippy::identity_op)]
     pub(super) fn exec_cb(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
+        // If using XY prefix, then 0xCB does not increment R
+        if prefix == XYPrefix::None {
+            self.inc_r(bus, FetchReason::Prefix);
+        }
         let (addr, t) = self.hlx_addr(prefix, bus);
         let c = self.fetch(bus);
-        if prefix == XYPrefix::None {
-            self.inc_r(bus, FetchReason::CBPrefix);
-        }
         match c {
             0x00 => { //RLC B
                 let r = self.b();

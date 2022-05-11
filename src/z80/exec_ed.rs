@@ -2,10 +2,11 @@ use super::*;
 
 impl Z80 {
     pub(super) fn exec_ed(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
-        let c = self.fetch(bus);
+        // If using XY prefix, then 0xED does not increment R
         if prefix == XYPrefix::None {
-            self.inc_r(bus, FetchReason::EDPrefix);
+            self.inc_r(bus, FetchReason::Prefix);
         }
+        let c = self.fetch(bus);
         match c {
             0x40 => { //IN B,(C)
                 let bc = self.bc.as_u16();

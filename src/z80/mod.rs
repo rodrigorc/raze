@@ -33,10 +33,7 @@ pub trait Bus {
 pub enum FetchReason {
     Fetch,
     Halt,
-    IXPrefix,
-    IYPrefix,
-    CBPrefix,
-    EDPrefix,
+    Prefix,
     Interrupt,
 }
 
@@ -172,6 +169,7 @@ pub struct Z80 {
 enum Direction { Inc, Dec }
 
 
+// Known Z80 format versions: V1, V2, V3, V3.1
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Z80FileVersion {
     V1, V2, V3(bool)
@@ -212,7 +210,10 @@ impl Z80 {
                  },
                  if self.iff1 { 1 } else { 0 });
     }
-    pub fn snapshot(&self, data: &mut Vec<u8>) {
+    // 30 bytes are required for the snapshot, here we always store a V1, and
+    // if other version is required it will be transformed later, because the V2/V3
+    // information is not related to the CPU.
+    pub fn snapshot(&self, data: &mut [u8]) {
         data[0] = self.a(); data[1] = self.f();
         data[2] = self.c(); data[3] = self.b();
         data[4] = self.l(); data[5] = self.h();
@@ -235,6 +236,7 @@ impl Z80 {
             InterruptMode::IM2 => 2,
         } | 0x40; //kempston joystick
     }
+    // V2/V3 use 34 bytes, V1 just 30, this can take a longer slice, so passing always the first 34 bytes of the file is safe
     pub fn load_snapshot(data: &[u8]) -> anyhow::Result<(Self, Z80FileVersion)> {
         if data.len() < 30 {
             return Err(anyhow!("Z80 snaphot too short"));
@@ -290,27 +292,31 @@ impl Z80 {
         };
         Ok((z80, version))
     }
+    // Signals the CPU to run an interrupt on next fetch
     pub fn interrupt(&mut self) {
         if !self.iff1 {
             return;
         }
         self.next_op = NextOp::Interrupt;
     }
+    // The value of the R register, as a full 8-bit value
     #[inline]
     fn r(&self) -> u8 {
         (self.r_ & 0x7f) | if self.r7 { 0x80 } else { 0x00 }
     }
+    // Increments the R register as result of a memory cycle
     #[inline]
     fn inc_r(&mut self, bus: &mut impl Bus, reason: FetchReason) {
         self.r_ = self.r_.wrapping_add(1);
         bus.inc_fetch_count(reason);
     }
+    // Forces the value of the R register, as a full 8-bit
     fn set_r(&mut self, r: u8) {
         self.r_ = r;
         self.r7 = flag8(r, 0x80);
     }
 
-    //Easy access to registers by name
+    // Easy access to registers by name
     #[inline] fn a(&self) -> u8 { self.af.hi() }
     #[inline] fn set_a(&mut self, a: u8) { self.af.set_hi(a); }
     #[inline] fn f(&self) -> u8 { self.af.lo() }
@@ -332,11 +338,13 @@ impl Z80 {
     #[inline] fn lx(&self, prefix: XYPrefix) -> u8 { self.hlx(prefix).lo() }
     #[inline] fn set_lx(&mut self, prefix: XYPrefix, f: u8) { self.hlx_mut(prefix).set_lo(f); }
 
+    // Fetches an 8-bit value from address PC and increments PC
     fn fetch(&mut self, bus: &mut impl Bus) -> u8 {
         let c = bus.peek(self.pc);
         self.pc += 1;
         c
     }
+    // Fetches a 16-bit value from address PC and increments PC
     fn fetch_u16(&mut self, bus: &mut impl Bus) -> u16 {
         let l = u16::from(bus.peek(self.pc));
         self.pc += 1;
@@ -344,6 +352,7 @@ impl Z80 {
         self.pc += 1;
         h << 8 | l
     }
+    // Pushes a 16-bit value into the stack SP
     fn push(&mut self, bus: &mut impl Bus, x: impl Into<u16>) {
         let x = x.into();
         self.sp -= 1;
@@ -351,11 +360,13 @@ impl Z80 {
         self.sp -= 1;
         bus.poke(self.sp, x as u8);
     }
+    // Pops a 16-bit value from the stack SP
     fn pop(&mut self, bus: &mut impl Bus) -> u16 {
         let x = bus.peek_u16(self.sp);
         self.sp += 2;
         x
     }
+    // Gets either HL, IX or IY depending on the prefix
     fn hlx(&self, prefix: XYPrefix) -> R16 {
         match prefix {
             XYPrefix::None => self.hl,
@@ -363,6 +374,7 @@ impl Z80 {
             XYPrefix::IY => self.iy,
         }
     }
+    // Same as hlx() but as a mutable reference
     fn hlx_mut(&mut self, prefix: XYPrefix) -> &mut R16 {
         match prefix {
             XYPrefix::None => &mut self.hl,
@@ -370,7 +382,8 @@ impl Z80 {
             XYPrefix::IY => &mut self.iy,
         }
     }
-    //Returns the (address, extra_T_states)
+    // Gets either HL, IX+n or IY+n. If needed n is fetched from PC.
+    // Returns the (address, extra_T_states).
     fn hlx_addr(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> (u16, u32) {
         match prefix {
             XYPrefix::None => (self.hl.as_u16(), 0),
@@ -384,6 +397,7 @@ impl Z80 {
             }
         }
     }
+    // Substracts two 8-bit values, maybe with carry
     fn sub_flags(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
         let mut r = a.wrapping_sub(b);
         let mut f = self.f();
@@ -398,6 +412,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Substracts two 16-bit values with carry (there is no sub16_flags)
     fn sbc16_flags(&mut self, a: u16, b: u16) -> u16 {
         let mut f = self.f();
         let mut r = a.wrapping_sub(b);
@@ -413,6 +428,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Adds thow 8-bit values, maybe with carry
     fn add_flags(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
         let mut f = self.f();
         let mut r = a.wrapping_add(b);
@@ -427,6 +443,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Adds thow 16-bit values with carry
     fn adc16_flags(&mut self, a: u16, b: u16) -> u16 {
         let mut f = self.f();
         let mut r = a.wrapping_add(b);
@@ -442,6 +459,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Adds thow 16-bit values without carry
     fn add16_flags(&mut self, a: u16, b: u16) -> u16 {
         let r = a.wrapping_add(b);
         let mut f = self.f();
@@ -452,6 +470,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Increments an 8-bit value
     fn inc_flags(&mut self, a: u8) -> u8 {
         let r = a.wrapping_add(1);
         let mut f = self.f();
@@ -462,6 +481,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Decrements an 8-bit value
     fn dec_flags(&mut self, a: u8) -> u8 {
         let r = a.wrapping_sub(1);
         let mut f = self.f();
@@ -472,6 +492,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // BitAnd between two 8-bit values
     fn and_flags(&mut self, a: u8, b: u8) -> u8 {
         let r = a & b;
         let mut f = self.f();
@@ -482,6 +503,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // BitOr between two 8-bit values
     fn or_flags(&mut self, a: u8, b: u8) -> u8 {
         let r = a | b;
         let mut f = self.f();
@@ -492,6 +514,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // BitXor between two 8-bit values
     fn xor_flags(&mut self, a: u8, b: u8) -> u8 {
         let r = a ^ b;
         let mut f = self.f();
@@ -502,6 +525,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Load & increment/decrement from (HL) into (DE), then decrements BC
     fn ldi_ldd(&mut self, dir: Direction, bus: &mut impl Bus) {
         let hl = self.hl;
         let de = self.de;
@@ -526,6 +550,7 @@ impl Z80 {
         f = set_flag8(f, FLAG_PV, self.bc.as_u16() != 0);
         self.set_f(f);
     }
+    // Compare & increment/decrement (HL) and A, then decrement BC
     fn cpi_cpd(&mut self, dir: Direction, bus: &mut impl Bus) -> u8 {
         let hl = self.hl;
         let x = bus.peek(hl);
@@ -546,6 +571,7 @@ impl Z80 {
         self.set_f(f);
         r
     }
+    // Reads 8-bit IO port BC, store it into (HL), increment/decrement HL, then decrements B
     fn ini_ind(&mut self, dir: Direction, bus: &mut impl Bus) -> u8 {
         let x = bus.do_in(self.bc.as_u16());
         bus.poke(self.hl, x);
@@ -561,6 +587,7 @@ impl Z80 {
         self.set_f(f);
         b
     }
+    // Reads 8-bit from (HL), writes it to IO port BC, increment/decrement HL, then decrements B
     fn outi_outd(&mut self, dir: Direction, bus: &mut impl Bus) -> u8 {
         let x = bus.peek(self.hl);
         bus.do_out(self.bc.as_u16(), x);
@@ -576,6 +603,7 @@ impl Z80 {
         self.set_f(f);
         b
     }
+    // Decimal Arithmetic Adjust, the logic is incomprehensible
     fn daa(&mut self) {
         let a = self.a();
         let mut f = self.f();
@@ -632,8 +660,9 @@ impl Z80 {
         self.set_a(a);
         self.set_f(f);
     }
+    // Exects the next instruction from PC, returns the consumed T-states
     pub fn exec(&mut self, bus: &mut impl Bus) -> u32 {
-        let mut c = match self.next_op {
+        let mut opcode = match self.next_op {
             NextOp::Fetch => {
                 self.inc_r(bus, FetchReason::Fetch);
                 self.fetch(bus)
@@ -668,24 +697,26 @@ impl Z80 {
         };
         let mut t = 0;
         let mut prefix = XYPrefix::None;
-        let c = loop {
-            c = match c {
+        // The IX/IY prefix can be repeated many times to force a delay or avoid an interrupt
+        let opcode = loop {
+            opcode = match opcode {
                 0xdd => {
                     prefix = XYPrefix::IX;
                     t += 4;
-                    self.inc_r(bus, FetchReason::IXPrefix);
+                    self.inc_r(bus, FetchReason::Prefix);
                     self.fetch(bus)
                 }
                 0xfd => {
                     prefix = XYPrefix::IY;
                     t += 4;
-                    self.inc_r(bus, FetchReason::IYPrefix);
+                    self.inc_r(bus, FetchReason::Prefix);
                     self.fetch(bus)
                 }
-                _ => break c
+                _ => break opcode
             };
         };
-        t + match c {
+        // Decode the opcode, computing the additional T-states
+        let t2 = match opcode {
             0x00 => { //NOP
                 4
             }
@@ -2280,7 +2311,8 @@ impl Z80 {
                 self.pc.set(0x38);
                 11
             }
-        }
+        };
+        t + t2
     }
 }
 
