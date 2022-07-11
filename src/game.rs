@@ -241,7 +241,7 @@ impl Bus for Ula {
             self.ear = (value & 0x10) != 0;
             self.mic = (value & 0x08) != 0;
         } else {
-            //log!("OUT {:04x}, {:02x}", port, value);
+            //log::info!("OUT {:04x}, {:02x}", port, value);
             if (0x4000..0x8000).contains(&port) {
                 self.delay += 4;
             }

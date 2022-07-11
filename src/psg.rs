@@ -199,13 +199,29 @@ impl Psg {
     }
     /// Reads the selected register, it has no side effects
     pub fn read_reg(&self) -> u8 {
-        //log!("PSG read {:02x} <- {:02x}", self.psg_sel, r);
-        self.reg[usize::from(self.reg_sel)]
+        // Some fancy programs, such as demos, try do detect if this is an original AY-3-8910 or
+        // some clone like YM2149. They seem to regard the original as superior, so we try to
+        // pose as such.
+        // The trick is that some registers do not use the full 8-bits. In those the original chip
+        // only stores the necessary bits while the clones keep them all. The program will
+        // write a value such as 0xff and then read it back: if it gets the whole value it is
+        // a clone.
+        let r = self.reg[usize::from(self.reg_sel)];
+        let r = match self.reg_sel {
+            // high byte of a freq_12 and envelope shape only have 4 bits
+            0x01 | 0x03 | 0x05 | 0x0d => r & 0x0f,
+            // noise and volumes only use 5 bits
+            0x06 | 0x08 | 0x09 | 0x0a => r & 0x1f,
+            // all other registers use the full 8 bits
+            _ => r
+        };
+        //log::info!("PSG read {:02x} -> {:02x}", self.reg_sel, r);
+        r
     }
     /// Reads the selected register
     pub fn write_reg(&mut self, x: u8) {
         self.reg[usize::from(self.reg_sel)] = x;
-        //log!("PSG write {:02x} <- {:02x}", self.reg_sel, x);
+        //log::info!("PSG write {:02x} <- {:02x}", self.reg_sel, x);
         match self.reg_sel {
             //Regs 0x00-0x01 set up the frequency for FG-A
             0x00 | 0x01 => {
@@ -240,7 +256,8 @@ impl Psg {
                 self.envelope.set_freq_shape(freq, shape);
                 //log!("Envel: {} {}", freq, shape);
             }
-            //Regs 0x0e-0x0f are unused
+            //Regs 0x0e-0x0f are I/O ports, not used for music, other AY-3-891x do not even connect
+            //these to the chip pins
             _ => {}
         }
     }
