@@ -43,7 +43,6 @@ impl NoiseGen {
     }
     fn set_freq(&mut self, freq: u8) {
         self.divisor = 32 * u32::from(freq);
-        //log!("noise div {}", self.divisor);
     }
     fn next_sample(&mut self, t: u32) -> bool {
         self.phase += t;
@@ -103,7 +102,7 @@ impl Envelope {
         self.divisor = 32 * u32::from(freq);
         self.phase = 0;
         self.step = 0;
-        let (shape, block) = match shape & 0x0f {
+        let (shape, block) = match shape {
             0x00 | 0x01 | 0x02 | 0x03 | 0x09 => (LowerLow, Lower),
             0x04 | 0x05 | 0x06 | 0x07 | 0x0f => (RaiseLow, Raise),
             0x08 => (LowerLoop, Lower),
@@ -112,6 +111,7 @@ impl Envelope {
             0x0c => (RaiseLoop, Raise),
             0x0d => (RaiseHigh, Raise),
             0x0e => (RaiseLowerLoop, Raise),
+            // shape is only 4 bits
             0x10 ..= 0xff => unreachable!(),
         };
         self.shape = shape;
@@ -148,6 +148,36 @@ impl Envelope {
     }
 }
 
+// Some fancy programs, such as demos, try do detect if this is an original AY-3-8910 or
+// some clone like YM2149. They seem to regard the original as superior, so we try to
+// pose as such.
+// The trick is that some registers do not use the full 8-bits. In those the original chip
+// only stores the necessary bits while the clones keep them all. The program will
+// write a value such as 0xff and then read it back: if it gets the whole value it is
+// a clone.
+// This array contains the bitmask for each register:
+static REG_MASK: [u8; 16] = [
+// Tone A,B,C freq. are 12 bits each (8+4)
+    /*0x00, 0x01*/ 0xff, 0x0f,
+    /*0x02, 0x03*/ 0xff, 0x0f,
+    /*0x04, 0x05*/ 0xff, 0x0f,
+// Noise freq. has 5 bits:
+    /*0x06      */ 0x1f,
+// Flags: 8 bits
+    /*0x07      */ 0xff,
+// Channel A,B,C volume: (1+4) bits each
+    /*0x08      */ 0x1f,
+    /*0x09      */ 0x1f,
+    /*0x0a      */ 0x1f,
+// Envelope freq: 16 bits
+    /*0x0b, 0x0c*/ 0xff, 0xff,
+// Envelope shape: 4 bits
+    /*0x0d      */ 0x0f,
+// IO ports A,B: 8 bits each
+    /*0x0e      */ 0xff,
+    /*0x0f      */ 0xff,
+];
+
 /// The Programmable Sound Generator: AY-3-8910
 pub struct Psg {
     /// The selected register, that will be read/written next
@@ -170,7 +200,7 @@ impl Psg {
     pub fn new() -> Psg {
         Psg {
             reg_sel: 0,
-            reg: Default::default(),
+            reg: [0; 16],
             freq_a: FreqGen::new(),
             freq_b: FreqGen::new(),
             freq_c: FreqGen::new(),
@@ -179,12 +209,15 @@ impl Psg {
         }
     }
     pub fn load_snapshot(data: &[u8]) -> Psg {
+        // Go through write_reg() to rebuild the state of the inner generators.
+        // Generator phases are not restored, but that should be unnoticeable.
         let mut psg = Self::new();
         for (r, &v) in data[1..17].iter().enumerate() {
             psg.reg_sel = r as u8;
             psg.write_reg(v);
         }
-        psg.reg_sel = data[0];
+        // Do not trust data[0] is in range
+        psg.select_reg(data[0]);
         psg
     }
     pub fn snapshot(&self, data: &mut [u8]) {
@@ -196,68 +229,55 @@ impl Psg {
         if let 0..=0x0f = reg {
             self.reg_sel = reg;
         }
+        // Selecting an invalid register has no effect
     }
     /// Reads the selected register, it has no side effects
     pub fn read_reg(&self) -> u8 {
-        // Some fancy programs, such as demos, try do detect if this is an original AY-3-8910 or
-        // some clone like YM2149. They seem to regard the original as superior, so we try to
-        // pose as such.
-        // The trick is that some registers do not use the full 8-bits. In those the original chip
-        // only stores the necessary bits while the clones keep them all. The program will
-        // write a value such as 0xff and then read it back: if it gets the whole value it is
-        // a clone.
-        let r = self.reg[usize::from(self.reg_sel)];
-        let r = match self.reg_sel {
-            // high byte of a freq_12 and envelope shape only have 4 bits
-            0x01 | 0x03 | 0x05 | 0x0d => r & 0x0f,
-            // noise and volumes only use 5 bits
-            0x06 | 0x08 | 0x09 | 0x0a => r & 0x1f,
-            // all other registers use the full 8 bits
-            _ => r
-        };
+        self.reg[usize::from(self.reg_sel)]
         //log::info!("PSG read {:02x} -> {:02x}", self.reg_sel, r);
-        r
     }
-    /// Reads the selected register
+    /// Writes the selected register
     pub fn write_reg(&mut self, x: u8) {
-        self.reg[usize::from(self.reg_sel)] = x;
-        //log::info!("PSG write {:02x} <- {:02x}", self.reg_sel, x);
-        match self.reg_sel {
+        let reg_sel =  usize::from(self.reg_sel);
+        self.reg[reg_sel] = x & REG_MASK[reg_sel];
+        //log::info!("PSG write {:02x} <- {:02x}", reg_sel, x);
+        // Writing to most registers has a side effect
+        match reg_sel {
             //Regs 0x00-0x01 set up the frequency for FG-A
             0x00 | 0x01 => {
-                let freq = Self::freq_12(self.reg[0x00], self.reg[0x01]);
+                let freq = Self::freq(self.reg[0x00], self.reg[0x01]);
                 self.freq_a.set_freq(freq);
-                //log!("Tone A: {}", freq);
+                //log::info!("Tone A: {}", freq);
             }
             //Regs 0x02-0x03 set up the frequency for FG-B
             0x02 | 0x03 => {
-                let freq = Self::freq_12(self.reg[0x02], self.reg[0x03]);
+                let freq = Self::freq(self.reg[0x02], self.reg[0x03]);
                 self.freq_b.set_freq(freq);
-                //log!("Tone B: {}", freq);
+                //log::info!("Tone B: {}", freq);
             }
-            0x04 | 0x05 => {
             //Regs 0x04-0x05 set up the frequency for FG-C
-            let freq = Self::freq_12(self.reg[0x04], self.reg[0x05]);
+            0x04 | 0x05 => {
+            let freq = Self::freq(self.reg[0x04], self.reg[0x05]);
                 self.freq_c.set_freq(freq);
-                //log!("Tone C: {}", freq);
+                //log::info!("Tone C: {}", freq);
             }
             //Reg 0x06 is the noise frequency
             0x06 => {
-                let noise = self.reg[0x06] & 0x1f;
+                let noise = self.reg[0x06];
                 self.noise.set_freq(if noise == 0 { 1 } else { noise });
-                //log!("Noise A: {}", noise);
+                //log::info!("Noise A: {}", noise);
             }
             //Regs 0x07-0x0a: are used directly in next_sample(), no side effects
 
             //Regs 0x0b-0x0c set up the envelope frequency; 0x0d is the shape noise
-            0x0b | 0x0c | 0x0d=> {
-                let freq = Self::freq_16(self.reg[0x0b], self.reg[0x0c]);
+            0x0b | 0x0c | 0x0d => {
+                let freq = Self::freq(self.reg[0x0b], self.reg[0x0c]);
                 let shape = self.reg[0x0d];
                 self.envelope.set_freq_shape(freq, shape);
-                //log!("Envel: {} {}", freq, shape);
+                //log::info!("Envel: {} {}", freq, shape);
             }
-            //Regs 0x0e-0x0f are I/O ports, not used for music, other AY-3-891x do not even connect
-            //these to the chip pins
+            //Regs 0x0e-0x0f are I/O ports, not used for music
+
             _ => {}
         }
     }
@@ -269,7 +289,7 @@ impl Psg {
         // * 0b0000_1000: do not mix noise into channel A
         // * 0b0001_0000: do not mix noise into channel B
         // * 0b0010_0000: do not mix noise into channel C
-        // * 0b1100_0000: unused
+        // * 0b1100_0000: IO ports, unused for music
         let mix = self.reg[0x07];
         let tone_a = (mix & 0x01) == 0;
         let tone_b = (mix & 0x02) == 0;
@@ -322,16 +342,12 @@ impl Psg {
         //The volume curve is an exponential where each level is sqrt(2) lower than the next,
         //but with an offset so that the first one is 0. computed with this python line:
         //>>> [round(8192*exp(i/2-7.5)) for i in range(0, 16)]
-        const LEVELS: [u16; 16] = [5, 7, 12, 20, 33, 55, 91, 150, 247, 408, 672, 1109, 1828, 3014, 4969, 8192];
+        static LEVELS: [u16; 16] = [5, 7, 12, 20, 33, 55, 91, 150, 247, 408, 672, 1109, 1828, 3014, 4969, 8192];
         LEVELS[usize::from(v)]
     }
-    fn freq_12(a: u8, b: u8) -> u16 {
-        let n = u16::from(a) | (u16::from(b & 0x0f) << 8);
-        if n == 0 { 1 } else { n }
-    }
-    fn freq_16(a: u8, b: u8) -> u16 {
-        let n = u16::from(a) | (u16::from(b) << 8);
-        if n == 0 { 1 } else { n }
+    fn freq(a: u8, b: u8) -> u16 {
+        let n = u16::from_le_bytes([a, b]);
+        n.max(1)
     }
     fn channel(tone_enabled: bool, noise_enabled: bool, freq: &mut FreqGen, noise: bool, t: u32) -> bool {
         if tone_enabled {
