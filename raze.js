@@ -7,6 +7,7 @@ let g_is128k;
 let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
+let g_turboPersistent = false;
 let g_realCanvas = null;
 let g_ctx = null, g_gl = null;
 let g_lastSnapshot = null;
@@ -76,6 +77,8 @@ export function onTapeBlock(index) {
         else
             btn.classList.remove('selected');
     }
+    if (!g_turboPersistent)
+        setTurbo(false);
 }
 
 export function onRZXRunning(isRunning, percent) {
@@ -232,7 +235,8 @@ async function onDocumentLoad() {
     document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
     document.getElementById('rzx_replay').addEventListener('click', handleRZXReplay, false);
-    document.getElementById('turbo').addEventListener('click', handleTurbo, false);
+    document.getElementById('turbo').addEventListener('click', e => handleTurbo(e, false), false);
+    document.getElementById('turbo').addEventListener('dblclick', e => handleTurbo(e, true), false);
     document.getElementById('poke').addEventListener('click', handlePoke, false);
     document.getElementById('peek').addEventListener('click', handlePeek, false);
     document.getElementById('toggle_kbd').addEventListener('click', handleToggleKbd, false);
@@ -475,7 +479,7 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "F10":
-        setTurbo(true);
+        setTurbo(true, false);
         ev.preventDefault();
         return;
     case "F11":
@@ -840,17 +844,24 @@ function handleRZXReplay(evt) {
     wasm_bindgen.wasm_stop_rzx_replay(g_game);
 }
 
-function handleTurbo(evt) {
-    setTurbo(!g_turbo);
+function handleTurbo(evt, persistent) {
+    setTurbo(!g_turbo, persistent);
 }
 
-function setTurbo(mode) {
+function setTurbo(mode, persistent) {
+    console.log(mode, persistent);
     g_turbo = mode;
+    g_turboPersistent = g_turbo && persistent;
     let turbo = document.getElementById('turbo');
     if (g_turbo) {
         turbo.classList.add('active');
     } else {
         turbo.classList.remove('active');
+    }
+    if (g_turboPersistent) {
+        turbo.classList.add('persist');
+    } else {
+        turbo.classList.remove('persist');
     }
 }
 
