@@ -24,12 +24,13 @@ pub struct Memory {
 
 impl Memory {
     pub fn new_from_bytes(rom0: &[u8], rom1: Option<&[u8]>) -> Self {
-        let brom0 = rom0.to_vec();
+        assert_eq!(rom0.len(), 0x4000);
+        let rom0 = rom0.to_vec();
         match rom1 {
             None => {
                 //48k
                 let data = vec![
-                    Bank::rom(brom0),
+                    Bank::rom(rom0),
                     Bank::ram(true),
                     Bank::ram(false),
                     Bank::ram(false),
@@ -46,7 +47,8 @@ impl Memory {
             }
             Some(rom1) => {
                 //128k
-                let brom1 = rom1.to_vec();
+                assert_eq!(rom1.len(), 0x4000);
+                let rom1 = rom1.to_vec();
                 let data = vec![
                     Bank::ram(false),
                     Bank::ram(true),
@@ -56,8 +58,8 @@ impl Memory {
                     Bank::ram(true),
                     Bank::ram(false),
                     Bank::ram(true),
-                    Bank::rom(brom0), //8: is the 128k rom
-                    Bank::rom(brom1), //9: is the 128k-48k compatible rom
+                    Bank::rom(rom0), //8: is the 128k rom
+                    Bank::rom(rom1), //9: is the 128k-48k compatible rom
                 ];
                 Memory {
                     data,
