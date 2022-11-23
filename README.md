@@ -31,7 +31,7 @@ What works and what not
  * Loading TAP and TZX files, either directly or from ZIP files. TZX support is somewhat around 90% (if you have some file that does not work and you think it should, please send it to me). You can load a tape dump directly from the URL by adding `?tape=<url>`.
  * Loading and saving Z80 snapshots. Only 48K and 128K snapshots, obviously. You can load a snapshot directly from the URL by adding `?snapshot=<url>`.
  * Currently you cannot save tape files. You can try to save it and you will hear the sound, but there is no way to record the data.
- * Emulation of the internal speaker (thanks to MAME for some ideas about sound filtering). The 128K sound generator (AY-3-8910) is also emulated.
+ * Emulation of the internal speaker. The 128K sound generator (AY-3-8910) is also emulated.
  * Support for joystick Kempston, Sinclair and Protek. Experimental support of gamepads.
  * It uses WebGL for rendereng if available. It falls back to Canvas2D if not. You can force the Canvas2D mode adding `?webgl=N` to the url.
  * In 128k mode, it actually implements the banking of the +2A, although it does not ship the necessary ROMs. This is useful for the full RAM mode used by some programs, such as [this great Pacman emulator](http://simonowen.com/spectrum/pacemuzx/).

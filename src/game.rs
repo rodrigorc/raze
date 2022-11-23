@@ -79,13 +79,11 @@ impl Ula {
             tape => tape
         };
     }
-    pub fn audio_sample(&mut self, t: u32) -> u16 {
-        // Beware of the audio clipping! if all three channels of psg are on and  ear=true and mic=true, the max value is:
-        // 3 * 0x2000 + 0x2000 + 0x1000 = 0x9000, that overflows an i16
+    fn audio_sample(&mut self, t: u32) -> u32 {
         let v = if self.ear { 0x2000 } else { 0 } + if self.mic { 0x1000 } else { 0 };
         match &mut self.psg {
             None => v,
-            Some(psg) => v + psg.next_sample(t),
+            Some(psg) => v + u32::from(psg.next_sample(t)),
         }
     }
     fn has_to_interrupt(&self) -> bool {
@@ -438,7 +436,7 @@ impl<GUI: Gui> Game<GUI> {
 
                 if !turbo {
                     let sample = self.ula.audio_sample(t);
-                    self.speaker.push_sample(i32::from(sample), t as i32);
+                    self.speaker.push_sample(sample, t);
                     //Border is never bright
                     let palette = self.gui.palette();
                     let border = palette[0][self.ula.border as usize];
@@ -471,7 +469,7 @@ impl<GUI: Gui> Game<GUI> {
         } else {
             //adding samples should be rarely necessary, so use lazy generation
             let ula = &mut self.ula;
-            let audio = self.speaker.complete_frame(TIME_TO_INT, || i32::from(ula.audio_sample(0)));
+            let audio = self.speaker.complete_frame(TIME_TO_INT as u32, || ula.audio_sample(0));
             self.gui.put_sound_data(audio);
             self.speaker.clear();
         }

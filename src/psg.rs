@@ -339,10 +339,7 @@ impl Psg {
         } else {
             v & 0x0f
         };
-        //The volume curve is an exponential where each level is sqrt(2) lower than the next,
-        //but with an offset so that the first one is 0. computed with this python line:
-        //>>> [round(8192*exp(i/2-7.5)) for i in range(0, 16)]
-        static LEVELS: [u16; 16] = [5, 7, 12, 20, 33, 55, 91, 150, 247, 408, 672, 1109, 1828, 3014, 4969, 8192];
+        static LEVELS: [u16; 16] = [0, 94, 133, 197, 283, 413, 589, 920, 1096, 1759, 2482, 3142, 4164, 5340, 6669, 8192];
         LEVELS[usize::from(v)]
     }
     fn freq(a: u8, b: u8) -> u16 {
