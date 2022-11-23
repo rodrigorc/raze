@@ -2,16 +2,17 @@ import { putImageData, putSoundData, onTapeBlock, onRZXRunning } from '../raze.j
 
 let wasm;
 
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+const cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
 
 cachedTextDecoder.decode();
 
-let cachegetUint8Memory0 = null;
+let cachedUint8Memory0 = new Uint8Array();
+
 function getUint8Memory0() {
-    if (cachegetUint8Memory0 === null || cachegetUint8Memory0.buffer !== wasm.memory.buffer) {
-        cachegetUint8Memory0 = new Uint8Array(wasm.memory.buffer);
+    if (cachedUint8Memory0.byteLength === 0) {
+        cachedUint8Memory0 = new Uint8Array(wasm.memory.buffer);
     }
-    return cachegetUint8Memory0;
+    return cachedUint8Memory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -51,7 +52,7 @@ function takeObject(idx) {
 * @returns {number}
 */
 export function wasm_main(is128k) {
-    var ret = wasm.wasm_main(is128k);
+    const ret = wasm.wasm_main(is128k);
     return ret;
 }
 
@@ -67,7 +68,7 @@ export function wasm_drop(game) {
 * @returns {number}
 */
 export function wasm_alloc(size) {
-    var ret = wasm.wasm_alloc(size);
+    const ret = wasm.wasm_alloc(size);
     return ret;
 }
 
@@ -93,18 +94,19 @@ function passArray8ToWasm0(arg, malloc) {
 * @returns {number}
 */
 export function wasm_load_tape(game, data) {
-    var ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
-    var len0 = WASM_VECTOR_LEN;
-    var ret = wasm.wasm_load_tape(game, ptr0, len0);
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.wasm_load_tape(game, ptr0, len0);
     return ret >>> 0;
 }
 
-let cachegetInt32Memory0 = null;
+let cachedInt32Memory0 = new Int32Array();
+
 function getInt32Memory0() {
-    if (cachegetInt32Memory0 === null || cachegetInt32Memory0.buffer !== wasm.memory.buffer) {
-        cachegetInt32Memory0 = new Int32Array(wasm.memory.buffer);
+    if (cachedInt32Memory0.byteLength === 0) {
+        cachedInt32Memory0 = new Int32Array(wasm.memory.buffer);
     }
-    return cachegetInt32Memory0;
+    return cachedInt32Memory0;
 }
 /**
 * @param {number} game
@@ -130,7 +132,7 @@ export function wasm_tape_name(game, index) {
 * @returns {boolean}
 */
 export function wasm_tape_selectable(game, index) {
-    var ret = wasm.wasm_tape_selectable(game, index);
+    const ret = wasm.wasm_tape_selectable(game, index);
     return ret !== 0;
 }
 
@@ -155,9 +157,9 @@ export function wasm_tape_stop(game) {
 * @returns {boolean}
 */
 export function wasm_load_snapshot(game, data) {
-    var ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
-    var len0 = WASM_VECTOR_LEN;
-    var ret = wasm.wasm_load_snapshot(game, ptr0, len0);
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.wasm_load_snapshot(game, ptr0, len0);
     return ret !== 0;
 }
 
@@ -211,7 +213,7 @@ export function wasm_key_down(game, key) {
 * @returns {number}
 */
 export function wasm_peek(game, addr) {
-    var ret = wasm.wasm_peek(game, addr);
+    const ret = wasm.wasm_peek(game, addr);
     return ret;
 }
 
@@ -231,12 +233,13 @@ export function wasm_stop_rzx_replay(game) {
     wasm.wasm_stop_rzx_replay(game);
 }
 
-let cachegetFloat32Memory0 = null;
+let cachedFloat32Memory0 = new Float32Array();
+
 function getFloat32Memory0() {
-    if (cachegetFloat32Memory0 === null || cachegetFloat32Memory0.buffer !== wasm.memory.buffer) {
-        cachegetFloat32Memory0 = new Float32Array(wasm.memory.buffer);
+    if (cachedFloat32Memory0.byteLength === 0) {
+        cachedFloat32Memory0 = new Float32Array(wasm.memory.buffer);
     }
-    return cachegetFloat32Memory0;
+    return cachedFloat32Memory0;
 }
 
 function getArrayF32FromWasm0(ptr, len) {
@@ -274,66 +277,98 @@ async function load(module, imports) {
     }
 }
 
-async function init(input) {
-    if (typeof input === 'undefined') {
-        input = new URL('raze_bg.wasm', import.meta.url);
-    }
+function getImports() {
     const imports = {};
     imports.wbg = {};
     imports.wbg.__wbindgen_string_new = function(arg0, arg1) {
-        var ret = getStringFromWasm0(arg0, arg1);
+        const ret = getStringFromWasm0(arg0, arg1);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_object_drop_ref = function(arg0) {
         takeObject(arg0);
     };
-    imports.wbg.__wbg_onRZXRunning_1a1205720465a0ed = function(arg0, arg1) {
+    imports.wbg.__wbg_onRZXRunning_293f25ac698219f3 = function(arg0, arg1) {
         onRZXRunning(arg0 !== 0, arg1 >>> 0);
     };
-    imports.wbg.__wbg_onTapeBlock_4744c9da02523482 = function(arg0) {
-        onTapeBlock(arg0 >>> 0);
-    };
-    imports.wbg.__wbg_putSoundData_48621b9ae342dc32 = function(arg0, arg1) {
+    imports.wbg.__wbg_putSoundData_474070edb0d0aa49 = function(arg0, arg1) {
         putSoundData(getArrayF32FromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_putImageData_5de2616424a06d4e = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_putImageData_2f2824755174a5b3 = function(arg0, arg1, arg2, arg3) {
         putImageData(arg0, arg1, getArrayU8FromWasm0(arg2, arg3));
     };
-    imports.wbg.__wbg_alert_dd86ea2e00a7590e = function(arg0, arg1) {
+    imports.wbg.__wbg_onTapeBlock_48bda51707617963 = function(arg0) {
+        onTapeBlock(arg0 >>> 0);
+    };
+    imports.wbg.__wbg_alert_c6ab42df8e0ac3e5 = function(arg0, arg1) {
         alert(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
         throw new Error(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_debug_6df4b1a327dd2e94 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_debug_64711eb2fc6980ef = function(arg0, arg1, arg2, arg3) {
         console.debug(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_error_644d3bc8c0537e80 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_error_00c5d571f754f629 = function(arg0, arg1, arg2, arg3) {
         console.error(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_info_8bed0988e7416289 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_info_d60a960a4e955dc2 = function(arg0, arg1, arg2, arg3) {
         console.info(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_log_681299aef22afa27 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_log_de258f66ad9eb784 = function(arg0, arg1, arg2, arg3) {
         console.log(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
-    imports.wbg.__wbg_warn_ca021eeadd0df9cd = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_warn_be542501a57387a5 = function(arg0, arg1, arg2, arg3) {
         console.warn(getObject(arg0), getObject(arg1), getObject(arg2), getObject(arg3));
     };
+
+    return imports;
+}
+
+function initMemory(imports, maybe_memory) {
+
+}
+
+function finalizeInit(instance, module) {
+    wasm = instance.exports;
+    init.__wbindgen_wasm_module = module;
+    cachedFloat32Memory0 = new Float32Array();
+    cachedInt32Memory0 = new Int32Array();
+    cachedUint8Memory0 = new Uint8Array();
+
+
+    return wasm;
+}
+
+function initSync(module) {
+    const imports = getImports();
+
+    initMemory(imports);
+
+    if (!(module instanceof WebAssembly.Module)) {
+        module = new WebAssembly.Module(module);
+    }
+
+    const instance = new WebAssembly.Instance(module, imports);
+
+    return finalizeInit(instance, module);
+}
+
+async function init(input) {
+    if (typeof input === 'undefined') {
+        input = new URL('raze_bg.wasm', import.meta.url);
+    }
+    const imports = getImports();
 
     if (typeof input === 'string' || (typeof Request === 'function' && input instanceof Request) || (typeof URL === 'function' && input instanceof URL)) {
         input = fetch(input);
     }
 
-
+    initMemory(imports);
 
     const { instance, module } = await load(await input, imports);
 
-    wasm = instance.exports;
-    init.__wbindgen_wasm_module = module;
-
-    return wasm;
+    return finalizeInit(instance, module);
 }
 
+export { initSync }
 export default init;
-

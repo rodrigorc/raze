@@ -107,6 +107,9 @@ button.active {
     background: white;
     border-style: inset;
 }
+button.persist {
+    font-weight: bold;
+}
 label, input {
     vertical-align: middle;
 }
