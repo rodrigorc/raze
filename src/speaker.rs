@@ -42,7 +42,7 @@ impl Speaker {
     }
 
     fn push_audio_accum(&mut self, sample: u32) {
-        let v = sample as f32 / (65536 * AUDIO_SAMPLE) as f32 - 0.5;
+        let v = sample as f32 / (65536 * AUDIO_SAMPLE) as f32 - 0.1;
         self.audio.push(v);
     }
 }

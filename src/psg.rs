@@ -14,7 +14,6 @@ impl FreqGen {
     }
     fn set_freq(&mut self, freq: u16) {
         self.divisor = 32 * u32::from(freq);
-        self.phase = 0;
     }
     fn next_sample(&mut self, t: u32) -> bool {
         self.phase += t;
@@ -46,13 +45,13 @@ impl NoiseGen {
     }
     fn next_sample(&mut self, t: u32) -> bool {
         self.phase += t;
-        while self.phase > self.divisor {
-            self.phase -= self.divisor;
+        if self.phase >= self.divisor {
+            self.phase = 0;
             let bit0 = (self.shift & 1) != 0;
             let bit3 = (self.shift & 8) != 0;
-            self.level ^= bit0;
+            self.level = bit0;
             if bit0 ^ bit3 {
-                self.shift ^= 0x10000;
+                self.shift ^= 0x20000;
             }
             self.shift >>= 1;
         }
@@ -265,7 +264,6 @@ impl Psg {
             0x06 => {
                 let noise = self.reg[0x06];
                 self.noise.set_freq(if noise == 0 { 1 } else { noise });
-                //log::info!("Noise A: {}", noise);
             }
             //Regs 0x07-0x0a: are used directly in next_sample(), no side effects
 
@@ -298,20 +296,15 @@ impl Psg {
         let noise_b = (mix & 0x10) == 0;
         let noise_c = (mix & 0x20) == 0;
 
-        // If any noise bit is set, compute the next noise sample.
-        // It not, do not bother, because it is just noise.
-        let noise = if noise_a || noise_b || noise_c {
-            self.noise.next_sample(t)
-        } else {
-            false
-        };
+        // Generate the noise
+        let noise = self.noise.next_sample(t);
 
         // Compute which channels are to be added
         let chan_a = Self::channel(tone_a, noise_a, &mut self.freq_a, noise, t);
         let chan_b = Self::channel(tone_b, noise_b, &mut self.freq_b, noise, t);
         let chan_c = Self::channel(tone_c, noise_c, &mut self.freq_c, noise, t);
 
-        //Envelope is computed even if unused
+        // Envelope is computed even if unused
         let env = self.envelope.next_sample(t);
 
         // Add the enabled channels, pondering the volume and the envelope
