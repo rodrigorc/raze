@@ -411,7 +411,7 @@ impl<GUI: Gui> Game<GUI> {
                 fetch_count: 0,
                 rzx_info: None,
             },
-            speaker: Speaker::new(),
+            speaker: Speaker::new(is128k),
             image: black_screen(gui.palette()),
             gui,
         }
@@ -855,7 +855,7 @@ impl<GUI: Gui> Game<GUI> {
                 fetch_count: 0,
                 rzx_info: rzx_input.map(|frames| RzxInfo { frames, frame_idx: 0, frame_data_idx: 0, in_idx: 0 }),
             },
-            speaker: Speaker::new(),
+            speaker: Speaker::new(is128k),
             image: black_screen(gui.palette()),
             gui,
         };

@@ -94,16 +94,8 @@ export function onRZXRunning(isRunning, percent) {
 
 export function putSoundData(slice) {
     let asrc = g_actx.createBufferSource();
-    let freq;
-    if (window.AudioContext) {
-        // cpufreq / AUDIO_SAMPLE / RATE_MULTIPLIER
-        freq = g_is128k? 21112 : 20833;
-    } else {
-        //Safari uses old webkitAudioContext and cannot do slow sample rates (less than 22050)
-        //We could double the samples, but then it will click horribly because of the resampling.
-        //As a compromise we just use 22050 Hz that is near enough to the real value
-        freq = 22050
-    }
+    //Safari cannot use random frequencies so go with a standard 22.05 kHz
+    let freq = 22050;
     let abuf = g_actx.createBuffer(1, slice.length, freq);
     if (abuf.copyToChannel) {
         abuf.copyToChannel(slice, 0);
