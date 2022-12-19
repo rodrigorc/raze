@@ -287,19 +287,19 @@ function getImports() {
     imports.wbg.__wbindgen_object_drop_ref = function(arg0) {
         takeObject(arg0);
     };
-    imports.wbg.__wbg_onRZXRunning_7a22aafb2ab573e6 = function(arg0, arg1) {
+    imports.wbg.__wbg_onRZXRunning_6ee2cb30e096af8b = function(arg0, arg1) {
         onRZXRunning(arg0 !== 0, arg1 >>> 0);
     };
-    imports.wbg.__wbg_putSoundData_8773188cf303e0e9 = function(arg0, arg1) {
+    imports.wbg.__wbg_putSoundData_d37edd40251eb999 = function(arg0, arg1) {
         putSoundData(getArrayF32FromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_putImageData_72e3e076dd01cf61 = function(arg0, arg1, arg2, arg3) {
+    imports.wbg.__wbg_putImageData_7a097d1ee118a501 = function(arg0, arg1, arg2, arg3) {
         putImageData(arg0, arg1, getArrayU8FromWasm0(arg2, arg3));
     };
-    imports.wbg.__wbg_onTapeBlock_db302dfd3cf6cc28 = function(arg0) {
+    imports.wbg.__wbg_onTapeBlock_0acd7e58430596dc = function(arg0) {
         onTapeBlock(arg0 >>> 0);
     };
-    imports.wbg.__wbg_alert_61045fcdf98ae703 = function(arg0, arg1) {
+    imports.wbg.__wbg_alert_c4ba3034ae82978c = function(arg0, arg1) {
         alert(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
