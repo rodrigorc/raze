@@ -444,6 +444,13 @@ function onOSKeyUp(ev) {
                 wasm_bindgen.wasm_key_up(g_game, key);
             }
         }
+        else if (key == 0x71 && ev.type == 'mouseup') {
+            let caps = document.getElementById('caps');
+            if (caps.classList.contains('pressed')) {
+                this.classList.remove('pressed');
+                wasm_bindgen.wasm_key_up(g_game, key);
+            }
+        }
     } else {
         this.classList.remove('pressed');
         wasm_bindgen.wasm_key_up(g_game, key);
