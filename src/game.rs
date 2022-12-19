@@ -380,6 +380,21 @@ fn write_screen<PIX: Copy>(border: PIX, palette: &[[PIX; 8]; 2], inv: bool, data
     }
 }
 
+// General speed of the emulation is controlled by the audio output.
+// The main audio channel should be configured at 22050 Hz, this function will return how many
+// CPU ticks are required for every audio sample.
+fn t_per_sample(is_128k: bool) -> u32 {
+    const SAMPLER: u32 = 22050;
+    // CPU freq is slightly different for different models
+    let cpu_freq = if is_128k { 3_546_900 } else { 3_500_000 };
+    // Round to nearest, that will give a maximum relative error in the emulation speed of:
+    // (22.05k / 3.5M / 2) = 0.3%
+    // That I think is acceptable. To get exact timings we would need to choose a sample output rate that is an exact division of the
+    // CPU freq. But that would require resampling somewhere in the audio pipeline, and that could decrease performance.
+    (cpu_freq + SAMPLER / 2) / SAMPLER
+
+}
+
 impl<GUI: Gui> Game<GUI> {
     pub fn new(is128k: bool, mut gui: GUI) -> Game<GUI> {
         log::info!("Go!");
@@ -411,7 +426,7 @@ impl<GUI: Gui> Game<GUI> {
                 fetch_count: 0,
                 rzx_info: None,
             },
-            speaker: Speaker::new(is128k),
+            speaker: Speaker::new(t_per_sample(is128k)),
             image: black_screen(gui.palette()),
             gui,
         }
@@ -855,7 +870,7 @@ impl<GUI: Gui> Game<GUI> {
                 fetch_count: 0,
                 rzx_info: rzx_input.map(|frames| RzxInfo { frames, frame_idx: 0, frame_data_idx: 0, in_idx: 0 }),
             },
-            speaker: Speaker::new(is128k),
+            speaker: Speaker::new(t_per_sample(is128k)),
             image: black_screen(gui.palette()),
             gui,
         };
