@@ -79,29 +79,39 @@ impl Memory {
     //returns (bankid, offset)
     #[inline]
     fn split_addr(&self, addr: impl Into<u16>) -> (usize, usize) {
-        let addr = addr.into();
+        let addr: u16 = addr.into();
         let ibank = (addr >> 14) as usize;
         let offs = (addr & 0x3fff) as usize;
-        (unsafe { *self.banks.get_unchecked(ibank) } as usize, offs)
+        // SAFETY: addr is 16 bits, split in 2 and 14 bits, ibank is between
+        // 0x00 to 0x03, and self.banks is of length 4.
+        (unsafe { *self.banks.get_unchecked(ibank) }, offs)
     }
     #[inline]
     pub fn peek(&mut self, addr: impl Into<u16>) -> u8 {
         let (bank, offs) = self.split_addr(addr);
+        // SAFETY: bank is between 0..3 in 48k mode and between 0..9 in 128k mode.
+        // The first is ensured by self.locked=true in 48k mode that prevents any change.
+        // The second is so because Self::switch_banks{,2}() never assigns a value >9.
         let bank = unsafe { self.data.get_unchecked(bank) };
         if bank.contended {
             self.delay += 1;
         }
+        // SAFETY: offs is 14 bits, and every bank is 0x4000 bytes long.
+        // RAM banks are just created that way (see Bank::ram), while ROM
+        // bank length is asserted in Memory::new_from_bytes()
         unsafe { *bank.data.get_unchecked(offs) }
     }
     #[inline]
     pub fn peek_no_delay(&self, addr: u16) -> u8 {
         let (bank, offs) = self.split_addr(addr);
+        // SAFETY: same rules as Self::peek().
         let bank = unsafe { self.data.get_unchecked(bank) };
         unsafe { *bank.data.get_unchecked(offs) }
     }
     #[inline]
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let (bank, offs) = self.split_addr(addr);
+        // SAFETY: same rules as Self::peek().
         let bank = unsafe { self.data.get_unchecked_mut(bank) };
         if bank.ro {
             //log!("writing to rom {:4x} <- {:2x}", offs, data);
@@ -110,6 +120,7 @@ impl Memory {
         if bank.contended {
             self.delay += 1;
         }
+        // SAFETY: same rules as Self::peek().
         unsafe { *bank.data.get_unchecked_mut(offs) = data };
     }
     pub fn take_delay(&mut self) -> u32 {

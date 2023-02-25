@@ -1,5 +1,3 @@
-#![allow(clippy::many_single_char_names, clippy::verbose_bit_mask, clippy::cognitive_complexity)]
-
 use std::mem;
 use anyhow::anyhow;
 

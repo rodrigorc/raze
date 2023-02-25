@@ -317,7 +317,6 @@ fn write_border_row<PIX: Copy>(y: usize, border: PIX, ps: &mut [PIX]) {
 }
 
 fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], palette: &[[PIX; 8]; 2], ps: &mut [PIX]) {
-    let y = y as usize;
     let orow = match y {
         0..=63 => {
             (y % 8) * 256 + (y / 8) * 32
@@ -347,6 +346,7 @@ fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], pa
     // b5-b3: bk color
     // b2-b0: fg color
     //Bitmap and attribute addresses are related in a funny way.
+    //Binary values are grouped as octal, clippy doesn't seem to like that.
     #[allow(clippy::unusual_byte_groupings)]
     for ((&bits, &attr), pixels) in
             data[orow .. orow + 32]
@@ -655,13 +655,14 @@ impl<GUI: Gui> Game<GUI> {
 
         if self.is128k {
             for i in 0..8 {
-                let bank = self.ula.memory.get_bank(i as usize);
-                compress(&mut data, i + 3, bank);
+                let bank = self.ula.memory.get_bank(i);
+                // 3 first banks are ROM, do not save those
+                compress(&mut data, i as u8 + 3, bank);
             }
         } else {
             for i in 1..4 {
                 let bank = self.ula.memory.get_bank(i);
-                compress(&mut data, [0, 8, 4, 5][i as usize], bank);
+                compress(&mut data, [0, 8, 4, 5][i], bank);
             }
         }
         data

@@ -43,7 +43,7 @@ struct Block {
     data: Vec<u8>,
 }
 
-//To avoid the too_many_arguments clippy
+//To avoid the too_many_arguments warning
 struct TurboDataParams {
     len_pilot: u32,
     num_pilots: u32,
@@ -772,11 +772,11 @@ impl Tape {
                     0 => "Program",
                     1 => "Array",
                     3 => "Bytes",
-                    x => { fmt = format!("Type {}", x); &fmt },
+                    x => { fmt = format!("Type {x}"); &fmt },
                 };
                 let block_name = string_from_zx(&block.data[2..12]);
                 prefixed = true;
-                Some(format!("{}: {}", block_type, block_name))
+                Some(format!("{block_type}: {block_name}"))
             } else {
                 if prefixed {
                     prefixed = false;

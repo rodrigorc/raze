@@ -1,7 +1,6 @@
 use super::*;
 
 impl Z80 {
-    #[allow(clippy::identity_op)]
     pub(super) fn exec_cb(&mut self, prefix: XYPrefix, bus: &mut impl Bus) -> u32 {
         // If using XY prefix, then 0xCB does not increment R
         if prefix == XYPrefix::None {
