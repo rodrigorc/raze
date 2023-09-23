@@ -58,15 +58,7 @@ fn do_deploy() -> Result<()> {
     let pkg = dst.join("pkg");
     sh.create_dir(&pkg)?;
 
-    //sed -e '/<head>/r track.html' index.html > DEMO/index.html
-    let track = sh.read_file("track.html")?;
-    let index = sh.read_file("index.html")?;
-    let marker = "<head>\n";
-    let pos = index.find(marker).ok_or("<head> not found in index.html")? + marker.len();
-    let new_index = String::from(&index[..pos]) + &track + &index[pos..];
-
-    sh.write_file(dst.join("index.html"), new_index)?;
-
+    sh.copy_file("index.html", &dst)?;
     sh.copy_file("raze.js", &dst)?;
     sh.copy_file("raze.css", &dst)?;
     sh.copy_file("favicon.png", &dst)?;
