@@ -268,7 +268,7 @@ impl Psg {
             //Regs 0x07-0x0a: are used directly in next_sample(), no side effects
 
             //Regs 0x0b-0x0c set up the envelope frequency; 0x0d is the shape noise
-            0x0b | 0x0c | 0x0d => {
+            0x0b ..= 0x0d => {
                 let freq = Self::freq(self.reg[0x0b], self.reg[0x0c]);
                 let shape = self.reg[0x0d];
                 self.envelope.set_freq_shape(freq, shape);

@@ -71,7 +71,7 @@ impl Gui for JSGui {
     fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]) {
         //Pixel is repr(C) just like [u8;4]
         let ptr = data.as_ptr() as *const u8;
-        let len = data.len() * mem::size_of::<Self::Pixel>();
+        let len = mem::size_of_val(data);
         let bytes = unsafe {
             std::slice::from_raw_parts(ptr, len)
         };
