@@ -298,7 +298,7 @@ function drawJoystickBtns(ctx, t, l, r, b) {
     let h = ctx.canvas.height;
     let rad = 0.45 * Math.min(w, h);
     ctx.lineWidth = 5;
-    var grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, rad);
+    let grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, rad);
     grd.addColorStop(0, 'red');
     grd.addColorStop(1, 'black');
 
@@ -327,7 +327,7 @@ function drawJoystickFire(ctx, f) {
     ctx.lineWidth = 5;
 
     if (f) {
-        var grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, rad);
+        let grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, rad);
         grd.addColorStop(0, 'red');
         grd.addColorStop(1, 'black');
         ctx.fillStyle = grd;
@@ -354,7 +354,7 @@ function onOSJoyDown(ev) {
         return;
     g_joyTouchIdentifier = t.identifier;
 
-    var rect = this.canvas.getBoundingClientRect();
+    let rect = this.canvas.getBoundingClientRect();
     let x = t.clientX - rect.left - rect.width / 2;
     let y = t.clientY - rect.top - rect.height / 2;
     let rad = 0.45 * Math.min(rect.width, rect.height);
