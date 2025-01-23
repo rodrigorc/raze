@@ -29,13 +29,13 @@ opt-level = 3
 overflow-checks = false
 
 [dependencies]
-zip = { version = "*", optional = true, default_features = false, features = ["deflate"] }
-wasm-bindgen = "*"
-anyhow = "*"
-log = "*"
-console_log = { version = "*", features = ["color"] }
-web-sys = "*"
-flate2 = { version = "*", optional = true }
+zip = { version = "2.2.2", optional = true, default-features = false, features = ["deflate"] }
+wasm-bindgen = "0.2"
+anyhow = "1"
+log = "0.4"
+console_log = { version = "1", features = ["color"] }
+web-sys = "0.3"
+flate2 = { version = "1", optional = true }
 
 [features]
 default = ["compression"]

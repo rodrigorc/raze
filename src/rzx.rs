@@ -1,3 +1,6 @@
+// Many struct fields are unused
+#![allow(dead_code)]
+
 use std::io::{prelude::*, self};
 use anyhow::anyhow;
 
