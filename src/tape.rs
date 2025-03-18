@@ -133,7 +133,7 @@ impl Block {
                         let bit = i * par.nb;
                         let byte = bit / 8;
                         let byte_r = bit % 8;
-                        let b = par.data[byte as usize] >> (7 - byte_r) & mask;
+                        let b = (par.data[byte as usize] >> (7 - byte_r)) & mask;
                         let sym = &par.data_def[usize::from(b)];
 
                         tones.push(Tone {
@@ -149,10 +149,10 @@ impl Block {
                         let bit = 2 * i * par.nb;
                         let byte = bit / 8;
                         let byte_r = bit % 8;
-                        let b0 = par.data[byte as usize] >> (7 - byte_r) & mask;
+                        let b0 = (par.data[byte as usize] >> (7 - byte_r)) & mask;
                         let sym0 = &par.data_def[usize::from(b0)];
 
-                        let b1 = par.data[byte as usize] >> (7 - byte_r - 1) & mask;
+                        let b1 = (par.data[byte as usize] >> (7 - byte_r - 1)) & mask;
                         let sym1 = &par.data_def[usize::from(b1)];
 
                         tones.push(Tone {

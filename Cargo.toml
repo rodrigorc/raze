@@ -2,7 +2,7 @@
 name = "raze"
 version = "1.12.0"
 authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
-edition = "2021"
+edition = "2024"
 description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
 repository = "https://github.com/rodrigorc/raze"
 license = "MIT"
@@ -30,7 +30,7 @@ overflow-checks = false
 
 [dependencies]
 zip = { version = "2.2.2", optional = true, default-features = false, features = ["deflate"] }
-wasm-bindgen = "0.2"
+wasm-bindgen = "0.2.85"
 anyhow = "1"
 log = "0.4"
 console_log = { version = "1", features = ["color"] }

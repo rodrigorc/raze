@@ -348,7 +348,7 @@ impl Z80 {
         self.pc += 1;
         let h = u16::from(bus.peek(self.pc));
         self.pc += 1;
-        h << 8 | l
+        (h << 8) | l
     }
     // Pushes a 16-bit value into the stack SP
     fn push(&mut self, bus: &mut impl Bus, x: impl Into<u16>) {

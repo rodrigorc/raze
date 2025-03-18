@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     let mut args = std::env::args();
     args.next(); //skip argv[0]
     let task = args.next();
-    return match task.as_deref() {
+    match task.as_deref() {
         None => {
             help()
         }
@@ -18,7 +18,7 @@ fn main() -> Result<()> {
             help()?;
             Err(format!("Unknown xtask '{}'", task).into())
         }
-    };
+    }
 }
 
 fn help() -> Result<()> {
