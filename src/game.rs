@@ -633,7 +633,7 @@ impl<GUI: Gui> Game<GUI> {
                         None
                     }
                     Some((seq_byte, seq_count)) => {
-                        data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
+                        data.extend(std::iter::repeat_n(seq_byte, seq_count as usize));
                         Some((b, 1))
                     }
                 };
@@ -644,7 +644,7 @@ impl<GUI: Gui> Game<GUI> {
                     data.extend(&[0xed, 0xed, seq_count, seq_byte]);
                 }
                 Some((seq_byte, seq_count)) => {
-                    data.extend(std::iter::repeat(seq_byte).take(seq_count as usize));
+                    data.extend(std::iter::repeat_n(seq_byte, seq_count as usize));
                 }
             }
 

@@ -185,7 +185,7 @@ impl Block {
         //but then the levels should get inverted and that is not implemented yet.
         //pilot
         let tones = vec![
-            Tone { num: (par.num_pilots + 1) / 2, len1: par.len_pilot, len2: par.len_pilot},
+            Tone { num: par.num_pilots.div_ceil(2), len1: par.len_pilot, len2: par.len_pilot},
             Tone { num: 1, len1: par.len_sync1, len2: par.len_sync2},
         ];
         Block {
@@ -617,7 +617,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                         }
                         data_def.push(pulse);
                     }
-                    let bytes = (nb * totd + 7) / 8;
+                    let bytes = (nb * totd).div_ceil(8);
                     data.reserve(bytes as usize);
                     for _ in 0..bytes {
                         let sym = r.read_u8()?;
