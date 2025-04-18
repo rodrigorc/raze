@@ -511,7 +511,7 @@ impl<GUI: Gui> Game<GUI> {
             keys >>= 8;
         }
     }
-    pub fn peek(&self, addr: u16) -> u8 {
+    pub fn peek(&mut self, addr: u16) -> u8 {
         self.ula.memory.peek_no_delay(addr)
     }
     pub fn poke(&mut self, addr: u16, value: u8) {

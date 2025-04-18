@@ -1,30 +1,19 @@
 use std::ops::{AddAssign, SubAssign};
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union R16 {
+#[derive(Default, Copy, Clone)]
+pub struct R16 {
     w: u16,
-    b: [u8; 2]
 }
-
-#[cfg(target_endian="little")]
-const LO_IDX : usize = 0;
-#[cfg(target_endian="big")]
-const LO_IDX : usize = 1;
-
-const HI_IDX : usize = 1 - LO_IDX;
 
 impl R16 {
     #[inline]
     pub fn from_bytes(lo: u8, hi: u8) -> R16 {
-        let mut r = R16::default();
-        r.set_lo(lo);
-        r.set_hi(hi);
-        r
+        let w = u16::from_le_bytes([lo, hi]);
+        R16 { w }
     }
     #[inline]
     pub fn as_u16(self) -> u16 {
-        unsafe { self.w }
+        self.w
     }
     #[inline]
     pub fn set(&mut self, w: u16) {
@@ -32,26 +21,23 @@ impl R16 {
     }
     #[inline]
     pub fn lo(self) -> u8 {
-        unsafe { self.b[LO_IDX] }
+        self.w.to_le_bytes()[0]
     }
     #[inline]
     pub fn hi(self) -> u8 {
-        unsafe { self.b[HI_IDX] }
+        self.w.to_le_bytes()[1]
     }
     #[inline]
     pub fn set_lo(&mut self, b: u8) {
-        unsafe { self.b[LO_IDX] = b; }
+        let mut bs = self.w.to_le_bytes();
+        bs[0] = b;
+        self.w = u16::from_le_bytes(bs);
     }
     #[inline]
     pub fn set_hi(&mut self, b: u8) {
-        unsafe { self.b[HI_IDX] = b; }
-    }
-}
-
-impl Default for R16 {
-    #[inline]
-    fn default() -> Self {
-        R16{ w: 0 }
+        let mut bs = self.w.to_le_bytes();
+        bs[1] = b;
+        self.w = u16::from_le_bytes(bs);
     }
 }
 
@@ -72,15 +58,15 @@ impl From<u16> for R16 {
 impl AddAssign<u16> for R16 {
     #[inline]
     fn add_assign(&mut self, r: u16) {
-        let w = self.as_u16().wrapping_add(r);
-        self.set(w);
+        let w = self.w.wrapping_add(r);
+        self.w = w;
     }
 }
 
 impl SubAssign<u16> for R16 {
     #[inline]
     fn sub_assign(&mut self, r: u16) {
-        let w = self.as_u16().wrapping_sub(r);
-        self.set(w);
+        let w = self.w.wrapping_sub(r);
+        self.w = w;
     }
 }

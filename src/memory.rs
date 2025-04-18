@@ -1,14 +1,14 @@
 struct Bank {
-    data: Vec<u8>,
+    data: [u8; 0x4000],
     ro: bool,
     contended: bool,
 }
 impl Bank {
-    fn rom(data: Vec<u8>) -> Bank {
-        Bank { data, ro: true, contended: false }
+    fn rom(data: &[u8]) -> Bank {
+        Bank { data: data.try_into().expect("rom length != 0x4000"), ro: true, contended: false }
     }
     fn ram(contended: bool) -> Bank {
-        Bank { data: vec![0; 0x4000], ro: false, contended }
+        Bank { data: [0; 0x4000], ro: false, contended }
     }
 }
 
@@ -24,8 +24,6 @@ pub struct Memory {
 
 impl Memory {
     pub fn new_from_bytes(rom0: &[u8], rom1: Option<&[u8]>) -> Self {
-        assert_eq!(rom0.len(), 0x4000);
-        let rom0 = rom0.to_vec();
         match rom1 {
             None => {
                 //48k
@@ -47,8 +45,6 @@ impl Memory {
             }
             Some(rom1) => {
                 //128k
-                assert_eq!(rom1.len(), 0x4000);
-                let rom1 = rom1.to_vec();
                 let data = vec![
                     Bank::ram(false),
                     Bank::ram(true),
@@ -76,60 +72,51 @@ impl Memory {
     //All these functions use unchecked access to the arrays because the bit size of the arguments
     //make it impossible to overflow. Not checking bounds improves about 10% of CPU time.
 
-    //returns (bankid, offset)
     #[inline]
-    fn split_addr(&self, addr: impl Into<u16>) -> (usize, usize) {
+    fn split_addr(&mut self, addr: impl Into<u16>) -> (&mut Bank, usize) {
         let addr: u16 = addr.into();
         let ibank = (addr >> 14) as usize;
         let offs = (addr & 0x3fff) as usize;
-        // SAFETY: addr is 16 bits, split in 2 and 14 bits, ibank is between
-        // 0x00 to 0x03, and self.banks is of length 4.
-        (unsafe { *self.banks.get_unchecked(ibank) }, offs)
+        // no need for get_unchecked because ibanks is bounded to 2 bits 0..4
+        let bank = self.banks[ibank];
+        // SAFETY: see split_bank.
+        let bank = unsafe { self.data.get_unchecked_mut(bank) };
+        (bank, offs)
     }
     #[inline]
     pub fn peek(&mut self, addr: impl Into<u16>) -> u8 {
         let (bank, offs) = self.split_addr(addr);
-        // SAFETY: bank is between 0..3 in 48k mode and between 0..9 in 128k mode.
-        // The first is ensured by self.locked=true in 48k mode that prevents any change.
-        // The second is so because Self::switch_banks{,2}() never assigns a value >9.
-        let bank = unsafe { self.data.get_unchecked(bank) };
+        // offs is 14 bits, and every bank is 0x4000 bytes long.
+        // RAM banks are just created that way (see Bank::ram), while ROM
+        // bank length is asserted in Memory::new_from_bytes()
+        let res = bank.data[offs];
         if bank.contended {
             self.delay += 1;
         }
-        // SAFETY: offs is 14 bits, and every bank is 0x4000 bytes long.
-        // RAM banks are just created that way (see Bank::ram), while ROM
-        // bank length is asserted in Memory::new_from_bytes()
-        unsafe { *bank.data.get_unchecked(offs) }
+        res
     }
     #[inline]
-    pub fn peek_no_delay(&self, addr: u16) -> u8 {
+    pub fn peek_no_delay(&mut self, addr: u16) -> u8 {
         let (bank, offs) = self.split_addr(addr);
-        // SAFETY: same rules as Self::peek().
-        let bank = unsafe { self.data.get_unchecked(bank) };
-        unsafe { *bank.data.get_unchecked(offs) }
+        bank.data[offs]
     }
     #[inline]
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let (bank, offs) = self.split_addr(addr);
-        // SAFETY: same rules as Self::peek().
-        let bank = unsafe { self.data.get_unchecked_mut(bank) };
         if bank.ro {
             //log!("writing to rom {:4x} <- {:2x}", offs, data);
             return;
         }
+        bank.data[offs] = data;
         if bank.contended {
             self.delay += 1;
         }
-        // SAFETY: same rules as Self::peek().
-        unsafe { *bank.data.get_unchecked_mut(offs) = data };
     }
     pub fn take_delay(&mut self) -> u32 {
-        let r = self.delay;
-        self.delay = 0;
-        r
+        std::mem::take(&mut self.delay)
     }
     pub fn video_memory(&self) -> &[u8] {
-        &self.data[self.vram].data[0..32 * 192 + 32 * 24]
+        &self.data[self.vram].data[.. 32 * 192 + 32 * 24]
     }
     pub fn switch_banks(&mut self, v: u8) {
         if self.locked {
