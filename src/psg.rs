@@ -85,7 +85,6 @@ struct Envelope {
     block: EnvBlock,
 }
 
-
 impl Envelope {
     fn new() -> Envelope {
         Envelope {
@@ -97,7 +96,7 @@ impl Envelope {
         }
     }
     fn set_freq_shape(&mut self, freq: u16, shape: u8) {
-        use self::{EnvShape::*, EnvBlock::*};
+        use self::{EnvBlock::*, EnvShape::*};
         self.divisor = 32 * u32::from(freq);
         self.phase = 0;
         self.step = 0;
@@ -111,13 +110,13 @@ impl Envelope {
             0x0d => (RaiseHigh, Raise),
             0x0e => (RaiseLowerLoop, Raise),
             // shape is only 4 bits
-            0x10 ..= 0xff => unreachable!(),
+            0x10..=0xff => unreachable!(),
         };
         self.shape = shape;
         self.block = block;
     }
     fn next_sample(&mut self, t: u32) -> u8 {
-        use self::{EnvShape::*, EnvBlock::*};
+        use self::{EnvBlock::*, EnvShape::*};
         self.phase += t;
         while self.phase > self.divisor {
             self.phase -= self.divisor;
@@ -134,7 +133,7 @@ impl Envelope {
                         Lower => Raise,
                         Raise => Lower,
                         _ => unreachable!(),
-                    }
+                    },
                 };
             }
         }
@@ -156,25 +155,22 @@ impl Envelope {
 // a clone.
 // This array contains the bitmask for each register:
 static REG_MASK: [u8; 16] = [
-// Tone A,B,C freq. are 12 bits each (8+4)
+    // Tone A,B,C freq. are 12 bits each (8+4)
     /*0x00, 0x01*/ 0xff, 0x0f,
-    /*0x02, 0x03*/ 0xff, 0x0f,
-    /*0x04, 0x05*/ 0xff, 0x0f,
-// Noise freq. has 5 bits:
+    /*0x02, 0x03*/ 0xff, 0x0f, /*0x04, 0x05*/ 0xff, 0x0f,
+    // Noise freq. has 5 bits:
     /*0x06      */ 0x1f,
-// Flags: 8 bits
+    // Flags: 8 bits
     /*0x07      */ 0xff,
-// Channel A,B,C volume: (1+4) bits each
+    // Channel A,B,C volume: (1+4) bits each
     /*0x08      */ 0x1f,
-    /*0x09      */ 0x1f,
-    /*0x0a      */ 0x1f,
-// Envelope freq: 16 bits
+    /*0x09      */ 0x1f, /*0x0a      */ 0x1f,
+    // Envelope freq: 16 bits
     /*0x0b, 0x0c*/ 0xff, 0xff,
-// Envelope shape: 4 bits
+    // Envelope shape: 4 bits
     /*0x0d      */ 0x0f,
-// IO ports A,B: 8 bits each
-    /*0x0e      */ 0xff,
-    /*0x0f      */ 0xff,
+    // IO ports A,B: 8 bits each
+    /*0x0e      */ 0xff, /*0x0f      */ 0xff,
 ];
 
 /// The Programmable Sound Generator: AY-3-8910
@@ -237,7 +233,7 @@ impl Psg {
     }
     /// Writes the selected register
     pub fn write_reg(&mut self, x: u8) {
-        let reg_sel =  usize::from(self.reg_sel);
+        let reg_sel = usize::from(self.reg_sel);
         self.reg[reg_sel] = x & REG_MASK[reg_sel];
         //log::info!("PSG write {:02x} <- {:02x}", reg_sel, x);
         // Writing to most registers has a side effect
@@ -256,7 +252,7 @@ impl Psg {
             }
             //Regs 0x04-0x05 set up the frequency for FG-C
             0x04 | 0x05 => {
-            let freq = Self::freq(self.reg[0x04], self.reg[0x05]);
+                let freq = Self::freq(self.reg[0x04], self.reg[0x05]);
                 self.freq_c.set_freq(freq);
                 //log::info!("Tone C: {}", freq);
             }
@@ -268,14 +264,13 @@ impl Psg {
             //Regs 0x07-0x0a: are used directly in next_sample(), no side effects
 
             //Regs 0x0b-0x0c set up the envelope frequency; 0x0d is the shape noise
-            0x0b ..= 0x0d => {
+            0x0b..=0x0d => {
                 let freq = Self::freq(self.reg[0x0b], self.reg[0x0c]);
                 let shape = self.reg[0x0d];
                 self.envelope.set_freq_shape(freq, shape);
                 //log::info!("Envel: {} {}", freq, shape);
             }
             //Regs 0x0e-0x0f are I/O ports, not used for music
-
             _ => {}
         }
     }
@@ -308,7 +303,7 @@ impl Psg {
         let env = self.envelope.next_sample(t);
 
         // Add the enabled channels, pondering the volume and the envelope
-        let mut res : u16 = 0;
+        let mut res: u16 = 0;
         if chan_a {
             let v = self.reg[0x08];
             let vol = Self::volume(v, env);
@@ -327,26 +322,26 @@ impl Psg {
         res
     }
     fn volume(v: u8, env: u8) -> u16 {
-        let v = if v & 0x10 != 0 {
-            env
-        } else {
-            v & 0x0f
-        };
-        static LEVELS: [u16; 16] = [0, 94, 133, 197, 283, 413, 589, 920, 1096, 1759, 2482, 3142, 4164, 5340, 6669, 8192];
+        let v = if v & 0x10 != 0 { env } else { v & 0x0f };
+        static LEVELS: [u16; 16] = [
+            0, 94, 133, 197, 283, 413, 589, 920, 1096, 1759, 2482, 3142, 4164, 5340, 6669, 8192,
+        ];
         LEVELS[usize::from(v)]
     }
     fn freq(a: u8, b: u8) -> u16 {
         let n = u16::from_le_bytes([a, b]);
         n.max(1)
     }
-    fn channel(tone_enabled: bool, noise_enabled: bool, freq: &mut FreqGen, noise: bool, t: u32) -> bool {
+    fn channel(
+        tone_enabled: bool,
+        noise_enabled: bool,
+        freq: &mut FreqGen,
+        noise: bool,
+        t: u32,
+    ) -> bool {
         if tone_enabled {
             let tone = freq.next_sample(t);
-            if noise_enabled {
-                tone && noise
-            } else {
-                tone
-            }
+            if noise_enabled { tone && noise } else { tone }
         } else if noise_enabled {
             noise
         } else {

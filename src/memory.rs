@@ -5,10 +5,18 @@ struct Bank {
 }
 impl Bank {
     fn rom(data: &[u8]) -> Bank {
-        Bank { data: data.try_into().expect("rom length != 0x4000"), ro: true, contended: false }
+        Bank {
+            data: data.try_into().expect("rom length != 0x4000"),
+            ro: true,
+            contended: false,
+        }
     }
     fn ram(contended: bool) -> Bank {
-        Bank { data: [0; 0x4000], ro: false, contended }
+        Bank {
+            data: [0; 0x4000],
+            ro: false,
+            contended,
+        }
     }
 }
 
@@ -116,7 +124,7 @@ impl Memory {
         std::mem::take(&mut self.delay)
     }
     pub fn video_memory(&self) -> &[u8] {
-        &self.data[self.vram].data[.. 32 * 192 + 32 * 24]
+        &self.data[self.vram].data[..32 * 192 + 32 * 24]
     }
     pub fn switch_banks(&mut self, v: u8) {
         if self.locked {
@@ -152,7 +160,7 @@ impl Memory {
                 3 => {
                     self.banks = [4, 7, 6, 3];
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         } else {
             self.banks = [8, 5, 2, 0];

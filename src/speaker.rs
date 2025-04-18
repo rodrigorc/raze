@@ -12,9 +12,9 @@ pub struct Speaker {
 impl Speaker {
     pub fn new(t_per_sample: u32) -> Speaker {
         /* This is the freq. of the CPU divided by the freq. of the audio sample frequency: 22050 Hz
-        * 48k model runs at 3.5 MHz
-        * 128k runs at 3.5469 MHz
-        */
+         * 48k model runs at 3.5 MHz
+         * 128k runs at 3.5469 MHz
+         */
         Speaker {
             audio: vec![],
             audio_time: 0,
@@ -36,7 +36,11 @@ impl Speaker {
             self.audio_accum = audio_excess;
         }
     }
-    pub fn complete_frame(&mut self, full_time: u32, mut sample_fn: impl FnMut() -> u32) -> &mut [f32] {
+    pub fn complete_frame(
+        &mut self,
+        full_time: u32,
+        mut sample_fn: impl FnMut() -> u32,
+    ) -> &mut [f32] {
         while self.audio.len() < (full_time / self.t_per_sample) as usize {
             let s = sample_fn();
             self.push_sample(s, self.t_per_sample - self.audio_time);
@@ -49,4 +53,3 @@ impl Speaker {
         self.audio.push(v);
     }
 }
-

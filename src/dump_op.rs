@@ -1,5 +1,5 @@
-use std::io;
 use std::env;
+use std::io;
 
 #[macro_use]
 mod logger {
@@ -10,8 +10,8 @@ mod logger {
     }
 }
 
-mod z80;
 mod memory;
+mod z80;
 
 use z80::Z80;
 

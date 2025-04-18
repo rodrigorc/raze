@@ -16,7 +16,14 @@ impl Z80 {
                 for f in 0..=0xff {
                     self.set_f(f);
                     let a2 = self.add_flags(a, r, true);
-                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.f() & 0xd7);
+                    println!(
+                        "{:02x} {:02x} {:02x} {:02x} {:02x}",
+                        a,
+                        f,
+                        r,
+                        a2,
+                        self.f() & 0xd7
+                    );
                 }
             }
         }
@@ -36,7 +43,14 @@ impl Z80 {
                 for f in 0..=0xff {
                     self.set_f(f);
                     let a2 = self.sub_flags(a, r, true);
-                    println!("{:02x} {:02x} {:02x} {:02x} {:02x}", a, f, r, a2, self.f() & 0xd7);
+                    println!(
+                        "{:02x} {:02x} {:02x} {:02x} {:02x}",
+                        a,
+                        f,
+                        r,
+                        a2,
+                        self.f() & 0xd7
+                    );
                 }
             }
         }
@@ -47,9 +61,14 @@ impl Z80 {
                 self.set_a(a);
                 self.set_f(f);
                 self.daa();
-                println!("{:02x} {:02x} {:02x} {:02x}", a, f, self.a(), self.f() & 0xd7);
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x}",
+                    a,
+                    f,
+                    self.a(),
+                    self.f() & 0xd7
+                );
             }
         }
     }
 }
-

@@ -1,8 +1,8 @@
 // Many struct fields are unused
 #![allow(dead_code)]
 
-use std::io::{prelude::*, self};
 use anyhow::anyhow;
+use std::io::{self, prelude::*};
 
 #[derive(Debug)]
 pub struct Rzx {
@@ -43,7 +43,6 @@ pub struct InputBlock {
 pub struct UnknownBlock {
     pub id: u8,
     pub data: Vec<u8>,
-
 }
 
 #[derive(Debug)]
@@ -103,21 +102,19 @@ trait ReadExt: Read {
         }
         let s = match String::from_utf8(bs) {
             Ok(s) => s,
-            Err(e) => {
-                String::from_utf8_lossy(e.as_bytes()).into_owned()
-            }
+            Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
         };
         Ok(s)
     }
 }
 
-#[cfg(feature="flate2")]
+#[cfg(feature = "flate2")]
 fn inflate(r: impl Read) -> anyhow::Result<impl Read> {
     let z = flate2::read::ZlibDecoder::new(r);
     Ok(z)
 }
 
-#[cfg(not(feature="flate2"))]
+#[cfg(not(feature = "flate2"))]
 fn inflate(_: impl Read) -> anyhow::Result<std::io::Empty> {
     Err(anyhow!("compressed RZX is not supported"))
 }
@@ -135,11 +132,13 @@ impl Rzx {
 
         loop {
             let mut id = 0;
-            if f.read(std::slice::from_mut(&mut id))? == 0{
+            if f.read(std::slice::from_mut(&mut id))? == 0 {
                 break;
             }
             let len = f.read_u32()?;
-            let len = len.checked_sub(5).ok_or_else(|| anyhow!("invalid RZX block length"))?;
+            let len = len
+                .checked_sub(5)
+                .ok_or_else(|| anyhow!("invalid RZX block length"))?;
             let mut f = f.by_ref().take(len as u64);
             let block = match id {
                 //Creator
@@ -181,12 +180,13 @@ impl Rzx {
                         f.read_to_end(&mut data)?
                     };
                     if data.len() != full_len as usize {
-                        log::warn!("RZX snapshot: compressed length does not match {} != {}", data.len(), full_len);
+                        log::warn!(
+                            "RZX snapshot: compressed length does not match {} != {}",
+                            data.len(),
+                            full_len
+                        );
                     }
-                    Block::Snapshot(SnapshotBlock {
-                        format,
-                        data,
-                    })
+                    Block::Snapshot(SnapshotBlock { format, data })
                 }
                 //Input recording
                 0x80 => {
@@ -207,7 +207,7 @@ impl Rzx {
                         &mut f
                     };
                     let mut frames = Vec::with_capacity(num_frames as usize);
-                    for _ in 0 .. num_frames {
+                    for _ in 0..num_frames {
                         let fetch_count = r.read_u16()?;
                         let n = r.read_u16()?;
                         let in_values = if n == 0xffff {
@@ -220,19 +220,14 @@ impl Rzx {
                             in_values,
                         })
                     }
-                    Block::Input(InputBlock {
-                        frames,
-                    })
+                    Block::Input(InputBlock { frames })
                 }
                 //Unknown
                 id => {
                     log::warn!("rzx block id {:2x} is unknown", id);
                     let mut data = Vec::new();
                     f.read_to_end(&mut data)?;
-                    Block::Unknown(UnknownBlock {
-                        id,
-                        data,
-                    })
+                    Block::Unknown(UnknownBlock { id, data })
                 }
             };
             blocks.push(block);
@@ -243,7 +238,9 @@ impl Rzx {
             }
         }
         Ok(Rzx {
-            major, minor, flags,
+            major,
+            minor,
+            flags,
             blocks,
         })
     }

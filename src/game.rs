@@ -1,14 +1,14 @@
-use crate::z80::{self, Z80, Bus, Z80FileVersion};
 use crate::memory::Memory;
-use crate::tape::{Tape, TapePos};
 use crate::psg::Psg;
-use crate::speaker::Speaker;
 use crate::rzx;
-use std::io::{Cursor, Write, Read};
-use std::borrow::Cow;
+use crate::speaker::Speaker;
+use crate::tape::{Tape, TapePos};
+use crate::z80::{self, Bus, Z80, Z80FileVersion};
 use anyhow::anyhow;
+use std::borrow::Cow;
+use std::io::{Cursor, Read, Write};
 
-const TIME_TO_INT : i32 = 69888;
+const TIME_TO_INT: i32 = 69888;
 
 static ROM_128_0: &[u8] = include_bytes!("128-0.rom");
 static ROM_128_1: &[u8] = include_bytes!("128-1.rom");
@@ -20,7 +20,7 @@ const BX1: usize = 5;
 const BY0: usize = 4;
 const BY1: usize = 4;
 
- //256x192 plus border
+//256x192 plus border
 const SCREEN_WIDTH: usize = BX0 + 256 + BX1;
 const SCREEN_HEIGHT: usize = BY0 + 192 + BY1;
 const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
@@ -76,7 +76,7 @@ impl Ula {
                 }
                 Some((tape, next))
             }
-            tape => tape
+            tape => tape,
         };
     }
     fn audio_sample(&mut self, t: u32) -> u32 {
@@ -98,14 +98,14 @@ impl Ula {
         //contended memory and IO
         let delay_m = self.memory.take_delay();
         let delay_io = self.take_delay();
-        if self.time >= 224*64 && self.time < 224*256 && self.time % 224 < 128 {
+        if self.time >= 224 * 64 && self.time < 224 * 256 && self.time % 224 < 128 {
             //each row is 224 T, 128 are the real pixels where contention occurs
             //we ignore the delay pattern (6,5,4,3,2,1,0,0) and instead do an
             //estimation
             match delay_m + delay_io {
                 0 => (),
-                1 => *t += 4, //only 1 contention: these many Ts on average
-                x => *t += 6*x - 2, //more than 1 contention: they use to chain so max up all but the first one
+                1 => *t += 4,         //only 1 contention: these many Ts on average
+                x => *t += 6 * x - 2, //more than 1 contention: they use to chain so max up all but the first one
             }
         }
         self.add_time(*t, gui);
@@ -128,7 +128,10 @@ impl Ula {
             if matches!(frame.in_values, rzx::InValues::Data(_)) {
                 rzx.frame_data_idx = rzx.frame_idx;
             }
-            gui.on_rzx_running(true, (rzx.frame_idx * 100).checked_div(total_frames).unwrap_or(0) as u32);
+            gui.on_rzx_running(
+                true,
+                (rzx.frame_idx * 100).checked_div(total_frames).unwrap_or(0) as u32,
+            );
         } else {
             //we drag the excess T to the next loop
             self.time -= TIME_TO_INT;
@@ -157,7 +160,13 @@ impl Bus for Ula {
                         rzx.in_idx += 1;
                         b
                     } else {
-                        log::error!("rzx in underflow {}/{}: {}<{}", rzx.frame_idx, rzx.frame_data_idx, rzx.in_idx, d.len());
+                        log::error!(
+                            "rzx in underflow {}/{}: {}<{}",
+                            rzx.frame_idx,
+                            rzx.frame_data_idx,
+                            rzx.in_idx,
+                            d.len()
+                        );
                         rzx.in_idx += 1;
                         0 //should not happen
                     }
@@ -172,10 +181,11 @@ impl Bus for Ula {
         //ULA IO port
         if lo & 1 == 0 {
             self.delay += 1;
-            if (0x4000 .. 0x8000).contains(&port) {
+            if (0x4000..0x8000).contains(&port) {
                 self.delay += 1;
             }
-            for i in 0..8 { //half row keyboard
+            for i in 0..8 {
+                //half row keyboard
                 if hi & (1 << i) == 0 {
                     r &= !self.keys[i];
                 }
@@ -186,11 +196,12 @@ impl Bus for Ula {
                 }
             }
         } else {
-            if (0x4000 .. 0x8000).contains(&port) {
+            if (0x4000..0x8000).contains(&port) {
                 self.delay += 4;
             }
             match lo {
-                0xfd => { //Programmable Sound Generator
+                0xfd => {
+                    //Programmable Sound Generator
                     if let Some(psg) = &self.psg {
                         #[allow(clippy::single_match)]
                         match hi {
@@ -203,7 +214,8 @@ impl Bus for Ula {
                         }
                     }
                 }
-                0xff => { //reads stale data from the floating bus (last attr byte?)
+                0xff => {
+                    //reads stale data from the floating bus (last attr byte?)
                     let row = self.time / 224;
                     let ofs = self.time % 224;
                     r = if (64..256).contains(&row) && ofs < 128 {
@@ -211,11 +223,13 @@ impl Bus for Ula {
                         let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
                         let addr = 32 * 192 + 32 * (row / 8) + ofs;
                         self.memory.video_memory()[addr as usize]
-                    } else { //borders or retraces
+                    } else {
+                        //borders or retraces
                         0xff
                     }
                 }
-                x if x & 0x20 == 0 => { //kempston joystick (0x1f | 0xdf ...)
+                x if x & 0x20 == 0 => {
+                    //kempston joystick (0x1f | 0xdf ...)
                     r = self.keys[8];
                 }
                 _ => {
@@ -245,13 +259,16 @@ impl Bus for Ula {
             }
             #[allow(clippy::single_match)]
             match lo {
-                0xfd => { //128 stuff
+                0xfd => {
+                    //128 stuff
                     match hi {
-                        0x7f => { //Memory banks
+                        0x7f => {
+                            //Memory banks
                             //log!("MEM {:04x}, {:02x}", port, value);
                             self.memory.switch_banks(value);
                         }
-                        0x1f => { //+2 Memory banks
+                        0x1f => {
+                            //+2 Memory banks
                             //log!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
                         }
@@ -265,11 +282,13 @@ impl Bus for Ula {
                                 psg.write_reg(value);
                             }
                         }
-                        hi if (hi & 0x80) == 0 => { //same as 0x7f
+                        hi if (hi & 0x80) == 0 => {
+                            //same as 0x7f
                             //log!("MEM {:04x}, {:02x}", port, value);
                             self.memory.switch_banks(value);
                         }
-                        hi if (hi & 0xf0) == 0x10 => { //same as 0x1f
+                        hi if (hi & 0xf0) == 0x10 => {
+                            //same as 0x1f
                             //log!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
                         }
@@ -312,15 +331,20 @@ pub struct Game<GUI: Gui> {
 }
 
 fn write_border_row<PIX: Copy>(y: usize, border: PIX, ps: &mut [PIX]) {
-    let prow = &mut ps[SCREEN_WIDTH * y .. SCREEN_WIDTH * (y+1)];
+    let prow = &mut ps[SCREEN_WIDTH * y..SCREEN_WIDTH * (y + 1)];
     prow.fill(border);
 }
 
-fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], palette: &[[PIX; 8]; 2], ps: &mut [PIX]) {
+fn write_screen_row<PIX: Copy>(
+    y: usize,
+    border: PIX,
+    inv: bool,
+    data: &[u8],
+    palette: &[[PIX; 8]; 2],
+    ps: &mut [PIX],
+) {
     let orow = match y {
-        0..=63 => {
-            (y % 8) * 256 + (y / 8) * 32
-        }
+        0..=63 => (y % 8) * 256 + (y / 8) * 32,
         64..=127 => {
             let y = y - 64;
             let y = (y % 8) * 256 + (y / 8) * 32;
@@ -331,13 +355,13 @@ fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], pa
             let y = (y % 8) * 256 + (y / 8) * 32;
             y + 128 * 32
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     };
     let ym = y + BY0;
-    let prow_full = &mut ps[SCREEN_WIDTH * ym .. SCREEN_WIDTH * (ym + 1)];
-    prow_full[.. BX0].fill(border);
-    prow_full[BX0 + 256 ..].fill(border);
-    let prow = &mut prow_full[BX0 .. BX0 + 256];
+    let prow_full = &mut ps[SCREEN_WIDTH * ym..SCREEN_WIDTH * (ym + 1)];
+    prow_full[..BX0].fill(border);
+    prow_full[BX0 + 256..].fill(border);
+    let prow = &mut prow_full[BX0..BX0 + 256];
     let arow = 192 * 32 + (y / 8) * 32;
 
     //Attributes are 8 bits:
@@ -348,11 +372,10 @@ fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], pa
     //Bitmap and attribute addresses are related in a funny way.
     //Binary values are grouped as octal, clippy doesn't seem to like that.
     #[allow(clippy::unusual_byte_groupings)]
-    for ((&bits, &attr), pixels) in
-            data[orow .. orow + 32]
-                .iter()
-                .zip(&data[arow .. arow + 32])
-                .zip(prow.chunks_mut(8))
+    for ((&bits, &attr), pixels) in data[orow..orow + 32]
+        .iter()
+        .zip(&data[arow..arow + 32])
+        .zip(prow.chunks_mut(8))
     {
         let bright = (attr & 0b01_000_000) != 0;
         let colors = &palette[bright as usize];
@@ -368,7 +391,13 @@ fn write_screen_row<PIX: Copy>(y: usize, border: PIX, inv: bool, data: &[u8], pa
     }
 }
 
-fn write_screen<PIX: Copy>(border: PIX, palette: &[[PIX; 8]; 2], inv: bool, data: &[u8], ps: &mut [PIX]) {
+fn write_screen<PIX: Copy>(
+    border: PIX,
+    palette: &[[PIX; 8]; 2],
+    inv: bool,
+    data: &[u8],
+    ps: &mut [PIX],
+) {
     for y in 0..BY0 {
         write_border_row(y, border, ps);
     }
@@ -392,7 +421,6 @@ fn t_per_sample(is_128k: bool) -> u32 {
     // That I think is acceptable. To get exact timings we would need to choose a sample output rate that is an exact division of the
     // CPU freq. But that would require resampling somewhere in the audio pipeline, and that could decrease performance.
     (cpu_freq + SAMPLER / 2) / SAMPLER
-
 }
 
 impl<GUI: Gui> Game<GUI> {
@@ -464,7 +492,14 @@ impl<GUI: Gui> Game<GUI> {
                             }
                             64..=255 => {
                                 let screen = self.ula.memory.video_memory();
-                                write_screen_row(screen_row - 64, border, inverted, screen, palette, &mut self.image);
+                                write_screen_row(
+                                    screen_row - 64,
+                                    border,
+                                    inverted,
+                                    screen,
+                                    palette,
+                                    &mut self.image,
+                                );
                             }
                             _ => {}
                         }
@@ -484,11 +519,14 @@ impl<GUI: Gui> Game<GUI> {
         } else {
             //adding samples should be rarely necessary, so use lazy generation
             let ula = &mut self.ula;
-            let audio = self.speaker.complete_frame(TIME_TO_INT as u32, || ula.audio_sample(0));
+            let audio = self
+                .speaker
+                .complete_frame(TIME_TO_INT as u32, || ula.audio_sample(0));
             self.gui.put_sound_data(audio);
             self.speaker.clear();
         }
-        self.gui.put_image_data(SCREEN_WIDTH, SCREEN_HEIGHT, &self.image);
+        self.gui
+            .put_image_data(SCREEN_WIDTH, SCREEN_HEIGHT, &self.image);
     }
     //Every byte in key is a key pressed:
     //  * low nibble: key number (0..5)
@@ -543,18 +581,14 @@ impl<GUI: Gui> Game<GUI> {
     }
     pub fn tape_name(&self, index: usize) -> &str {
         match &self.ula.tape {
-            Some((tape, _)) => {
-                tape.block_name(index)
-            }
-            None => {
-                ""
-            }
+            Some((tape, _)) => tape.block_name(index),
+            None => "",
         }
     }
     pub fn tape_selectable(&self, index: usize) -> bool {
         match &self.ula.tape {
             Some((tape, _)) => tape.block_selectable(index),
-            None => false
+            None => false,
         }
     }
     pub fn tape_seek(&mut self, index: usize) {
@@ -563,7 +597,7 @@ impl<GUI: Gui> Game<GUI> {
                 self.gui.on_tape_block(index);
                 Some((tape, Some(TapePos::new_at_block(index))))
             }
-            None => None
+            None => None,
         }
     }
     pub fn tape_stop(&mut self) {
@@ -572,7 +606,7 @@ impl<GUI: Gui> Game<GUI> {
                 self.ula.mic = false;
                 Some((tape, None))
             }
-            None => None
+            None => None,
         }
     }
     pub fn snapshot(&self) -> Vec<u8> {
@@ -587,14 +621,21 @@ impl<GUI: Gui> Game<GUI> {
 
         //extended header block
         //len of the block
-        data[30] = header_extra as u8; data[31] = 0;
+        data[30] = header_extra as u8;
+        data[31] = 0;
         //pc moved to signal v2
-        data[32] = data[6]; data[33] = data[7];
-        data[6] = 0; data[7] = 0;
+        data[32] = data[6];
+        data[33] = data[7];
+        data[6] = 0;
+        data[7] = 0;
         //hw mode
         data[34] = if self.is128k { 3 } else { 0 };
         //memory map
-        data[35] = if self.is128k { self.ula.memory.last_banks() } else { 0 };
+        data[35] = if self.is128k {
+            self.ula.memory.last_banks()
+        } else {
+            0
+        };
         //36
         data[37] = 3 | // R emulation | LDIR emulation
                    (if !self.is128k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
@@ -610,20 +651,21 @@ impl<GUI: Gui> Game<GUI> {
         fn compress(data: &mut Vec<u8>, index: u8, bank: &[u8]) {
             //length, delayed
             let start = data.len();
-            data.push(0); data.push(0);
+            data.push(0);
+            data.push(0);
             data.push(index);
 
-            let mut seq : Option<(u8, u8)> = None;
+            let mut seq: Option<(u8, u8)> = None;
 
             for &b in bank {
                 seq = match seq {
-                    None => {
-                        Some((b, 1))
-                    }
+                    None => Some((b, 1)),
                     Some((seq_byte, seq_count)) if seq_byte == b && seq_count < 0xff => {
                         Some((b, seq_count + 1))
                     }
-                    Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
+                    Some((seq_byte, seq_count))
+                        if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) =>
+                    {
                         data.extend(&[0xed, 0xed, seq_count, seq_byte]);
                         Some((b, 1))
                     }
@@ -640,7 +682,9 @@ impl<GUI: Gui> Game<GUI> {
             }
             match seq {
                 None => {}
-                Some((seq_byte, seq_count)) if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) => {
+                Some((seq_byte, seq_count))
+                    if seq_count >= 5 || (seq_byte == 0xed && seq_count >= 2) =>
+                {
                     data.extend(&[0xed, 0xed, seq_count, seq_byte]);
                 }
                 Some((seq_byte, seq_count)) => {
@@ -699,22 +743,22 @@ impl<GUI: Gui> Game<GUI> {
         log::debug!("z80 version {:?}", version);
         let border = (data_z80[12] >> 1) & 7;
         let (hdr, mem) = match version {
-            Z80FileVersion::V1 => {
-                (&[] as &[u8], data.get(30..).ok_or_else(file_too_short_error)?)
-            }
-            Z80FileVersion::V2 => {
-                (data.get(..55).ok_or_else(file_too_short_error)?,
-                 data.get(55..).ok_or_else(file_too_short_error)?)
-            }
-            Z80FileVersion::V3(false) => {
-                (data.get(..86).ok_or_else(file_too_short_error)?,
-                 data.get(86..).ok_or_else(file_too_short_error)?)
-
-            }
-            Z80FileVersion::V3(true) => {
-                (data.get(..87).ok_or_else(file_too_short_error)?,
-                 data.get(87..).ok_or_else(file_too_short_error)?)
-            }
+            Z80FileVersion::V1 => (
+                &[] as &[u8],
+                data.get(30..).ok_or_else(file_too_short_error)?,
+            ),
+            Z80FileVersion::V2 => (
+                data.get(..55).ok_or_else(file_too_short_error)?,
+                data.get(55..).ok_or_else(file_too_short_error)?,
+            ),
+            Z80FileVersion::V3(false) => (
+                data.get(..86).ok_or_else(file_too_short_error)?,
+                data.get(86..).ok_or_else(file_too_short_error)?,
+            ),
+            Z80FileVersion::V3(true) => (
+                data.get(..87).ok_or_else(file_too_short_error)?,
+                data.get(87..).ok_or_else(file_too_short_error)?,
+            ),
         };
         let is128k = match version {
             Z80FileVersion::V1 => false,
@@ -734,7 +778,7 @@ impl<GUI: Gui> Game<GUI> {
             }
         };
         let psg = if (version != Z80FileVersion::V1 && (hdr[37] & 4) != 0) || is128k {
-            Some(Psg::load_snapshot(&hdr[38 .. 55]))
+            Some(Psg::load_snapshot(&hdr[38..55]))
         } else {
             None
         };
@@ -768,14 +812,16 @@ impl<GUI: Gui> Game<GUI> {
             while let Some(&b) = rdata.next() {
                 prev_ed = match (prev_ed, b) {
                     (true, 0xed) => {
-                        let times = *rdata.next().ok_or_else(|| anyhow!("invalid compressed data"))?;
-                        let value = *rdata.next().ok_or_else(|| anyhow!("invalid compressed data"))?;
+                        let times = *rdata
+                            .next()
+                            .ok_or_else(|| anyhow!("invalid compressed data"))?;
+                        let value = *rdata
+                            .next()
+                            .ok_or_else(|| anyhow!("invalid compressed data"))?;
                         wbank.write_all(&vec![value; times as usize])?;
                         false
                     }
-                    (false, 0xed) => {
-                        true
-                    }
+                    (false, 0xed) => true,
                     (true, b) => {
                         wbank.write_all(&[0xed, b])?;
                         false
@@ -805,7 +851,7 @@ impl<GUI: Gui> Game<GUI> {
                     if sig != Some(&[0, 0xed, 0xed, 0]) {
                         return Err(anyhow!("invalid Z80v1 signature"));
                     }
-                    let cdata = &mem[.. mem.len() - 4];
+                    let cdata = &mem[..mem.len() - 4];
                     uncompress(cdata, &mut fullmem)?;
                     Cow::Owned(fullmem)
                 } else {
@@ -820,12 +866,15 @@ impl<GUI: Gui> Game<GUI> {
             _ => {
                 let mut offset = 0;
                 while offset < mem.len() - 3 {
-                    let memlen = usize::from(u16::from(mem[offset]) | (u16::from(mem[offset + 1]) << 8));
+                    let memlen =
+                        usize::from(u16::from(mem[offset]) | (u16::from(mem[offset + 1]) << 8));
                     let memlen = std::cmp::min(memlen, 0x4000);
                     let compressed = memlen < 0x4000;
                     let page = mem[offset + 2];
                     offset += 3;
-                    let cdata = mem.get(offset .. offset + memlen).ok_or_else(|| anyhow!("invalid compressed memory block"))?;
+                    let cdata = mem
+                        .get(offset..offset + memlen)
+                        .ok_or_else(|| anyhow!("invalid compressed memory block"))?;
                     offset += memlen;
 
                     let ibank = match (is128k, page) {
@@ -869,7 +918,12 @@ impl<GUI: Gui> Game<GUI> {
                 mic: false,
                 psg,
                 fetch_count: 0,
-                rzx_info: rzx_input.map(|frames| RzxInfo { frames, frame_idx: 0, frame_data_idx: 0, in_idx: 0 }),
+                rzx_info: rzx_input.map(|frames| RzxInfo {
+                    frames,
+                    frame_idx: 0,
+                    frame_data_idx: 0,
+                    in_idx: 0,
+                }),
             },
             speaker: Speaker::new(t_per_sample(is128k)),
             image: black_screen(gui.palette()),
@@ -880,16 +934,15 @@ impl<GUI: Gui> Game<GUI> {
     }
 }
 
-#[cfg(feature="zip")]
+#[cfg(feature = "zip")]
 fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     let rdr = Cursor::new(data);
     let mut zip = zip::ZipArchive::new(rdr)?;
-    for i in 0 .. zip.len() {
+    for i in 0..zip.len() {
         let mut ze = zip.by_index(i)?;
         let name = ze.name();
         let lowname = name.to_ascii_lowercase();
-        if lowname.ends_with(".z80") ||
-           lowname.ends_with(".rzx") {
+        if lowname.ends_with(".z80") || lowname.ends_with(".rzx") {
             log::debug!("unzipping Z80 {}", name);
             let mut res = Vec::new();
             ze.read_to_end(&mut res)?;
@@ -899,7 +952,7 @@ fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     Err(anyhow!("ZIP file does not contain any *.z80 or *.rzx file"))
 }
 
-#[cfg(not(feature="zip"))]
+#[cfg(not(feature = "zip"))]
 fn snapshot_from_zip(_data: &[u8]) -> anyhow::Result<Vec<u8>> {
     Err(anyhow!("ZIP format not supported"))
 }

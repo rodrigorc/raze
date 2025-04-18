@@ -1,6 +1,5 @@
 use std::error::Error;
-use xshell::{Shell};
-
+use xshell::Shell;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -9,9 +8,7 @@ fn main() -> Result<()> {
     args.next(); //skip argv[0]
     let task = args.next();
     match task.as_deref() {
-        None => {
-            help()
-        }
+        None => help(),
         Some("pack") => do_pack(&args.collect::<Vec<_>>()),
         Some("deploy") => do_deploy(),
         Some(task) => {
@@ -39,7 +36,7 @@ fn do_pack(args: &[String]) -> Result<()> {
         match arg.as_str() {
             "--debug" => mode = "--debug",
             "--release" => mode = "--release",
-            arg => return Err(format!("unknown argument '{}'", arg).into())
+            arg => return Err(format!("unknown argument '{}'", arg).into()),
         }
     }
     sh.cmd("wasm-pack")

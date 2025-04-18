@@ -1,7 +1,7 @@
 //If not targetting wasm32 the wasm_bindgen are ignored and there are
 //a lot of warnings about dead_code, for example with "cargo check".
 //But for the real thing we want the warning there, so it is disabled conditionally.
-#![cfg_attr(not(target_family="wasm"), allow(dead_code))]
+#![cfg_attr(not(target_family = "wasm"), allow(dead_code))]
 
 use crate::game::{Game, Gui};
 use std::mem;
@@ -12,7 +12,6 @@ extern "C" {
     #[wasm_bindgen(js_name = alert)]
     fn alert_slice(s: &str);
 }
-
 
 #[wasm_bindgen(raw_module = "../raze.js")]
 extern "C" {
@@ -48,13 +47,17 @@ mod color {
             if r { x } else { 0 },
             if g { x } else { 0 },
             if b { x } else { 0 },
-            0xff
+            0xff,
         )
     }
-    const fn lo(c: u8) -> Pixel { pixel(false, c) }
-    const fn hi(c: u8) -> Pixel { pixel(true, c) }
+    const fn lo(c: u8) -> Pixel {
+        pixel(false, c)
+    }
+    const fn hi(c: u8) -> Pixel {
+        pixel(true, c)
+    }
 
-    pub static PALETTE : [[Pixel; 8]; 2] = [
+    pub static PALETTE: [[Pixel; 8]; 2] = [
         [lo(0), lo(1), lo(2), lo(3), lo(4), lo(5), lo(6), lo(7)],
         [hi(0), hi(1), hi(2), hi(3), hi(4), hi(5), hi(6), hi(7)],
     ];
@@ -72,9 +75,7 @@ impl Gui for JSGui {
         //Pixel is repr(C) just like [u8;4]
         let ptr = data.as_ptr() as *const u8;
         let len = mem::size_of_val(data);
-        let bytes = unsafe {
-            std::slice::from_raw_parts(ptr, len)
-        };
+        let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
         putImageData(w as i32, h as i32, bytes);
     }
     fn put_sound_data(&mut self, data: &[f32]) {
@@ -139,7 +140,7 @@ mod exports {
         game.tape_stop();
     }
     #[wasm_bindgen]
-    pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> bool{
+    pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> bool {
         let old_game = unsafe { &mut *game };
         log::debug!("snap len {}", data.len());
         match Game::load_snapshot(data, JSGui) {
@@ -188,4 +189,3 @@ mod exports {
         game.stop_rzx_replay();
     }
 }
-

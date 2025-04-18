@@ -1,5 +1,5 @@
-use std::io::{prelude::*, self};
 use anyhow::anyhow;
+use std::io::{self, prelude::*};
 
 #[derive(Copy, Clone, Debug)]
 struct Tone {
@@ -67,7 +67,11 @@ struct GeneralizedDataParams {
 
 impl Block {
     fn standard_data_block(data: Vec<u8>) -> Block {
-        let num_pilots = if *data.first().unwrap_or(&0) < 0x80 { 8063 } else { 3223 };
+        let num_pilots = if *data.first().unwrap_or(&0) < 0x80 {
+            8063
+        } else {
+            3223
+        };
         Self::turbo_data_block(TurboDataParams {
             len_pilot: 2168,
             num_pilots,
@@ -110,11 +114,11 @@ impl Block {
         let mut data = Vec::new();
         let mut bits_last = 0;
         //Is this block representable as standard data?
-        if par.data_def.len() == 2 &&
-            par.data_def[0].len() == 2 &&
-            par.data_def[1].len() == 2 &&
-            par.data_def[0][0] == par.data_def[0][1] &&
-            par.data_def[1][0] == par.data_def[1][1]
+        if par.data_def.len() == 2
+            && par.data_def[0].len() == 2
+            && par.data_def[1].len() == 2
+            && par.data_def[0][0] == par.data_def[0][1]
+            && par.data_def[1][0] == par.data_def[1][1]
         {
             len_zero = u32::from(par.data_def[0][0]);
             len_one = u32::from(par.data_def[1][0]);
@@ -185,8 +189,16 @@ impl Block {
         //but then the levels should get inverted and that is not implemented yet.
         //pilot
         let tones = vec![
-            Tone { num: par.num_pilots.div_ceil(2), len1: par.len_pilot, len2: par.len_pilot},
-            Tone { num: 1, len1: par.len_sync1, len2: par.len_sync2},
+            Tone {
+                num: par.num_pilots.div_ceil(2),
+                len1: par.len_pilot,
+                len2: par.len_pilot,
+            },
+            Tone {
+                num: 1,
+                len1: par.len_sync1,
+                len2: par.len_sync2,
+            },
         ];
         Block {
             name: None,
@@ -199,7 +211,13 @@ impl Block {
             data: par.data,
         }
     }
-    fn pure_data_block(len_zero: u32, len_one: u32, bits_last: u8, pause: u32, data: Vec<u8>) -> Block {
+    fn pure_data_block(
+        len_zero: u32,
+        len_one: u32,
+        bits_last: u8,
+        pause: u32,
+        data: Vec<u8>,
+    ) -> Block {
         Self::turbo_data_block(TurboDataParams {
             len_pilot: 0,
             num_pilots: 0,
@@ -209,15 +227,23 @@ impl Block {
             len_one,
             bits_last,
             pause,
-            data
+            data,
         })
     }
     fn pure_tone_block(len_tone: u32, num_tones: u32) -> Block {
         let mut tones = Vec::new();
         if num_tones % 2 != 0 {
-            tones.push(Tone { num: 1, len1: 0, len2: len_tone});
+            tones.push(Tone {
+                num: 1,
+                len1: 0,
+                len2: len_tone,
+            });
         }
-        tones.push(Tone { num: num_tones / 2, len1: len_tone, len2: len_tone});
+        tones.push(Tone {
+            num: num_tones / 2,
+            len1: len_tone,
+            len2: len_tone,
+        });
         Block {
             name: None,
             selectable: false,
@@ -272,7 +298,14 @@ impl Block {
     fn tones(&self, index: usize, pulse: u32, last_half: bool) -> TapePhaseT {
         if let Some(tone) = self.tones.get(index) {
             let len = if last_half { tone.len2 } else { tone.len1 };
-            TapePhaseT(Duration::T(len), TapePhase::Tones { index, pulse, last_half })
+            TapePhaseT(
+                Duration::T(len),
+                TapePhase::Tones {
+                    index,
+                    pulse,
+                    last_half,
+                },
+            )
         } else {
             self.data_bit(0, 0, false)
         }
@@ -281,7 +314,14 @@ impl Block {
         if let Some(&byte) = self.data.get(pos) {
             let v = byte & (0x80 >> bit) != 0;
             let len = if v { self.len_one } else { self.len_zero };
-            TapePhaseT(Duration::T(len), TapePhase::Data { pos, bit, last_half })
+            TapePhaseT(
+                Duration::T(len),
+                TapePhase::Data {
+                    pos,
+                    bit,
+                    last_half,
+                },
+            )
         } else {
             self.pause()
         }
@@ -292,7 +332,7 @@ impl Block {
 }
 
 pub struct Tape {
-    blocks: Vec<Block>
+    blocks: Vec<Block>,
 }
 
 impl<R: Read + ?Sized> ReadExt for R {}
@@ -328,11 +368,11 @@ fn latin1_to_string(s: &[u8]) -> String {
     s.iter().map(|&c| c as char).collect()
 }
 
-#[cfg(feature="zip")]
+#[cfg(feature = "zip")]
 fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> anyhow::Result<Vec<Block>> {
     let mut zip = zip::ZipArchive::new(r)?;
 
-    for i in 0 .. zip.len() {
+    for i in 0..zip.len() {
         let mut ze = zip.by_index(i)?;
         let name = ze.name();
         let name_l = name.to_ascii_lowercase();
@@ -347,7 +387,7 @@ fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> anyhow::Result<Vec<Block>
     Err(anyhow!("ZIP file does not contain any *.tap or *.tzx file"))
 }
 
-#[cfg(not(feature="zip"))]
+#[cfg(not(feature = "zip"))]
 fn new_zip<R: Read + Seek>(_r: &mut R, _is128k: bool) -> anyhow::Result<Vec<Block>> {
     Err(anyhow!("ZIP format not supported"))
 }
@@ -426,12 +466,8 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
         }
         fn in_group(&self) -> bool {
             match &self.group_name {
-                None | Some(GroupParse::SingleBlockName(_)) => {
-                    false
-                }
-                Some(GroupParse::First(_)) | Some(GroupParse::Middle(_)) => {
-                    true
-                }
+                None | Some(GroupParse::SingleBlockName(_)) => false,
+                Some(GroupParse::First(_)) | Some(GroupParse::Middle(_)) => true,
             }
         }
         fn text_description(&mut self, text: String) {
@@ -453,7 +489,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 Some((start, repetitions)) => {
                     let end = self.blocks.len();
                     for _ in 0..repetitions {
-                        for i in start .. end {
+                        for i in start..end {
                             let mut new_block = self.blocks[i].clone();
                             new_block.name = None;
                             new_block.selectable = false;
@@ -481,16 +517,22 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
             Err(e) => return Err(e.into()),
         };
         match kind {
-            0x10 => { //standard speed data block
+            0x10 => {
+                //standard speed data block
                 let pause = u32::from(r.read_u16()?) * 3500; // ms -> T
                 let block_len = r.read_u16()?;
                 let data = r.read_vec(usize::from(block_len))?;
-                log::debug!("standard block P:{} D:{}", pause as f32 / 3_500_000.0, data.len());
+                log::debug!(
+                    "standard block P:{} D:{}",
+                    pause as f32 / 3_500_000.0,
+                    data.len()
+                );
                 let mut block = Block::standard_data_block(data);
                 block.pause = Duration::T(pause);
                 parser.add_block(block);
             }
-            0x11 => { //turbo speed data block
+            0x11 => {
+                //turbo speed data block
                 let len_pilot = u32::from(r.read_u16()?);
                 let len_sync1 = u32::from(r.read_u16()?);
                 let len_sync2 = u32::from(r.read_u16()?);
@@ -503,12 +545,18 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let num1 = usize::from(r.read_u8()?);
                 let num = num0 | (num1 << 16);
                 let data = r.read_vec(num)?;
-                log::debug!("turbo speed data block P:{}*{} S1:{} S2:{} 0:{} 1:{} L:{} P:{} D:{}",
-                         len_pilot, num_pilots,
-                         len_sync1, len_sync2,
-                         len_zero, len_one,
-                         bits_last,
-                         pause as f32 / 3_500_000.0, num);
+                log::debug!(
+                    "turbo speed data block P:{}*{} S1:{} S2:{} 0:{} 1:{} L:{} P:{} D:{}",
+                    len_pilot,
+                    num_pilots,
+                    len_sync1,
+                    len_sync2,
+                    len_zero,
+                    len_one,
+                    bits_last,
+                    pause as f32 / 3_500_000.0,
+                    num
+                );
                 let block = Block::turbo_data_block(TurboDataParams {
                     len_pilot,
                     num_pilots,
@@ -522,14 +570,16 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 });
                 parser.add_block(block);
             }
-            0x12 => { //pure tone
+            0x12 => {
+                //pure tone
                 let len_tone = u32::from(r.read_u16()?);
                 let num_tones = u32::from(r.read_u16()?);
                 log::debug!("pure tone {} {}", len_tone, num_tones);
                 let block = Block::pure_tone_block(len_tone, num_tones);
                 parser.add_block(block);
             }
-            0x13 => { //pulse sequence
+            0x13 => {
+                //pulse sequence
                 let num = r.read_u8()?;
                 let mut pulses = Vec::with_capacity(usize::from(num));
                 for _ in 0..num {
@@ -545,7 +595,8 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                     }
                 }
             }
-            0x14 => { //pure data block
+            0x14 => {
+                //pure data block
                 let len_zero = u32::from(r.read_u16()?);
                 let len_one = u32::from(r.read_u16()?);
                 let bits_last = r.read_u8()?;
@@ -554,16 +605,22 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let num1 = usize::from(r.read_u8()?);
                 let num = num0 | (num1 << 16);
                 let data = r.read_vec(num)?;
-                log::debug!("pure data block 0:{} 1:{} L:{} P:{} D:{}",
-                     len_zero, len_one, bits_last,
-                     pause as f32 / 3_500_000.0, num);
+                log::debug!(
+                    "pure data block 0:{} 1:{} L:{} P:{} D:{}",
+                    len_zero,
+                    len_one,
+                    bits_last,
+                    pause as f32 / 3_500_000.0,
+                    num
+                );
                 let block = Block::pure_data_block(len_zero, len_one, bits_last, pause, data);
                 parser.add_block(block);
             }
             //0x15 => {} //direct recording
             //0x16 | 0x17 => {} //C64?
             //0x18 => {} //CSW Recording
-            0x19 => { //generalized data block
+            0x19 => {
+                //generalized data block
                 let len = r.read_u32()?;
                 let pause = u32::from(r.read_u16()?) * 3500; // ms -> T;
                 let totp = r.read_u32()?;
@@ -574,8 +631,16 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 let npd = r.read_u8()?;
                 let asd = r.read_u8()?;
                 let asd = if asd == 0 { 0xff } else { asd };
-                log::debug!("generalized data block: len={}, pause={}, totp={}, npp={}, asp={}, totd={}, npd={}, asd={}",
-                    len, pause, totp, npp, asp, totd, npd, asd
+                log::debug!(
+                    "generalized data block: len={}, pause={}, totp={}, npp={}, asp={}, totd={}, npd={}, asd={}",
+                    len,
+                    pause,
+                    totp,
+                    npp,
+                    asp,
+                    totd,
+                    npd,
+                    asd
                 );
                 let mut pilot_def = Vec::new();
                 let mut pilot = Vec::with_capacity(totp as usize);
@@ -635,7 +700,8 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 });
                 parser.add_block(block);
             }
-            0x20 => { //pause (stop)
+            0x20 => {
+                //pause (stop)
                 let pause = u32::from(r.read_u16()?) * 3500; // ms -> T;
                 if pause == 0 {
                     log::debug!("stop tape");
@@ -647,30 +713,35 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                     parser.add_block(block);
                 }
             }
-            0x21 => { //group start
+            0x21 => {
+                //group start
                 let len = r.read_u8()?;
                 let text = r.read_string(usize::from(len))?;
                 log::debug!("group start: {}", text);
                 parser.group_start(text);
             }
-            0x22 => { //group end
+            0x22 => {
+                //group end
                 log::debug!("group end");
                 parser.group_end();
             }
             //0x23 => {} //jump to block
-            0x24 => { //loop start
+            0x24 => {
+                //loop start
                 let repetitions = r.read_u16()?;
                 log::debug!("loop start {}", repetitions);
                 parser.loop_start(repetitions);
             }
-            0x25 => { //loop end
+            0x25 => {
+                //loop end
                 log::debug!("loop end");
                 parser.loop_end();
             }
             //0x26 => {} //call sequence
             //0x27 => {} //return from sequence
             //0x28 => {} //select block
-            0x2a => { //stop the tape if in 48K mode
+            0x2a => {
+                //stop the tape if in 48K mode
                 let len = r.read_u32()?;
                 if len > 0 {
                     return Err(anyhow!("invalid TAP-stop48k block"));
@@ -682,14 +753,16 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                 }
             }
             //0x2b => {} //set signal level
-            0x30 => { //text description
+            0x30 => {
+                //text description
                 let len = r.read_u8()?;
                 let text = r.read_string(usize::from(len))?;
                 log::debug!("text description: {}", text);
                 parser.text_description(text);
             }
             //0x31 => {} //message block
-            0x32 => { //archive info
+            0x32 => {
+                //archive info
                 let len = r.read_u16()?;
                 let info = r.read_vec(usize::from(len))?;
                 let ri = &mut info.as_slice();
@@ -715,29 +788,263 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
     Ok(parser.blocks)
 }
 
-static SPECTRUM_ENCODING : [&str; 0x100] = [
-/* 0 */ "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-/* 1 */ "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-/* 2 */ " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
-/* 3 */ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?",
-/* 4 */ "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
-/* 5 */ "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "↑", "_",
-/* 6 */ "£", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
-/* 7 */ "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "©",
-/* 8 */ " ", "▝", "▘", "▀", "▗", "▐", "▚", "▜", "▖", "▞", "▌", "▛", "▄", "▟", "▙", "█",
-/* 9 */ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
-/* A */ "Q", "R", "S", "T", "U", "RND", "INKEY$", "PI",
-        "FN", "POINT", "SCREEN$", "ATTR", "AT", "TAB", "VAL$", "CODE",
-/* B */ "VAL", "LEN", "SIN", "COS", "TAN", "ASN", "ACS", "ATN",
-        "LN", "EXP", "INT", "SQR", "SGN", "ABS", "PEEK", "IN",
-/* C */ "USR", "STR$", "CHR$", "NOT", "BIN", "OR", "AND", "<=",
-        ">=", "<>", "LINE", "THEN", "TO", "STEP", "DEF FN", "CAT",
-/* D */ "FORMAT", "MOVE", "ERASE", "OPEN #", "CLOSE #", "MERGE", "VERIFY", "BEEP",
-        "CIRCLE", "INK", "PAPER", "FLASH", "BRIGHT", "INVERSE", "OVER", "OUT",
-/* E */ "LPRINT", "LLIST", "STOP", "READ", "DATA", "RESTORE", "NEW", "BORDER",
-        "CONTINUE", "DIM", "REM", "FOR", "GO TO", "GO SUB", "INPUT", "LOAD",
-/* F */ "LIST", "LET", "PAUSE", "NEXT", "POKE", "PRINT", "PLOT", "RUN",
-        "SAVE", "RANDOMIZE", "IF", "CLS", "DRAW", "CLEAR", "RETURN", "COPY",
+static SPECTRUM_ENCODING: [&str; 0x100] = [
+    /* 0 */ "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    /* 1 */ "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    /* 2 */ " ",
+    "!",
+    "\"",
+    "#",
+    "$",
+    "%",
+    "&",
+    "'",
+    "(",
+    ")",
+    "*",
+    "+",
+    ",",
+    "-",
+    ".",
+    "/",
+    /* 3 */ "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    ":",
+    ";",
+    "<",
+    "=",
+    ">",
+    "?",
+    /* 4 */ "@",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    /* 5 */ "P",
+    "Q",
+    "R",
+    "S",
+    "T",
+    "U",
+    "V",
+    "W",
+    "X",
+    "Y",
+    "Z",
+    "[",
+    "\\",
+    "]",
+    "↑",
+    "_",
+    /* 6 */ "£",
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "o",
+    /* 7 */ "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "u",
+    "v",
+    "w",
+    "x",
+    "y",
+    "z",
+    "{",
+    "|",
+    "}",
+    "~",
+    "©",
+    /* 8 */ " ",
+    "▝",
+    "▘",
+    "▀",
+    "▗",
+    "▐",
+    "▚",
+    "▜",
+    "▖",
+    "▞",
+    "▌",
+    "▛",
+    "▄",
+    "▟",
+    "▙",
+    "█",
+    /* 9 */ "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "P",
+    /* A */ "Q",
+    "R",
+    "S",
+    "T",
+    "U",
+    "RND",
+    "INKEY$",
+    "PI",
+    "FN",
+    "POINT",
+    "SCREEN$",
+    "ATTR",
+    "AT",
+    "TAB",
+    "VAL$",
+    "CODE",
+    /* B */ "VAL",
+    "LEN",
+    "SIN",
+    "COS",
+    "TAN",
+    "ASN",
+    "ACS",
+    "ATN",
+    "LN",
+    "EXP",
+    "INT",
+    "SQR",
+    "SGN",
+    "ABS",
+    "PEEK",
+    "IN",
+    /* C */ "USR",
+    "STR$",
+    "CHR$",
+    "NOT",
+    "BIN",
+    "OR",
+    "AND",
+    "<=",
+    ">=",
+    "<>",
+    "LINE",
+    "THEN",
+    "TO",
+    "STEP",
+    "DEF FN",
+    "CAT",
+    /* D */ "FORMAT",
+    "MOVE",
+    "ERASE",
+    "OPEN #",
+    "CLOSE #",
+    "MERGE",
+    "VERIFY",
+    "BEEP",
+    "CIRCLE",
+    "INK",
+    "PAPER",
+    "FLASH",
+    "BRIGHT",
+    "INVERSE",
+    "OVER",
+    "OUT",
+    /* E */ "LPRINT",
+    "LLIST",
+    "STOP",
+    "READ",
+    "DATA",
+    "RESTORE",
+    "NEW",
+    "BORDER",
+    "CONTINUE",
+    "DIM",
+    "REM",
+    "FOR",
+    "GO TO",
+    "GO SUB",
+    "INPUT",
+    "LOAD",
+    /* F */ "LIST",
+    "LET",
+    "PAUSE",
+    "NEXT",
+    "POKE",
+    "PRINT",
+    "PLOT",
+    "RUN",
+    "SAVE",
+    "RANDOMIZE",
+    "IF",
+    "CLS",
+    "DRAW",
+    "CLEAR",
+    "RETURN",
+    "COPY",
 ];
 
 fn string_from_zx(bs: &[u8]) -> String {
@@ -756,7 +1063,8 @@ impl Tape {
             .or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;
                 new_tzx(tap.by_ref(), is128k)
-            }).or_else(|_| {
+            })
+            .or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;
                 new_tap(tap.by_ref())
             })
@@ -772,7 +1080,10 @@ impl Tape {
                     0 => "Program",
                     1 => "Array",
                     3 => "Bytes",
-                    x => { fmt = format!("Type {x}"); &fmt },
+                    x => {
+                        fmt = format!("Type {x}");
+                        &fmt
+                    }
                 };
                 let block_name = string_from_zx(&block.data[2..12]);
                 prefixed = true;
@@ -793,10 +1104,13 @@ impl Tape {
                 block.name = name;
             }
         }
-        Ok(Tape{ blocks } )
+        Ok(Tape { blocks })
     }
     pub fn play(&self, mut d: u32, pos: TapePos) -> Option<TapePos> {
-        let TapePos { mut block, mut phase } = pos;
+        let TapePos {
+            mut block,
+            mut phase,
+        } = pos;
 
         while d > 0 {
             if block >= self.blocks.len() {
@@ -810,13 +1124,17 @@ impl Tape {
                 }
             };
         }
-        Some(TapePos{ block, phase })
+        Some(TapePos { block, phase })
     }
     pub fn len(&self) -> usize {
         self.blocks.len()
     }
     pub fn block_name(&self, index: usize) -> &str {
-        self.blocks[index].name.as_ref().map(|s| s.as_ref()).unwrap_or("")
+        self.blocks[index]
+            .name
+            .as_ref()
+            .map(|s| s.as_ref())
+            .unwrap_or("")
     }
     pub fn block_selectable(&self, index: usize) -> bool {
         self.blocks[index].selectable
@@ -826,8 +1144,16 @@ impl Tape {
 #[derive(Debug)]
 pub enum TapePhase {
     Start,
-    Tones { index: usize, pulse: u32, last_half: bool },
-    Data { pos: usize, bit: u8, last_half: bool }, //2 * 855 T or 1710 T
+    Tones {
+        index: usize,
+        pulse: u32,
+        last_half: bool,
+    },
+    Data {
+        pos: usize,
+        bit: u8,
+        last_half: bool,
+    }, //2 * 855 T or 1710 T
     Pause,
 }
 
@@ -865,10 +1191,12 @@ impl TapePhaseT {
         let block = &tape.blocks[iblock];
 
         let TapePhaseT(mut dnext, rphase) = match phase {
-            TapePhase::Start => {
-                block.tones(0, 0, false)
-            }
-            TapePhase::Tones { index, pulse, last_half } => {
+            TapePhase::Start => block.tones(0, 0, false),
+            TapePhase::Tones {
+                index,
+                pulse,
+                last_half,
+            } => {
                 if !last_half {
                     block.tones(index, pulse, true)
                 } else {
@@ -880,12 +1208,20 @@ impl TapePhaseT {
                     }
                 }
             }
-            TapePhase::Data { pos, bit, last_half } => {
+            TapePhase::Data {
+                pos,
+                bit,
+                last_half,
+            } => {
                 if !last_half {
                     block.data_bit(pos, bit, true)
                 } else {
                     let bit = bit + 1;
-                    let bit_len = if pos == block.data.len() - 1 { block.bits_last } else { 8 };
+                    let bit_len = if pos == block.data.len() - 1 {
+                        block.bits_last
+                    } else {
+                        8
+                    };
                     if bit < bit_len {
                         block.data_bit(pos, bit, false)
                     } else {
@@ -922,7 +1258,10 @@ pub struct TapePos {
 
 impl TapePos {
     pub fn new_at_block(block: usize) -> TapePos {
-        TapePos { block, phase: Block::start() }
+        TapePos {
+            block,
+            phase: Block::start(),
+        }
     }
     pub fn mic(&self) -> bool {
         self.phase.mic()

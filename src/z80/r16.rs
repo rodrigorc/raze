@@ -51,7 +51,7 @@ impl From<R16> for u16 {
 impl From<u16> for R16 {
     #[inline]
     fn from(w: u16) -> Self {
-        R16{ w }
+        R16 { w }
     }
 }
 

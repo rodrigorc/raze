@@ -8,7 +8,8 @@ impl Z80 {
         }
         let c = self.fetch(bus);
         match c {
-            0x40 => { //IN B,(C)
+            0x40 => {
+                //IN B,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -19,43 +20,51 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x41 => { //OUT (C),B
+            0x41 => {
+                //OUT (C),B
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.b());
                 12
             }
-            0x42 => { //SBC HL,BC
+            0x42 => {
+                //SBC HL,BC
                 let mut hl = self.hl.as_u16();
                 let bc = self.bc.as_u16();
                 hl = self.sbc16_flags(hl, bc);
                 self.hl.set(hl);
                 15
             }
-            0x43 => { //LD (nn),BC
+            0x43 => {
+                //LD (nn),BC
                 let addr = self.fetch_u16(bus);
                 bus.poke_u16(addr, self.bc.as_u16());
                 20
             }
-            0x44 => { //NEG
+            0x44 => {
+                //NEG
                 let a = self.a();
                 let a = self.sub_flags(0, a, false);
                 self.set_a(a);
                 8
             }
-            0x45 => { //RETN
+            0x45 => {
+                //RETN
                 let pc = self.pop(bus);
                 self.pc.set(pc);
                 14
             }
-            0x46 => { // /IM 0
+            0x46 => {
+                // /IM 0
                 self.im = InterruptMode::IM0;
                 8
             }
-            0x47 => { //LD I,A
+            0x47 => {
+                //LD I,A
                 self.i = self.a();
                 9
             }
-            0x48 => { //IN C,(C)
+            0x48 => {
+                //IN C,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -66,34 +75,40 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x49 => { //OUT (C),C
+            0x49 => {
+                //OUT (C),C
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.c());
                 12
             }
-            0x4a => { //ADC HL,BC
+            0x4a => {
+                //ADC HL,BC
                 let mut hl = self.hl.as_u16();
                 let bc = self.bc.as_u16();
                 hl = self.adc16_flags(hl, bc);
                 self.hl.set(hl);
                 15
             }
-            0x4b => { //LD BC,(nn)
+            0x4b => {
+                //LD BC,(nn)
                 let addr = self.fetch_u16(bus);
                 self.bc.set(bus.peek_u16(addr));
                 20
             }
-            0x4d => { //RETI
+            0x4d => {
+                //RETI
                 let pc = self.pop(bus);
                 self.pc.set(pc);
                 14
             }
-            0x4f => { //LD R,A
+            0x4f => {
+                //LD R,A
                 let a = self.a();
                 self.set_r(a);
                 9
             }
-            0x50 => { //IN D,(C)
+            0x50 => {
+                //IN D,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -104,28 +119,33 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x51 => { //OUT (C),D
+            0x51 => {
+                //OUT (C),D
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.d());
                 12
             }
-            0x52 => { //SBC HL,DE
+            0x52 => {
+                //SBC HL,DE
                 let mut hl = self.hl.as_u16();
                 let de = self.de.as_u16();
                 hl = self.sbc16_flags(hl, de);
                 self.hl.set(hl);
                 15
             }
-            0x53 => { //LD (nn),DE
+            0x53 => {
+                //LD (nn),DE
                 let addr = self.fetch_u16(bus);
                 bus.poke_u16(addr, self.de.as_u16());
                 20
             }
-            0x56 => { //IM 1
+            0x56 => {
+                //IM 1
                 self.im = InterruptMode::IM1;
                 8
             }
-            0x57 => { //LD A,I
+            0x57 => {
+                //LD A,I
                 let i = self.i;
                 let mut f = self.f();
                 f = set_flag8(f, FLAG_H, false);
@@ -136,7 +156,8 @@ impl Z80 {
                 self.set_f(f);
                 9
             }
-            0x58 => { //IN E,(C)
+            0x58 => {
+                //IN E,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -147,28 +168,33 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x59 => { //OUT (C),E
+            0x59 => {
+                //OUT (C),E
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.e());
                 12
             }
-            0x5a => { //ADC HL,DE
+            0x5a => {
+                //ADC HL,DE
                 let mut hl = self.hl.as_u16();
                 let de = self.de.as_u16();
                 hl = self.adc16_flags(hl, de);
                 self.hl.set(hl);
                 15
             }
-            0x5b => { //LD DE,(nn)
+            0x5b => {
+                //LD DE,(nn)
                 let addr = self.fetch_u16(bus);
                 self.de.set(bus.peek_u16(addr));
                 20
             }
-            0x5e => { //IM 2
+            0x5e => {
+                //IM 2
                 self.im = InterruptMode::IM2;
                 8
             }
-            0x5f => { //LD A,R
+            0x5f => {
+                //LD A,R
                 let r = self.r();
                 let mut f = self.f();
                 f = set_flag8(f, FLAG_H, false);
@@ -179,7 +205,8 @@ impl Z80 {
                 self.set_f(f);
                 9
             }
-            0x60 => { //IN H,(C)
+            0x60 => {
+                //IN H,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -190,23 +217,27 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x61 => { //OUT (C),H
+            0x61 => {
+                //OUT (C),H
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.h());
                 12
             }
-            0x62 => { //SBC HL,HL
+            0x62 => {
+                //SBC HL,HL
                 let mut hl = self.hl.as_u16();
                 hl = self.sbc16_flags(hl, hl);
                 self.hl.set(hl);
                 15
             }
-            0x63 => { //LD (nn),HL
+            0x63 => {
+                //LD (nn),HL
                 let addr = self.fetch_u16(bus);
                 bus.poke_u16(addr, self.hl.as_u16());
                 20
             }
-            0x67 => { //RRD
+            0x67 => {
+                //RRD
                 let x = bus.peek(self.hl);
                 let a = self.a();
                 let mut f = self.f();
@@ -220,7 +251,8 @@ impl Z80 {
                 bus.poke(self.hl, new_x);
                 18
             }
-            0x68 => { //IN L,(C)
+            0x68 => {
+                //IN L,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -231,23 +263,27 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x69 => { //OUT (C),L
+            0x69 => {
+                //OUT (C),L
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.l());
                 12
             }
-            0x6a => { //ADC HL,HL
+            0x6a => {
+                //ADC HL,HL
                 let mut hl = self.hl.as_u16();
                 hl = self.adc16_flags(hl, hl);
                 self.hl.set(hl);
                 15
             }
-            0x6b => { //LD HL,(nn)
+            0x6b => {
+                //LD HL,(nn)
                 let addr = self.fetch_u16(bus);
                 self.hl.set(bus.peek_u16(addr));
                 20
             }
-            0x6f => { //RLD
+            0x6f => {
+                //RLD
                 let x = bus.peek(self.hl);
                 let a = self.a();
                 let mut f = self.f();
@@ -261,30 +297,35 @@ impl Z80 {
                 bus.poke(self.hl, new_x);
                 18
             }
-            0x70 => { //IN F,(C)
+            0x70 => {
+                //IN F,(C)
                 let bc = self.bc.as_u16();
                 let b = bus.do_in(bc);
                 self.set_f(b);
                 12
             }
-            0x71 => { //OUT (C),F
+            0x71 => {
+                //OUT (C),F
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.f());
                 12
             }
-            0x72 => { //SBC HL,SP
+            0x72 => {
+                //SBC HL,SP
                 let mut hl = self.hl.as_u16();
                 let sp = self.sp.as_u16();
                 hl = self.sbc16_flags(hl, sp);
                 self.hl.set(hl);
                 15
             }
-            0x73 => { //LD (nn),SP
+            0x73 => {
+                //LD (nn),SP
                 let addr = self.fetch_u16(bus);
                 bus.poke_u16(addr, self.sp.as_u16());
                 20
             }
-            0x78 => { //IN A,(C)
+            0x78 => {
+                //IN A,(C)
                 let bc = self.bc.as_u16();
                 let mut f = self.f();
                 let b = bus.do_in(bc);
@@ -295,56 +336,68 @@ impl Z80 {
                 self.set_f(f);
                 12
             }
-            0x79 => { //OUT (C),A
+            0x79 => {
+                //OUT (C),A
                 let bc = self.bc.as_u16();
                 bus.do_out(bc, self.a());
                 12
             }
-            0x7a => { //ADC HL,SP
+            0x7a => {
+                //ADC HL,SP
                 let mut hl = self.hl.as_u16();
                 let sp = self.sp.as_u16();
                 hl = self.adc16_flags(hl, sp);
                 self.hl.set(hl);
                 15
             }
-            0x7b => { //LD SP,(nn)
+            0x7b => {
+                //LD SP,(nn)
                 let addr = self.fetch_u16(bus);
                 self.sp.set(bus.peek_u16(addr));
                 20
             }
-            0xa0 => { //LDI
+            0xa0 => {
+                //LDI
                 self.ldi_ldd(Direction::Inc, bus);
                 16
             }
-            0xa1 => { //CPI
+            0xa1 => {
+                //CPI
                 self.cpi_cpd(Direction::Inc, bus);
                 16
             }
-            0xa2 => { //INI
+            0xa2 => {
+                //INI
                 self.ini_ind(Direction::Inc, bus);
                 16
             }
-            0xa3 => { //OUTI
+            0xa3 => {
+                //OUTI
                 self.outi_outd(Direction::Inc, bus);
                 16
             }
-            0xa8 => { //LDD
+            0xa8 => {
+                //LDD
                 self.ldi_ldd(Direction::Dec, bus);
                 16
             }
-            0xa9 => { //CPD
+            0xa9 => {
+                //CPD
                 self.cpi_cpd(Direction::Dec, bus);
                 16
             }
-            0xaa => { //IND
+            0xaa => {
+                //IND
                 self.ini_ind(Direction::Dec, bus);
                 16
             }
-            0xab => { //OUTD
+            0xab => {
+                //OUTD
                 self.outi_outd(Direction::Dec, bus);
                 16
             }
-            0xb0 => { //LDIR
+            0xb0 => {
+                //LDIR
                 self.ldi_ldd(Direction::Inc, bus);
                 if self.bc.as_u16() != 0 {
                     self.pc -= 2;
@@ -353,7 +406,8 @@ impl Z80 {
                     16
                 }
             }
-            0xb1 => { //CPIR
+            0xb1 => {
+                //CPIR
                 let r = self.cpi_cpd(Direction::Inc, bus);
                 if self.bc.as_u16() != 0 && r != 0 {
                     self.pc -= 2;
@@ -362,7 +416,8 @@ impl Z80 {
                     16
                 }
             }
-            0xb2 => { //INIR
+            0xb2 => {
+                //INIR
                 let b = self.ini_ind(Direction::Inc, bus);
                 if b != 0 {
                     self.pc -= 2;
@@ -371,7 +426,8 @@ impl Z80 {
                     16
                 }
             }
-            0xb3 => { //OTIR
+            0xb3 => {
+                //OTIR
                 let b = self.outi_outd(Direction::Inc, bus);
                 if b != 0 {
                     self.pc -= 2;
@@ -380,7 +436,8 @@ impl Z80 {
                     16
                 }
             }
-            0xb8 => { //LDDR
+            0xb8 => {
+                //LDDR
                 self.ldi_ldd(Direction::Dec, bus);
                 if self.bc.as_u16() != 0 {
                     self.pc -= 2;
@@ -389,7 +446,8 @@ impl Z80 {
                     16
                 }
             }
-            0xb9 => { //CPDR
+            0xb9 => {
+                //CPDR
                 let r = self.cpi_cpd(Direction::Dec, bus);
                 if self.bc.as_u16() != 0 && r != 0 {
                     self.pc -= 2;
@@ -398,7 +456,8 @@ impl Z80 {
                     16
                 }
             }
-            0xba => { //INDR
+            0xba => {
+                //INDR
                 let b = self.ini_ind(Direction::Dec, bus);
                 if b != 0 {
                     self.pc -= 2;
@@ -407,7 +466,8 @@ impl Z80 {
                     16
                 }
             }
-            0xbb => { //OTDR
+            0xbb => {
+                //OTDR
                 let b = self.outi_outd(Direction::Dec, bus);
                 if b != 0 {
                     self.pc -= 2;
@@ -417,9 +477,13 @@ impl Z80 {
                 }
             }
             _ => {
-                log::warn!("unimplemented opcode ED {:02x} pc={:04x}", c, self.pc.as_u16());
+                log::warn!(
+                    "unimplemented opcode ED {:02x} pc={:04x}",
+                    c,
+                    self.pc.as_u16()
+                );
                 0
-            },
+            }
         }
     }
 }
