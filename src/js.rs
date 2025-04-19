@@ -36,19 +36,24 @@ macro_rules! alert {
 mod color {
     #[repr(C)]
     #[derive(Copy, Clone)]
-    pub struct Pixel(pub u8, pub u8, pub u8, pub u8);
+    pub struct Pixel {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    }
 
     const fn pixel(v: bool, c: u8) -> Pixel {
         let b = (c & 1) != 0;
         let r = (c & 2) != 0;
         let g = (c & 4) != 0;
         let x = if v { 0xff } else { 0xd7 };
-        Pixel(
-            if r { x } else { 0 },
-            if g { x } else { 0 },
-            if b { x } else { 0 },
-            0xff,
-        )
+        Pixel {
+            r: if r { x } else { 0 },
+            g: if g { x } else { 0 },
+            b: if b { x } else { 0 },
+            a: 0xff,
+        }
     }
     const fn lo(c: u8) -> Pixel {
         pixel(false, c)

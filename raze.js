@@ -177,7 +177,6 @@ async function onDocumentLoad() {
         console.log("TAPE=", tape);
         await fetch_with_cors_if_needed(tape,
             bytes => {
-                console.log(bytes);
                 if (bytes) {
                     if (g_is128k) {
                         call_with_delay(1500, 100, [
@@ -848,7 +847,6 @@ function handleTurbo(evt, persistent) {
 }
 
 function setTurbo(mode, persistent) {
-    console.log(mode, persistent);
     g_turbo = mode;
     g_turboPersistent = g_turbo && persistent;
     let turbo = document.getElementById('turbo');
