@@ -341,7 +341,11 @@ impl Psg {
     ) -> bool {
         if tone_enabled {
             let tone = freq.next_sample(t);
-            if noise_enabled { tone && noise } else { tone }
+            if noise_enabled {
+                tone && noise
+            } else {
+                tone
+            }
         } else if noise_enabled {
             noise
         } else {

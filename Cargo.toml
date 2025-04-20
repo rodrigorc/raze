@@ -1,43 +1,14 @@
-[package]
-name = "raze"
-version = "1.12.0"
-authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
-edition = "2024"
-description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
-repository = "https://github.com/rodrigorc/raze"
-license = "MIT"
-
 [workspace]
-members = ["xtask"]
+resolver = "3"
+members = [
+    "xtask",
+    "web",
+    "tools",
+    "raze",
+]
 
-[lib]
-crate-type=["cdylib"]
-
-[[bin]]
-name = "console"
-path = "src/main.rs"
-
-[[bin]]
-name = "dump_op"
-path = "src/dump_op.rs"
-required-features = ["dump_ops"]
-
-[profile.release]
+[profile.web]
+inherits = "release"
 lto = true
 panic = "abort"
-opt-level = 3
-overflow-checks = false
 
-[dependencies]
-zip = { version = "2.2.2", optional = true, default-features = false, features = ["deflate"] }
-wasm-bindgen = "0.2.85"
-anyhow = "1"
-log = "0.4"
-console_log = { version = "1", features = ["color"] }
-web-sys = "0.3"
-flate2 = { version = "1", optional = true }
-
-[features]
-default = ["compression"]
-compression = ["zip", "flate2"]
-dump_ops = []

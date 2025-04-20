@@ -3,7 +3,9 @@
 //But for the real thing we want the warning there, so it is disabled conditionally.
 #![cfg_attr(not(target_family = "wasm"), allow(dead_code))]
 
-use crate::game::{Game, Gui};
+use zxspectrum_raze as raze;
+
+use raze::{Game, Gui};
 use std::mem;
 use wasm_bindgen::prelude::*;
 

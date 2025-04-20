@@ -3,8 +3,8 @@ use crate::psg::Psg;
 use crate::rzx;
 use crate::speaker::Speaker;
 use crate::tape::{Tape, TapePos};
-use crate::z80::{self, Bus, Z80, Z80FileVersion};
-use anyhow::{Result, anyhow};
+use crate::z80::{self, Bus, Z80FileVersion, Z80};
+use anyhow::{anyhow, Result};
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Write};
 
@@ -386,7 +386,11 @@ fn write_screen_row<PIX: Copy>(
         pixels.fill_with(|| {
             let on = bits & 0x80 != 0;
             bits <<= 1;
-            if on { ink } else { paper }
+            if on {
+                ink
+            } else {
+                paper
+            }
         });
     }
 }
@@ -632,7 +636,6 @@ impl<GUI: Gui> Game<GUI> {
         //36
         data[37] = 3 | // R emulation | LDIR emulation
                    (if !self.is128k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
-        //psg
         if let Some(ref psg) = self.ula.psg {
             psg.snapshot(&mut data[38..55]);
         }

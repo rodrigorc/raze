@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::path::PathBuf;
 use xshell::Shell;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -29,13 +30,18 @@ fn help() -> Result<()> {
     Ok(())
 }
 
+fn ch_web(sh: &Shell) {
+    sh.change_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../web"));
+}
+
 fn do_pack(args: &[String]) -> Result<()> {
     let sh = Shell::new()?;
-    let mut mode = "--release";
+    ch_web(&sh);
+    let mut mode = "--profile=web";
     for arg in args {
         match arg.as_str() {
             "--debug" => mode = "--debug",
-            "--release" => mode = "--release",
+            "--release" => {}
             arg => return Err(format!("unknown argument '{}'", arg).into()),
         }
     }
@@ -50,6 +56,7 @@ fn do_pack(args: &[String]) -> Result<()> {
 
 fn do_deploy() -> Result<()> {
     let sh = Shell::new()?;
+    ch_web(&sh);
     let dst = sh.current_dir().join("DEMO");
     sh.create_dir(&dst)?;
     let pkg = dst.join("pkg");

@@ -1,1 +1,0 @@
-cargo run --target x86_64-unknown-linux-gnu --release --no-default-features --features="" --bin console -- "$@"

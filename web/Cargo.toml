@@ -1,0 +1,17 @@
+[package]
+name = "raze-web"
+version = "1.12.0"
+authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
+edition = "2021"
+description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"
+repository = "https://github.com/rodrigorc/raze"
+license = "MIT"
+
+[lib]
+crate-type=["cdylib"]
+
+[dependencies]
+zxspectrum-raze = { version = "*", path = "../raze" }
+wasm-bindgen = "0.2.85"
+console_log = { version = "1", features = ["color"] }
+log = "0.4"

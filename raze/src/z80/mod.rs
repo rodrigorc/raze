@@ -57,7 +57,11 @@ fn flag16(f: u16, bit: u16) -> bool {
 #[inline]
 #[must_use]
 fn set_flag8(f: u8, bit: u8, set: bool) -> u8 {
-    if set { f | bit } else { f & !bit }
+    if set {
+        f | bit
+    } else {
+        f & !bit
+    }
 }
 #[inline]
 #[must_use]

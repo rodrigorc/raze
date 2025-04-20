@@ -1,0 +1,8 @@
+[package]
+name = "tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zxspectrum-raze = { version = "0.1", path = "../raze", features = ["dump_ops"] }
+anyhow = "1"
