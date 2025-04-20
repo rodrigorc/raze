@@ -27,12 +27,6 @@ pub fn alert(s: impl AsRef<str>) {
     alert_slice(s);
 }
 
-macro_rules! alert {
-    ( $($e:tt)* ) => {
-        $crate::js::alert(format!($($e)*))
-    };
-}
-
 mod color {
     #[repr(C)]
     #[derive(Copy, Clone)]
@@ -122,7 +116,13 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_load_tape(game: *mut Game<JSGui>, data: Vec<u8>) -> usize {
         let game = unsafe { &mut *game };
-        game.tape_load(data)
+        match game.tape_load(data) {
+            Ok(blocks) => blocks,
+            Err(e) => {
+                alert(format!("Tape error: {}", e));
+                0
+            }
+        }
     }
     #[wasm_bindgen]
     pub fn wasm_tape_name(game: *mut Game<JSGui>, index: usize) -> String {
@@ -153,7 +153,7 @@ mod exports {
                 *old_game = new_game;
             }
             Err(e) => {
-                alert!("Snapshot error: {}", e);
+                alert(format!("Snapshot error: {}", e));
             }
         }
         old_game.is_128k()

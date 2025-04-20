@@ -1,6 +1,5 @@
-#[macro_use]
-pub mod js;
 mod game;
+mod js;
 mod memory;
 mod psg;
 mod rzx;

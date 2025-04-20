@@ -4,7 +4,7 @@ use crate::rzx;
 use crate::speaker::Speaker;
 use crate::tape::{Tape, TapePos};
 use crate::z80::{self, Bus, Z80, Z80FileVersion};
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Write};
 
@@ -562,22 +562,15 @@ impl<GUI: Gui> Game<GUI> {
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
     }
-    pub fn tape_load(&mut self, data: Vec<u8>) -> usize {
-        match Tape::new(Cursor::new(data), self.is128k) {
-            Ok(tape) => {
-                let res = tape.len();
-                if res > 0 {
-                    self.ula.tape = Some((tape, Some(TapePos::new_at_block(0))));
-                } else {
-                    self.ula.tape = None;
-                }
-                res
-            }
-            Err(e) => {
-                alert!("Tape error: {}", e);
-                0
-            }
+    pub fn tape_load(&mut self, data: Vec<u8>) -> Result<usize> {
+        let tape = Tape::new(Cursor::new(data), self.is128k)?;
+        let res = tape.len();
+        if res > 0 {
+            self.ula.tape = Some((tape, Some(TapePos::new_at_block(0))));
+        } else {
+            self.ula.tape = None;
         }
+        Ok(res)
     }
     pub fn tape_name(&self, index: usize) -> &str {
         match &self.ula.tape {
@@ -711,7 +704,7 @@ impl<GUI: Gui> Game<GUI> {
         }
         data
     }
-    pub fn load_snapshot(data: &[u8], gui: GUI) -> anyhow::Result<Game<GUI>> {
+    pub fn load_snapshot(data: &[u8], gui: GUI) -> Result<Game<GUI>> {
         let mut data = match snapshot_from_zip(data) {
             Ok(v) => Cow::Owned(v),
             Err(_) => Cow::Borrowed(data),
@@ -805,7 +798,7 @@ impl<GUI: Gui> Game<GUI> {
             Memory::new_from_bytes(ROM_48, None)
         };
 
-        fn uncompress(cdata: &[u8], bank: &mut [u8]) -> anyhow::Result<()> {
+        fn uncompress(cdata: &[u8], bank: &mut [u8]) -> Result<()> {
             let mut wbank = bank;
             let mut rdata = cdata.iter();
             let mut prev_ed = false;
@@ -935,7 +928,7 @@ impl<GUI: Gui> Game<GUI> {
 }
 
 #[cfg(feature = "zip")]
-fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
+fn snapshot_from_zip(data: &[u8]) -> Result<Vec<u8>> {
     let rdr = Cursor::new(data);
     let mut zip = zip::ZipArchive::new(rdr)?;
     for i in 0..zip.len() {
@@ -953,6 +946,6 @@ fn snapshot_from_zip(data: &[u8]) -> anyhow::Result<Vec<u8>> {
 }
 
 #[cfg(not(feature = "zip"))]
-fn snapshot_from_zip(_data: &[u8]) -> anyhow::Result<Vec<u8>> {
+fn snapshot_from_zip(_data: &[u8]) -> Result<Vec<u8>> {
     Err(anyhow!("ZIP format not supported"))
 }
