@@ -3,6 +3,7 @@
 //But for the real thing we want the warning there, so it is disabled conditionally.
 #![cfg_attr(not(target_family = "wasm"), allow(dead_code))]
 
+use color::Pixel;
 use zxspectrum_raze as raze;
 
 use raze::{Game, Gui};
@@ -25,7 +26,7 @@ extern "C" {
 
 pub fn alert(s: impl AsRef<str>) {
     let s = s.as_ref();
-    log::error!("{}", s);
+    log::error!("{s}");
     alert_slice(s);
 }
 
@@ -58,7 +59,7 @@ mod color {
         pixel(true, c)
     }
 
-    pub static PALETTE: [[Pixel; 8]; 2] = [
+    pub const PALETTE: [[Pixel; 8]; 2] = [
         [lo(0), lo(1), lo(2), lo(3), lo(4), lo(5), lo(6), lo(7)],
         [hi(0), hi(1), hi(2), hi(3), hi(4), hi(5), hi(6), hi(7)],
     ];
@@ -69,9 +70,8 @@ pub struct JSGui;
 impl Gui for JSGui {
     type Pixel = color::Pixel;
 
-    fn palette(&self) -> &[[Self::Pixel; 8]; 2] {
-        &color::PALETTE
-    }
+    const PALETTE: [[Pixel; 8]; 2] = color::PALETTE;
+
     fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]) {
         //Pixel is repr(C) just like [u8;4]
         let ptr = data.as_ptr() as *const u8;
@@ -96,7 +96,7 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_main(is128k: bool) -> *mut Game<JSGui> {
         let _ = console_log::init_with_level(log::Level::Debug);
-        let game = Box::new(Game::new(is128k, JSGui));
+        let game = Box::new(Game::new(is128k, &mut JSGui));
         Box::into_raw(game)
     }
     #[wasm_bindgen]
@@ -113,7 +113,7 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_draw_frame(game: *mut Game<JSGui>, turbo: bool) {
         let game = unsafe { &mut *game };
-        game.draw_frame(turbo);
+        game.draw_frame(turbo, &mut JSGui);
     }
     #[wasm_bindgen]
     pub fn wasm_load_tape(game: *mut Game<JSGui>, data: Vec<u8>) -> usize {
@@ -121,7 +121,7 @@ mod exports {
         match game.tape_load(data) {
             Ok(blocks) => blocks,
             Err(e) => {
-                alert(format!("Tape error: {}", e));
+                alert(format!("Tape error: {e}"));
                 0
             }
         }
@@ -139,7 +139,7 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_tape_seek(game: *mut Game<JSGui>, index: usize) {
         let game = unsafe { &mut *game };
-        game.tape_seek(index);
+        game.tape_seek(index, &mut JSGui);
     }
     #[wasm_bindgen]
     pub fn wasm_tape_stop(game: *mut Game<JSGui>) {
@@ -150,12 +150,12 @@ mod exports {
     pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> bool {
         let old_game = unsafe { &mut *game };
         log::debug!("snap len {}", data.len());
-        match Game::load_snapshot(data, JSGui) {
+        match Game::load_snapshot(data, &mut JSGui) {
             Ok(new_game) => {
                 *old_game = new_game;
             }
             Err(e) => {
-                alert(format!("Snapshot error: {}", e));
+                alert(format!("Snapshot error: {e}"));
             }
         }
         old_game.is_128k()
@@ -193,6 +193,6 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_stop_rzx_replay(game: *mut Game<JSGui>) {
         let game = unsafe { &mut *game };
-        game.stop_rzx_replay();
+        game.stop_rzx_replay(&mut JSGui);
     }
 }

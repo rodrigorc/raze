@@ -224,7 +224,7 @@ impl Rzx {
                 }
                 //Unknown
                 id => {
-                    log::warn!("rzx block id {:2x} is unknown", id);
+                    log::warn!("rzx block id {id:2x} is unknown");
                     let mut data = Vec::new();
                     f.read_to_end(&mut data)?;
                     Block::Unknown(UnknownBlock { id, data })
@@ -234,7 +234,7 @@ impl Rzx {
             //in case there are remaining data in this block
             let unk = f.drain()?;
             if unk != 0 {
-                log::warn!("rzx block 0x{:2x} with spare bytes {}", id, unk);
+                log::warn!("rzx block 0x{id:2x} with spare bytes {unk}");
             }
         }
         Ok(Rzx {

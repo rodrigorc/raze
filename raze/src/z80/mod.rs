@@ -202,6 +202,12 @@ pub enum Z80FileVersion {
 mod exec_cb;
 mod exec_ed;
 
+impl Default for Z80 {
+    fn default() -> Z80 {
+        Z80::new()
+    }
+}
+
 impl Z80 {
     pub fn new() -> Z80 {
         Z80 {

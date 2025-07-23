@@ -14,7 +14,7 @@ fn main() -> Result<()> {
         Some("deploy") => do_deploy(),
         Some(task) => {
             help()?;
-            Err(format!("Unknown xtask '{}'", task).into())
+            Err(format!("Unknown xtask '{task}'").into())
         }
     }
 }
@@ -42,7 +42,7 @@ fn do_pack(args: &[String]) -> Result<()> {
         match arg.as_str() {
             "--debug" => mode = "--debug",
             "--release" => {}
-            arg => return Err(format!("unknown argument '{}'", arg).into()),
+            arg => return Err(format!("unknown argument '{arg}'").into()),
         }
     }
     sh.cmd("wasm-pack")

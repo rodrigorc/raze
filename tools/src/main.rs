@@ -16,14 +16,11 @@ mod logger {
 
 struct ConsoleGui;
 
-static PALETTE: [[u8; 8]; 2] = [[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]];
-
 impl raze::Gui for ConsoleGui {
     type Pixel = u8;
 
-    fn palette(&self) -> &[[Self::Pixel; 8]; 2] {
-        &PALETTE
-    }
+    const PALETTE: [[u8; 8]; 2] = [[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]];
+
     fn on_rzx_running(&mut self, _running: bool, _percent: u32) {}
 
     fn on_tape_block(&mut self, _index: usize) {}
@@ -65,12 +62,12 @@ fn main() -> anyhow::Result<()> {
             let snap = std::fs::read(file)?;
             //dbg!(rzx::Rzx::new(&mut &snap[..])?);
 
-            let mut game = raze::Game::load_snapshot(&snap, ConsoleGui)?;
+            let mut game = raze::Game::load_snapshot(&snap, &mut ConsoleGui)?;
 
             //game.key_down(0x60);
 
             for _ in 0..1000 {
-                game.draw_frame(true);
+                game.draw_frame(true, &mut ConsoleGui);
             }
         }
     }

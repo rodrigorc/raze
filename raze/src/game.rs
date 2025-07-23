@@ -311,10 +311,10 @@ impl Bus for Ula {
 }
 
 pub trait Gui {
-    type Pixel: Copy;
-
+    type Pixel: Copy + 'static;
     //Palette of colors: 2 intensities, each with 8 basic colors
-    fn palette(&self) -> &[[Self::Pixel; 8]; 2];
+    const PALETTE: [[Self::Pixel; 8]; 2];
+
     fn on_rzx_running(&mut self, running: bool, percent: u32);
     fn on_tape_block(&mut self, index: usize);
     fn put_sound_data(&mut self, data: &[f32]);
@@ -327,7 +327,6 @@ pub struct Game<GUI: Gui> {
     ula: Ula,
     speaker: Speaker,
     image: [GUI::Pixel; SCREEN_SIZE],
-    gui: GUI,
 }
 
 fn write_border_row<PIX: Copy>(y: usize, border: PIX, ps: &mut [PIX]) {
@@ -428,7 +427,7 @@ fn t_per_sample(is_128k: bool) -> u32 {
 }
 
 impl<GUI: Gui> Game<GUI> {
-    pub fn new(is128k: bool, mut gui: GUI) -> Game<GUI> {
+    pub fn new(is128k: bool, gui: &mut GUI) -> Game<GUI> {
         log::info!("Go!");
         let memory;
         let psg;
@@ -459,14 +458,13 @@ impl<GUI: Gui> Game<GUI> {
                 rzx_info: None,
             },
             speaker: Speaker::new(t_per_sample(is128k)),
-            image: black_screen(gui.palette()),
-            gui,
+            image: black_screen(&GUI::PALETTE),
         }
     }
     pub fn is_128k(&self) -> bool {
         self.is128k
     }
-    pub fn draw_frame(&mut self, turbo: bool) {
+    pub fn draw_frame(&mut self, turbo: bool, gui: &mut GUI) {
         //log!("Draw!");
 
         let n = if turbo { 100 } else { 1 };
@@ -479,14 +477,13 @@ impl<GUI: Gui> Game<GUI> {
             while !self.ula.has_to_interrupt() {
                 let mut t = self.z80.exec(&mut self.ula);
                 //self.z80._dump_regs();
-                self.ula.update_time_after_exec(&mut t, &mut self.gui);
+                self.ula.update_time_after_exec(&mut t, gui);
 
                 if !turbo {
                     let sample = self.ula.audio_sample(t);
                     self.speaker.push_sample(sample, t);
                     //Border is never bright
-                    let palette = self.gui.palette();
-                    let border = palette[0][self.ula.border as usize];
+                    let border = GUI::PALETTE[0][self.ula.border as usize];
                     screen_time += t as i32;
                     while screen_time >= 224 {
                         screen_time -= 224;
@@ -501,7 +498,7 @@ impl<GUI: Gui> Game<GUI> {
                                     border,
                                     inverted,
                                     screen,
-                                    palette,
+                                    &GUI::PALETTE,
                                     &mut self.image,
                                 );
                             }
@@ -512,25 +509,23 @@ impl<GUI: Gui> Game<GUI> {
                 }
             }
             self.z80.interrupt();
-            self.ula.post_interrupt(&mut self.gui);
+            self.ula.post_interrupt(gui);
         }
         if turbo {
             let screen = self.ula.memory.video_memory();
             //Border is never bright
-            let palette = self.gui.palette();
-            let border = palette[0][self.ula.border as usize];
-            write_screen(border, palette, false, screen, &mut self.image);
+            let border = GUI::PALETTE[0][self.ula.border as usize];
+            write_screen(border, &GUI::PALETTE, false, screen, &mut self.image);
         } else {
             //adding samples should be rarely necessary, so use lazy generation
             let ula = &mut self.ula;
             let audio = self
                 .speaker
                 .complete_frame(TIME_TO_INT as u32, || ula.audio_sample(0));
-            self.gui.put_sound_data(audio);
+            gui.put_sound_data(audio);
             self.speaker.clear();
         }
-        self.gui
-            .put_image_data(SCREEN_WIDTH, SCREEN_HEIGHT, &self.image);
+        gui.put_image_data(SCREEN_WIDTH, SCREEN_HEIGHT, &self.image);
     }
     //Every byte in key is a key pressed:
     //  * low nibble: key number (0..5)
@@ -559,9 +554,9 @@ impl<GUI: Gui> Game<GUI> {
     pub fn poke(&mut self, addr: u16, value: u8) {
         self.ula.memory.poke(addr, value);
     }
-    pub fn stop_rzx_replay(&mut self) {
+    pub fn stop_rzx_replay(&mut self, gui: &mut GUI) {
         self.ula.rzx_info = None;
-        self.gui.on_rzx_running(false, 0);
+        gui.on_rzx_running(false, 0);
     }
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
@@ -576,6 +571,12 @@ impl<GUI: Gui> Game<GUI> {
         }
         Ok(res)
     }
+    pub fn tape_len_and_pos(&self) -> Option<(usize, Option<usize>)> {
+        self.ula
+            .tape
+            .as_ref()
+            .map(|(tape, pos)| (tape.len(), pos.as_ref().map(|p| p.real_block())))
+    }
     pub fn tape_name(&self, index: usize) -> &str {
         match &self.ula.tape {
             Some((tape, _)) => tape.block_name(index),
@@ -588,10 +589,10 @@ impl<GUI: Gui> Game<GUI> {
             None => false,
         }
     }
-    pub fn tape_seek(&mut self, index: usize) {
+    pub fn tape_seek(&mut self, index: usize, gui: &mut GUI) {
         self.ula.tape = match self.ula.tape.take() {
             Some((tape, _)) => {
-                self.gui.on_tape_block(index);
+                gui.on_tape_block(index);
                 Some((tape, Some(TapePos::new_at_block(index))))
             }
             None => None,
@@ -707,7 +708,7 @@ impl<GUI: Gui> Game<GUI> {
         }
         data
     }
-    pub fn load_snapshot(data: &[u8], gui: GUI) -> Result<Game<GUI>> {
+    pub fn load_snapshot(data: &[u8], gui: &mut GUI) -> Result<Game<GUI>> {
         let mut data = match snapshot_from_zip(data) {
             Ok(v) => Cow::Owned(v),
             Err(_) => Cow::Borrowed(data),
@@ -736,7 +737,7 @@ impl<GUI: Gui> Game<GUI> {
         let file_too_short_error = || anyhow!("invalid z80 format: file too short");
         let data_z80 = data.get(..34).ok_or_else(file_too_short_error)?;
         let (z80, version) = Z80::load_snapshot(data_z80)?;
-        log::debug!("z80 version {:?}", version);
+        log::debug!("z80 version {version:?}");
         let border = (data_z80[12] >> 1) & 7;
         let (hdr, mem) = match version {
             Z80FileVersion::V1 => (
@@ -889,7 +890,7 @@ impl<GUI: Gui> Game<GUI> {
                             return Err(anyhow!("unknown memory page: {} (128k={})", page, is128k));
                         }
                     };
-                    log::debug!("MEM {:02x}: {:04x}", ibank, memlen);
+                    log::debug!("MEM {ibank:02x}: {memlen:04x}");
                     let bank = memory.get_bank_mut(ibank);
                     if compressed {
                         uncompress(cdata, bank)?;
@@ -899,7 +900,7 @@ impl<GUI: Gui> Game<GUI> {
                 }
             }
         }
-        let mut game = Game {
+        let game = Game {
             is128k,
             z80,
             ula: Ula {
@@ -922,10 +923,9 @@ impl<GUI: Gui> Game<GUI> {
                 }),
             },
             speaker: Speaker::new(t_per_sample(is128k)),
-            image: black_screen(gui.palette()),
-            gui,
+            image: black_screen(&GUI::PALETTE),
         };
-        game.gui.on_rzx_running(game.ula.rzx_info.is_some(), 0);
+        gui.on_rzx_running(game.ula.rzx_info.is_some(), 0);
         Ok(game)
     }
 }
@@ -939,7 +939,7 @@ fn snapshot_from_zip(data: &[u8]) -> Result<Vec<u8>> {
         let name = ze.name();
         let lowname = name.to_ascii_lowercase();
         if lowname.ends_with(".z80") || lowname.ends_with(".rzx") {
-            log::debug!("unzipping Z80 {}", name);
+            log::debug!("unzipping Z80 {name}");
             let mut res = Vec::new();
             ze.read_to_end(&mut res)?;
             return Ok(res);
