@@ -465,8 +465,7 @@ impl<GUI: Gui> Game<GUI> {
         self.is128k
     }
     pub fn draw_frame(&mut self, turbo: bool, gui: &mut GUI) {
-        //log!("Draw!");
-
+        //log::info!("Draw!");
         let n = if turbo { 100 } else { 1 };
 
         for _ in 0..n {
@@ -571,11 +570,25 @@ impl<GUI: Gui> Game<GUI> {
         }
         Ok(res)
     }
-    pub fn tape_len_and_pos(&self) -> Option<(usize, Option<usize>)> {
-        self.ula
-            .tape
-            .as_ref()
-            .map(|(tape, pos)| (tape.len(), pos.as_ref().map(|p| p.real_block())))
+    /// If there is a tape loaded, it Returns the number of blocks and, if playing, the current block.
+    pub fn tape_len_and_pos(&self) -> Option<(usize, Option<(usize, f32)>)> {
+        self.ula.tape.as_ref().map(|(tape, pos)| {
+            (
+                tape.len(),
+                pos.as_ref().map(|p| {
+                    let block = p.real_block();
+                    let pos = p.position();
+                    use crate::tape::TapePhase::*;
+                    let percent = match *pos {
+                        Start => 0.0,
+                        Tones { .. } => 0.0,
+                        Data { pos, .. } => pos as f32 / tape.block_size(block) as f32,
+                        Pause => 1.0,
+                    };
+                    (block, percent)
+                }),
+            )
+        })
     }
     pub fn tape_name(&self, index: usize) -> &str {
         match &self.ula.tape {

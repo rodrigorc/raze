@@ -1127,6 +1127,9 @@ impl Tape {
     pub fn block_selectable(&self, index: usize) -> bool {
         self.blocks[index].selectable
     }
+    pub fn block_size(&self, index: usize) -> usize {
+        self.blocks[index].data.len()
+    }
 }
 
 #[derive(Debug)]
@@ -1267,5 +1270,8 @@ impl TapePos {
             res -= 1;
         }
         res
+    }
+    pub fn position(&self) -> &TapePhase {
+        &self.phase.1
     }
 }
