@@ -15,3 +15,4 @@ rustflags = [
 #easy-imgui-window = { path = "../easy-imgui-rs/easy-imgui-window" }
 #easy-imgui-filechooser = { path = "../easy-imgui-rs/easy-imgui-filechooser" }
 #easy-imgui-opengl = { path = "../easy-imgui-rs/easy-imgui-opengl" }
+#easy-imgui-sdl3 = { path = "../easy-imgui-rs/easy-imgui-sdl3" }
