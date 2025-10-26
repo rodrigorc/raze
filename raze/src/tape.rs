@@ -67,11 +67,8 @@ struct GeneralizedDataParams {
 
 impl Block {
     fn standard_data_block(data: Vec<u8>) -> Block {
-        let num_pilots = if *data.first().unwrap_or(&0) < 0x80 {
-            8063
-        } else {
-            3223
-        };
+        let is_header = *data.first().unwrap_or(&0) < 0x80;
+        let num_pilots = if is_header { 8063 } else { 3223 };
         Self::turbo_data_block(TurboDataParams {
             len_pilot: 2168,
             num_pilots,
@@ -80,7 +77,7 @@ impl Block {
             len_zero: 855,
             len_one: 1710,
             bits_last: 8,
-            pause: 3_500_000,
+            pause: 3_500_000 * if is_header { 1 } else { 2 },
             data,
         })
     }
