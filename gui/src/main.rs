@@ -30,6 +30,7 @@ struct App {
     gui: GameUi,
     cursor_mode: CursorMode,
     turbo: bool,
+    pause: bool,
     fullscreen: bool,
     snapshots: Vec<Snapshot>,
     snapshot_sel: Option<usize>,
@@ -233,6 +234,7 @@ impl raze::Gui for GameUi {
     fn put_sound_data(&mut self, data: &[f32]) {
         let mut ab = self.audio_buffer.lock().unwrap();
         ab.data.push_back(AudioBlock::from(data));
+        dbg!(data.len());
         //dbg!(ab.len());
     }
 
@@ -337,6 +339,7 @@ impl Application for App {
             gui,
             cursor_mode: CursorMode::CursorKeys,
             turbo: false,
+            pause: false,
             fullscreen: false,
             snapshots: Vec::new(),
             snapshot_sel: None,
@@ -422,10 +425,12 @@ enum UiAction {
 
 impl UiBuilder for App {
     fn pre_render(&mut self, _ctx: &mut easy_imgui::CurrentContext<'_>) {
-        while self.gui.audio_buffer.lock().unwrap().data.len() < 3 {
-            self.game.draw_frame(self.turbo, &mut self.gui);
-            if self.turbo {
-                break;
+        if !self.pause {
+            while self.gui.audio_buffer.lock().unwrap().data.len() < 3 {
+                self.game.draw_frame(self.turbo, &mut self.gui);
+                if self.turbo {
+                    break;
+                }
             }
         }
     }
@@ -440,6 +445,9 @@ impl UiBuilder for App {
 
         if ui.shortcut_ex(Key::F11, InputFlags::RouteGlobal) {
             self.fullscreen = !self.fullscreen;
+        }
+        if ui.shortcut_ex(Key::F2, InputFlags::RouteGlobal) {
+            self.pause = !self.pause;
         }
         if ui.is_key_down(Key::F10) {
             self.turbo = true;
@@ -653,6 +661,23 @@ impl UiBuilder for App {
                 if ui.button(lbl_id("Reset 48K", "reset_48")) {
                     ui_action = UiAction::Reset { is128k: false };
                 }
+                ui.with_push(
+                    if self.pause {
+                        Some([
+                            (ColorId::Button, Color::RED),
+                            (ColorId::ButtonHovered, Color::new(0.5, 0.0, 0.0, 1.0)),
+                            (ColorId::ButtonActive, Color::new(0.75, 0.0, 0.0, 1.0)),
+                        ])
+                    } else {
+                        None
+                    },
+                    || {
+                        if ui.button(lbl_id("Pause (F2)", "pause")) {
+                            self.pause = !self.pause;
+                        }
+                    },
+                );
+                ui.same_line();
                 ui.with_push(
                     if self.turbo {
                         Some([
