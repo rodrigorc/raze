@@ -1,13 +1,6 @@
 [alias]
 xtask = "run --package xtask --"
 
-[target.x86_64-unknown-linux-gnu]
-linker = "/usr/bin/clang"
-
-rustflags = [
-    "-C", "link-arg=--ld-path=wild"
-]
-
 [patch.crates-io]
 #easy-imgui = { path = "../easy-imgui-rs/easy-imgui" }
 #easy-imgui-sys = { path = "../easy-imgui-rs/easy-imgui-sys" }
