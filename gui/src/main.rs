@@ -3,7 +3,9 @@ use cpal::{SampleFormat, SampleRate, Stream, traits::DeviceTrait};
 use easy_imgui::{
     ChildFlags, Color, ColorId, Cond, Dir, DockNodeFlags, DrawFlags, InputFlags, Key, MouseCursor,
     SelectableFlags, TextWrapPos, TextureRef, UiBuilder, VEC2_ZERO, Vector2, WindowClass,
-    WindowFlags, id, lbl_id, vec2,
+    WindowFlags,
+    easy_imgui_sys::{self, ImVec2},
+    id, lbl_id, vec2,
 };
 use easy_imgui_filechooser::{FileChooser, glob};
 
@@ -13,6 +15,7 @@ use easy_imgui_opengl::{
 };
 use easy_imgui_sdl3::Application;
 use fancy_duration::FancyDuration;
+use fftw::plan::R2CPlan;
 use sdl3::video::{GLProfile, SwapInterval, WindowPos};
 use std::{
     cell::Cell,
@@ -94,6 +97,9 @@ struct GameUi {
     texture: Texture,
     size: Cell<Vector2>,
     audio_buffer: Arc<Mutex<AudioBuffer>>,
+    do_sound_ft: bool,
+    plan_ft: fftw::plan::R2CPlan32,
+    audio_ft: Vec<f32>,
     #[allow(dead_code)]
     audio: Stream,
 }
@@ -105,11 +111,13 @@ struct AudioBuffer {
 }
 
 struct AudioBlock {
-    // (22050 samples/s) / 50 (frames / s) = 440 samples / frame
+    // (22050 samples/s) / 50 (frames / s) = 440 samples / frame, approx.
     // round up to 500
     data: [f32; 500],
     length: usize,
 }
+
+const AUDIO_FT_BLOCK: usize = 430;
 
 impl Default for AudioBuffer {
     fn default() -> Self {
@@ -234,8 +242,20 @@ impl raze::Gui for GameUi {
     fn put_sound_data(&mut self, data: &[f32]) {
         let mut ab = self.audio_buffer.lock().unwrap();
         ab.data.push_back(AudioBlock::from(data));
-        dbg!(data.len());
-        //dbg!(ab.len());
+        if self.do_sound_ft
+            && let Some(data) = data.get(0..AUDIO_FT_BLOCK)
+        {
+            let mut fdata = fftw::array::AlignedVec::new(data.len());
+            fdata.copy_from_slice(data);
+            let mut ft = fftw::array::AlignedVec::new(data.len() / 2 + 1);
+            self.plan_ft.r2c(&mut fdata, &mut ft).unwrap();
+            self.audio_ft = ft[1..]
+                .iter()
+                .map(|c| c.norm()) // / 8.879 * (-0.2358 * (i + 1) as f32).exp() + 0.1954
+                .collect();
+        } else {
+            self.audio_ft = Vec::new();
+        }
     }
 
     fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]) {
@@ -313,7 +333,6 @@ impl Application for App {
                     move |data: &mut [f32], _info| {
                         let mut ab = audio_buffer.lock().unwrap();
                         ab.fill_buffer(data);
-                        //dbg!(ab.len());
                     }
                 },
                 |error| {
@@ -326,6 +345,13 @@ impl Application for App {
             texture,
             size: Cell::new(vec2(4.0, 3.0)),
             audio_buffer,
+            do_sound_ft: false,
+            plan_ft: fftw::plan::R2CPlan32::aligned(
+                std::slice::from_ref(&AUDIO_FT_BLOCK),
+                fftw::types::Flag::MEASURE,
+            )
+            .unwrap(),
+            audio_ft: Vec::new(),
             audio,
         };
 
@@ -503,29 +529,12 @@ impl UiBuilder for App {
                 builder.dock_window(id("tape"), d_tape);
                 builder.dock_window(id("snapshots"), d_tape);
                 builder.dock_window(id("control"), d_control);
+                builder.dock_window(id("sound"), d_control);
             });
         }
 
         //ui.show_demo_window(None);
 
-        let display_class = WindowClass::default()
-            .dock_node_flags(DockNodeFlags::NoDockingOverMe | DockNodeFlags::NoTabBar);
-        ui.set_next_window_class(&display_class);
-        ui.window_config(lbl_id("display", "display")).with(|| {
-            let mut pos = vec2(0.0, 0.0); //vp.pos();
-            let mut size = ui.get_content_region_avail();
-            if size.x * gui_size.y > size.y * gui_size.x {
-                let x = size.y * gui_size.x / gui_size.y;
-                pos.x += (size.x - x) / 2.0;
-                size.x = x;
-            } else {
-                let y = size.x * gui_size.y / gui_size.x;
-                pos.y += (size.y - y) / 2.0;
-                size.y = y;
-            }
-            ui.set_cursor_screen_pos(ui.get_cursor_screen_pos() + pos);
-            ui.image_config(tex_image, size).build();
-        });
         ui.window_config(lbl_id("Tape", "tape")).with(|| {
             if ui.button(lbl_id("Load...", "load")) {
                 ui_action = UiAction::TapeLoadDlg;
@@ -722,6 +731,44 @@ impl UiBuilder for App {
                     &mut self.cursor_mode,
                 );
             });
+
+        let maybe_sound = ui.window_config(lbl_id("Sound", "sound")).with(|| {
+            if !self.gui.audio_ft.is_empty() {
+                unsafe {
+                    easy_imgui_sys::ImGui_PlotLines(
+                        id("sound").into().as_ptr(),
+                        self.gui.audio_ft.as_ptr(),
+                        self.gui.audio_ft.len() as i32,
+                        0,
+                        std::ptr::null(),
+                        0.0,
+                        2.0,
+                        ImVec2 { x: -1.0, y: -1.0 },
+                        std::mem::size_of::<f32>() as i32,
+                    );
+                }
+            }
+        });
+        self.gui.do_sound_ft = maybe_sound.is_some();
+
+        let display_class = WindowClass::default()
+            .dock_node_flags(DockNodeFlags::NoDockingOverMe | DockNodeFlags::NoTabBar);
+        ui.set_next_window_class(&display_class);
+        ui.window_config(lbl_id("display", "display")).with(|| {
+            let mut pos = vec2(0.0, 0.0); //vp.pos();
+            let mut size = ui.get_content_region_avail();
+            if size.x * gui_size.y > size.y * gui_size.x {
+                let x = size.y * gui_size.x / gui_size.y;
+                pos.x += (size.x - x) / 2.0;
+                size.x = x;
+            } else {
+                let y = size.x * gui_size.y / gui_size.x;
+                pos.y += (size.y - y) / 2.0;
+                size.y = y;
+            }
+            ui.set_cursor_screen_pos(ui.get_cursor_screen_pos() + pos);
+            ui.image_config(tex_image, size).build();
+        });
 
         if let Some(file_dialog) = &mut self.file_dialog {
             let mut open = true;
