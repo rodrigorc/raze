@@ -1786,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "raze-web"
-version = "1.12.0"
+version = "1.13.0"
 dependencies = [
  "console_log",
  "log",
