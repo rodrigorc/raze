@@ -530,6 +530,7 @@ impl UiBuilder for App {
                 builder.dock_window(id("snapshots"), d_tape);
                 builder.dock_window(id("control"), d_control);
                 builder.dock_window(id("sound"), d_control);
+                builder.dock_window(id("psg"), d_control);
             });
         }
 
@@ -750,6 +751,58 @@ impl UiBuilder for App {
             }
         });
         self.gui.do_sound_ft = maybe_sound.is_some();
+
+        ui.window_config(lbl_id("AY-3-8910", "psg")).with(|| {
+            if let Some(d) = self.game.psg_status() {
+                let fa = u16::from_le_bytes([d[1], d[2]]);
+                let fb = u16::from_le_bytes([d[3], d[4]]);
+                let fc = u16::from_le_bytes([d[5], d[6]]);
+                let va = d[9] & 0x0f;
+                let vb = d[10] & 0x0f;
+                let vc = d[11] & 0x0f;
+                let flags = d[8];
+
+                let canvas_p0 = ui.get_cursor_screen_pos();
+                let canvas_sz = ui.get_content_region_avail();
+                let canvas_sz = vec2(canvas_sz.x.max(50.0), canvas_sz.y.max(50.0));
+                let canvas_p1 = canvas_p0 + canvas_sz;
+                let draw_list = ui.window_draw_list();
+                draw_list.add_rect_filled(
+                    canvas_p0,
+                    canvas_p1,
+                    Color::new(0.25, 0.25, 0.25, 1.0),
+                    0.0,
+                    DrawFlags::None,
+                );
+                draw_list.add_rect(
+                    canvas_p0,
+                    canvas_p1,
+                    Color::WHITE,
+                    0.0,
+                    DrawFlags::None,
+                    1.0,
+                );
+
+                for (act, f, v, c) in [
+                    (1, fa, va, Color::new(1.0, 0.0, 0.0, 0.75)),
+                    (2, fb, vb, Color::new(0.0, 1.0, 0.0, 0.75)),
+                    (4, fc, vc, Color::new(0.0, 0.0, 1.0, 0.75)),
+                ] {
+                    if (flags & act) != 0 {
+                        continue;
+                    }
+                    let f = (3_546_900.0 / 32.0 / f.max(1) as f32)
+                        .log10()
+                        .max(2.0)
+                        .min(4.0)
+                        - 2.0;
+                    let x = canvas_p0.x + canvas_sz.x * f / 2.0 + canvas_sz.y / 2.0;
+                    let y = canvas_p0.y + canvas_sz.y / 2.0;
+                    let r = canvas_sz.y / 2.0 * v as f32 / 20.0;
+                    draw_list.add_circle_filled(vec2(x, y), r, c, 16);
+                }
+            }
+        });
 
         let display_class = WindowClass::default()
             .dock_node_flags(DockNodeFlags::NoDockingOverMe | DockNodeFlags::NoTabBar);

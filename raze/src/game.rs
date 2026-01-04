@@ -464,6 +464,13 @@ impl<GUI: Gui> Game<GUI> {
     pub fn is_128k(&self) -> bool {
         self.is128k
     }
+    pub fn psg_status(&self) -> Option<[u8; 17]> {
+        self.ula.psg.as_ref().map(|psg| {
+            let mut res = [0; 17];
+            psg.snapshot(&mut res);
+            res
+        })
+    }
     pub fn draw_frame(&mut self, turbo: bool, gui: &mut GUI) {
         //log::info!("Draw!");
         let n = if turbo { 100 } else { 1 };
