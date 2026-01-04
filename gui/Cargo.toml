@@ -5,11 +5,11 @@ edition = "2024"
 
 [dependencies]
 zxspectrum-raze = { version = "*", path = "../raze" }
-easy-imgui = "0.19"
-easy-imgui-sdl3 = "0.19"
+easy-imgui = "0.20"
+easy-imgui-sdl3 = "0.20"
 easy-imgui-opengl = "0.2"
 easy-imgui-filechooser = "0.3"
-cpal = "0.16"
+cpal = "0.17"
 anyhow = "1.0.98"
 sdl3 = "0.16.1"
 thiserror = "2.0.17"

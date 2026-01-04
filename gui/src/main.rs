@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cpal::{SampleFormat, SampleRate, Stream, traits::DeviceTrait};
+use cpal::{SampleFormat, Stream, traits::DeviceTrait};
 use easy_imgui::{
     ChildFlags, Color, ColorId, Cond, Dir, DockNodeFlags, DrawFlags, InputFlags, Key, MouseCursor,
     SelectableFlags, TextWrapPos, TextureRef, UiBuilder, VEC2_ZERO, Vector2, WindowClass,
@@ -320,7 +320,7 @@ impl Application for App {
         let output_config = cfs
             .find(|c| c.channels() == 1 && c.sample_format() == SampleFormat::F32)
             .expect("no compatible audio configuration");
-        let output_config = output_config.with_sample_rate(SampleRate(22050));
+        let output_config = output_config.with_sample_rate(22050);
         let mut snd_cfg = output_config.config();
         snd_cfg.buffer_size = cpal::BufferSize::Fixed(512);
 
