@@ -37,7 +37,7 @@ fn ch_web(sh: &Shell) {
 fn do_pack(args: &[String]) -> Result<()> {
     let sh = Shell::new()?;
     ch_web(&sh);
-    let mut mode = "--profile=web";
+    let mut mode = "--release";
     for arg in args {
         match arg.as_str() {
             "--debug" => mode = "--debug",
@@ -45,11 +45,14 @@ fn do_pack(args: &[String]) -> Result<()> {
             arg => return Err(format!("unknown argument '{arg}'").into()),
         }
     }
+
     sh.cmd("wasm-pack")
         .arg("build")
         .arg("--no-typescript")
         .arg("--target=web")
         .arg(mode)
+        .env("CARGO_PROFILE_RELEASE_LTO", "true")
+        .env("CARGO_PROFILE_RELEASE_PANIC", "abort")
         .run()?;
     Ok(())
 }
@@ -67,8 +70,8 @@ fn do_deploy() -> Result<()> {
     sh.copy_file("raze.css", &dst)?;
     sh.copy_file("favicon.png", &dst)?;
     sh.copy_file("base64.js", &dst)?;
-    sh.copy_file("pkg/raze_bg.wasm", &pkg)?;
-    sh.copy_file("pkg/raze.js", &pkg)?;
+    sh.copy_file("pkg/raze_web_bg.wasm", &pkg)?;
+    sh.copy_file("pkg/raze_web.js", &pkg)?;
     println!("Deployed to {:?}! 👍", dst.to_string_lossy());
     Ok(())
 }
