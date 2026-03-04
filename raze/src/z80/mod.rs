@@ -701,6 +701,7 @@ impl Z80 {
             Direction::Inc => self.hl += 1,
             Direction::Dec => self.hl -= 1,
         };
+        // Decrement B *after* the IO
         let b = self.b().wrapping_sub(1);
         self.set_b(b);
         let mut f = self.f();
@@ -712,13 +713,14 @@ impl Z80 {
     // Reads 8-bit from (HL), writes it to IO port BC, increment/decrement HL, then decrements B
     fn outi_outd(&mut self, dir: Direction, bus: &mut impl Bus) -> u8 {
         let x = bus.peek(self.hl);
+        // Decrement B *before* the IO
+        let b = self.b().wrapping_sub(1);
+        self.set_b(b);
         bus.do_out(self.bc.as_u16(), x);
         match dir {
             Direction::Inc => self.hl += 1,
             Direction::Dec => self.hl -= 1,
         };
-        let b = self.b().wrapping_sub(1);
-        self.set_b(b);
         let mut f = self.f();
         f = set_flag8(f, FLAG_N | FLAG_S, flag8(b, 0x80));
         f = set_flag8(f, FLAG_Z, b == 0);
