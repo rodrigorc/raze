@@ -324,10 +324,11 @@ impl Application for App {
         let mut snd_cfg = output_config.config();
         snd_cfg.buffer_size = cpal::BufferSize::Fixed(512);
 
+        log::info!("{snd_cfg:#?}");
         let audio_buffer = Arc::new(Mutex::new(AudioBuffer::default()));
         let audio = snd_dev
             .build_output_stream(
-                dbg!(&snd_cfg),
+                &snd_cfg,
                 {
                     let audio_buffer = Arc::clone(&audio_buffer);
                     move |data: &mut [f32], _info| {
@@ -1154,6 +1155,11 @@ impl App {
 }
 
 fn main() {
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
+        .init();
+
     let sdl = sdl3::init().unwrap();
     sdl3::hint::set(sdl3::hint::names::QUIT_ON_LAST_WINDOW_CLOSE, "0");
 

@@ -213,6 +213,7 @@ impl Memory {
                 }
                 _ => unreachable!(),
             }
+            //log::info!("BANKS {:?}", self.banks);
         } else {
             // normal mode
             let rom0 = {

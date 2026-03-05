@@ -1,3 +1,4 @@
+use crate::floppy::Floppy;
 use crate::memory::Memory;
 use crate::psg::Psg;
 use crate::rzx;
@@ -43,6 +44,7 @@ struct Ula {
     ear: bool,
     mic: bool,
     psg: Option<Psg>,
+    floppy: Option<Floppy>,
     fetch_count: u32,
     rzx_info: Option<RzxInfo>,
 }
@@ -197,16 +199,27 @@ impl Bus for Ula {
             }
             match lo {
                 0xfd => {
-                    //Programmable Sound Generator
-                    if let Some(psg) = &self.psg {
-                        #[allow(clippy::single_match)]
-                        match hi {
-                            0xff => {
+                    match hi {
+                        // Programmable Sound Generator
+                        0xff => {
+                            if let Some(psg) = &self.psg {
                                 r = psg.read_reg();
                             }
-                            _ => {
-                                //log!("FD IN {:04x}, {:02x}", port, r);
+                        }
+                        // Disk controller
+                        0x2f => {
+                            if let Some(floppy) = &mut self.floppy {
+                                r = floppy.read_status();
                             }
+                        }
+                        // Disk controller
+                        0x3f => {
+                            if let Some(floppy) = &mut self.floppy {
+                                r = floppy.read_cmd();
+                            }
+                        }
+                        _ => {
+                            log::info!("IN {:04x}, {:02x}", port, r);
                         }
                     }
                 }
@@ -229,7 +242,7 @@ impl Bus for Ula {
                     r = self.keys[8];
                 }
                 _ => {
-                    //log!("IN {:04x}, {:02x}", port, r);
+                    log::info!("IN {:04x}, {:02x}", port, r);
                 }
             }
         }
@@ -260,12 +273,12 @@ impl Bus for Ula {
                     match hi {
                         0x7f => {
                             //Memory banks
-                            //log!("MEM {:04x}, {:02x}", port, value);
+                            //log::info!("MEM {:04x}, {:02x}", port, value);
                             self.memory.switch_banks(value);
                         }
                         0x1f => {
                             //+2 Memory banks
-                            //log!("MEM+2 {:04x}, {:02x}", port, value);
+                            //log::info!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
                         }
                         0xff => {
@@ -278,6 +291,17 @@ impl Bus for Ula {
                                 psg.write_reg(value);
                             }
                         }
+                        0x2f => {
+                            // THIS shouldn't happen
+                            log::info!("O FS XXX {:04x}, {:02x}", port, value);
+                        }
+                        0x3f => {
+                            if let Some(floppy) = &mut self.floppy {
+                                floppy.write_cmd(value);
+                            }
+                        }
+                        /*
+                        TODO check proper bits
                         hi if (hi & 0x80) == 0 => {
                             //same as 0x7f
                             //log!("MEM {:04x}, {:02x}", port, value);
@@ -288,13 +312,14 @@ impl Bus for Ula {
                             //log!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
                         }
+                        */
                         _ => {
-                            //log!("FD OUT {:04x}, {:02x}", port, value);
+                            //log::info!("FD OUT {:04x}, {:02x}", port, value);
                         }
                     }
                 }
                 _ => {
-                    //log!("OUT {:04x}, {:02x}", port, value);
+                    log::info!("OUT {:04x}, {:02x}", port, value);
                 }
             }
         }
@@ -436,12 +461,13 @@ impl<GUI: Gui> Game<GUI> {
     pub fn new(model: Model, gui: &mut GUI) -> Game<GUI> {
         log::info!("Go!");
         let memory = Memory::new_from_model(model);
-        let psg = match model {
-            Model::Spec48k => None,
-            Model::Spec128k | Model::Plus3 => Some(Psg::new()),
+        let (psg, floppy) = match model {
+            Model::Spec48k => (None, None),
+            Model::Spec128k => (Some(Psg::new()), None),
+            Model::Plus3 => (Some(Psg::new()), Some(Floppy::new())),
         };
         gui.on_rzx_running(false, 0);
-        Game::from_parts(model, Z80::new(), memory, 0, psg)
+        Game::from_parts(model, Z80::new(), memory, 0, psg, floppy)
     }
 
     fn from_parts(
@@ -450,6 +476,7 @@ impl<GUI: Gui> Game<GUI> {
         memory: Memory,
         border: u8,
         psg: Option<Psg>,
+        floppy: Option<Floppy>,
     ) -> Game<GUI> {
         Game {
             model,
@@ -465,6 +492,7 @@ impl<GUI: Gui> Game<GUI> {
                 ear: false,
                 mic: false,
                 psg,
+                floppy,
                 fetch_count: 0,
                 rzx_info: None,
             },
@@ -949,7 +977,12 @@ impl<GUI: Gui> Game<GUI> {
             }
         }
 
-        let mut game = Game::from_parts(model, z80, memory, border, psg);
+        // The floppy drive registers are not stored in the snapshot, as far as I know.
+        let floppy = match model {
+            Model::Plus3 => Some(Floppy::new()),
+            Model::Spec48k | Model::Spec128k => None,
+        };
+        let mut game = Game::from_parts(model, z80, memory, border, psg, floppy);
 
         game.ula.rzx_info = rzx_input.map(|frames| RzxInfo {
             frames,
