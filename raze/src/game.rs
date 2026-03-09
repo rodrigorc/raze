@@ -440,8 +440,17 @@ impl<GUI: Gui> Game<GUI> {
             Model::Spec48k => None,
             Model::Spec128k | Model::Plus3 => Some(Psg::new()),
         };
-        let z80 = Z80::new();
         gui.on_rzx_running(false, 0);
+        Game::from_parts(model, Z80::new(), memory, 0, psg)
+    }
+
+    fn from_parts(
+        model: Model,
+        z80: Z80,
+        memory: Memory,
+        border: u8,
+        psg: Option<Psg>,
+    ) -> Game<GUI> {
         Game {
             model,
             z80,
@@ -452,7 +461,7 @@ impl<GUI: Gui> Game<GUI> {
                 frame_counter: 0,
                 time: 0,
                 tape: None,
-                border: 0,
+                border,
                 ear: false,
                 mic: false,
                 psg,
@@ -463,6 +472,7 @@ impl<GUI: Gui> Game<GUI> {
             image: black_screen(&GUI::PALETTE),
         }
     }
+
     pub fn model(&self) -> Model {
         self.model
     }
@@ -932,32 +942,18 @@ impl<GUI: Gui> Game<GUI> {
                 }
             }
         }
-        let game = Game {
-            model,
-            z80,
-            ula: Ula {
-                memory,
-                keys: Default::default(),
-                delay: 0,
-                frame_counter: 0,
-                time: 0,
-                tape: None,
-                border,
-                ear: false,
-                mic: false,
-                psg,
-                fetch_count: 0,
-                rzx_info: rzx_input.map(|frames| RzxInfo {
-                    frames,
-                    frame_idx: 0,
-                    frame_data_idx: 0,
-                    in_idx: 0,
-                }),
-            },
-            speaker: Speaker::new(t_per_sample(model)),
-            image: black_screen(&GUI::PALETTE),
-        };
-        gui.on_rzx_running(game.ula.rzx_info.is_some(), 0);
+
+        let mut game = Game::from_parts(model, z80, memory, border, psg);
+
+        game.ula.rzx_info = rzx_input.map(|frames| RzxInfo {
+            frames,
+            frame_idx: 0,
+            frame_data_idx: 0,
+            in_idx: 0,
+        });
+        if game.ula.rzx_info.is_some() {
+            gui.on_rzx_running(true, 0);
+        }
         Ok(game)
     }
 }
