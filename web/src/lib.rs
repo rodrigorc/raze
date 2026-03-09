@@ -91,12 +91,20 @@ impl Gui for JSGui {
 }
 
 mod exports {
+    use zxspectrum_raze::Model;
+
     use super::*;
 
     #[wasm_bindgen]
-    pub fn wasm_main(is128k: bool) -> *mut Game<JSGui> {
+    pub fn wasm_main(model: i32) -> *mut Game<JSGui> {
+        let model = match model {
+            0 => Model::Spec48k,
+            1 => Model::Spec128k,
+            2 => Model::Plus3,
+            _ => Model::Spec128k,
+        };
         let _ = console_log::init_with_level(log::Level::Debug);
-        let game = Box::new(Game::new(is128k, &mut JSGui));
+        let game = Box::new(Game::new(model, &mut JSGui));
         Box::into_raw(game)
     }
     #[wasm_bindgen]
@@ -147,7 +155,7 @@ mod exports {
         game.tape_stop();
     }
     #[wasm_bindgen]
-    pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> bool {
+    pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> i32 {
         let old_game = unsafe { &mut *game };
         log::debug!("snap len {}", data.len());
         match Game::load_snapshot(data, &mut JSGui) {
@@ -158,7 +166,11 @@ mod exports {
                 alert(format!("Snapshot error: {e}"));
             }
         }
-        old_game.is_128k()
+        match old_game.model() {
+            Model::Spec48k => 0,
+            Model::Spec128k => 1,
+            Model::Plus3 => 2,
+        }
     }
     #[wasm_bindgen]
     pub fn wasm_snapshot(game: *mut Game<JSGui>) -> Vec<u8> {

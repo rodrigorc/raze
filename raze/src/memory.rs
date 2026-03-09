@@ -1,3 +1,5 @@
+use crate::game::Model;
+
 struct Bank {
     data: [u8; 0x4000],
     ro: bool,
@@ -30,11 +32,38 @@ pub struct Memory {
     last_banks_plus2: u8,
 }
 
+static ROM_48: &[u8] = include_bytes!("48k.rom");
+static ROM_128_0: &[u8] = include_bytes!("128-0.rom");
+static ROM_128_1: &[u8] = include_bytes!("128-1.rom");
+static ROM_PLUS3_0: &[u8] = include_bytes!("pl3-0.rom");
+static ROM_PLUS3_1: &[u8] = include_bytes!("pl3-1.rom");
+static ROM_PLUS3_2: &[u8] = include_bytes!("pl3-2.rom");
+static ROM_PLUS3_3: &[u8] = include_bytes!("pl3-3.rom");
+
+#[derive(Copy, Clone)]
+pub enum RomBlob {
+    R48k(&'static [u8]),
+    R128k(&'static [u8], &'static [u8]),
+    Plus3(&'static [u8], &'static [u8], &'static [u8], &'static [u8]),
+}
+
 impl Memory {
-    pub fn new_from_bytes(rom0: &[u8], rom1: Option<&[u8]>) -> Self {
-        match rom1 {
-            None => {
-                //48k
+    pub fn new_from_model(model: Model) -> Self {
+        match model {
+            Model::Spec48k => Self::new_from_rom(RomBlob::R48k(ROM_48)),
+            Model::Spec128k => Self::new_from_rom(RomBlob::R128k(ROM_128_0, ROM_128_1)),
+            Model::Plus3 => Self::new_from_rom(RomBlob::Plus3(
+                ROM_PLUS3_0,
+                ROM_PLUS3_1,
+                ROM_PLUS3_2,
+                ROM_PLUS3_3,
+            )),
+        }
+    }
+
+    pub fn new_from_rom(rom: RomBlob) -> Self {
+        match rom {
+            RomBlob::R48k(rom0) => {
                 let data = vec![
                     Bank::rom(rom0),
                     Bank::ram(true),
@@ -51,8 +80,7 @@ impl Memory {
                     last_banks_plus2: 0,
                 }
             }
-            Some(rom1) => {
-                //128k
+            RomBlob::R128k(rom0, rom1) => {
                 let data = vec![
                     Bank::ram(false),
                     Bank::ram(true),
@@ -62,8 +90,33 @@ impl Memory {
                     Bank::ram(true),
                     Bank::ram(false),
                     Bank::ram(true),
-                    Bank::rom(rom0), //8: is the 128k rom
-                    Bank::rom(rom1), //9: is the 128k-48k compatible rom
+                    Bank::rom(rom0), //8: 128k rom
+                    Bank::rom(rom1), //9: 128k-48k compatible rom
+                ];
+                Memory {
+                    data,
+                    banks: [8, 5, 2, 0],
+                    vram: 5,
+                    locked: false,
+                    delay: 0,
+                    last_banks: 0,
+                    last_banks_plus2: 0,
+                }
+            }
+            RomBlob::Plus3(rom0, rom1, rom2, rom3) => {
+                let data = vec![
+                    Bank::ram(false),
+                    Bank::ram(false),
+                    Bank::ram(false),
+                    Bank::ram(false),
+                    Bank::ram(true),
+                    Bank::ram(true),
+                    Bank::ram(true),
+                    Bank::ram(true),
+                    Bank::rom(rom0), //8: 128K editor
+                    Bank::rom(rom1), //9: 128K syntax checker
+                    Bank::rom(rom2), //10: +3 DOS
+                    Bank::rom(rom3), //11: 128k-48k compatible rom
                 ];
                 Memory {
                     data,
@@ -126,27 +179,22 @@ impl Memory {
     pub fn video_memory(&self) -> &[u8] {
         &self.data[self.vram].data[..32 * 192 + 32 * 24]
     }
-    pub fn switch_banks(&mut self, v: u8) {
-        if self.locked {
-            log::warn!("mem locked");
-            return;
-        }
-        self.banks[3] = (v & 0x07) as usize;
-        self.vram = if v & 0x08 == 0 { 5 } else { 7 };
-        self.banks[0] = if v & 0x10 == 0 { 8 } else { 9 };
-        if v & 0x20 != 0 {
-            self.locked = true;
-        }
-        self.last_banks = v;
+
+    // Use this to load a snapshot
+    pub fn restore_banks(&mut self, v1: u8, v2: u8) {
+        // Restoring exactly in this order will do the lock as the last operation
+        self.last_banks = v1;
+        self.last_banks_plus2 = v2;
+        self.update_banks();
     }
-    pub fn switch_banks_plus2(&mut self, v: u8) {
-        if self.locked {
-            log::warn!("mem locked");
-            return;
-        }
-        //special mode
-        if v & 1 != 0 {
-            let mode = (v >> 1) & 0x03;
+
+    fn update_banks(&mut self) {
+        let v1 = self.last_banks;
+        let v2 = self.last_banks_plus2;
+
+        if v2 & 1 != 0 {
+            // special mode
+            let mode = (v2 >> 1) & 0x03;
             match mode {
                 0 => {
                     self.banks = [0, 1, 2, 3];
@@ -163,12 +211,46 @@ impl Memory {
                 _ => unreachable!(),
             }
         } else {
-            self.banks = [8, 5, 2, 0];
-            let v0 = self.last_banks;
-            self.switch_banks(v0);
+            // normal mode
+            let rom0 = {
+                // 128K has 2 roms, Plus3 has 4 roms.
+                // Ignore bit1 if there are no enough ROMs loaded.
+                let bit1 = if self.data.len() == 12 {
+                    v2 & 0x04 != 0
+                } else {
+                    false
+                };
+                let bit0 = v1 & 0x10 != 0;
+                8 + 2 * bit1 as usize + bit0 as usize
+            };
+            let ram3 = (v1 & 0x07) as usize;
+            self.banks = [rom0, 5, 2, ram3];
+            self.vram = if v1 & 0x08 == 0 { 5 } else { 7 };
         }
-        self.last_banks_plus2 = v;
+
+        if v1 & 0x20 != 0 {
+            self.locked = true;
+        }
     }
+
+    pub fn switch_banks(&mut self, v1: u8) {
+        if self.locked {
+            log::warn!("mem locked");
+            return;
+        }
+        self.last_banks = v1;
+        self.update_banks();
+    }
+
+    pub fn switch_banks_plus2(&mut self, v2: u8) {
+        if self.locked {
+            log::warn!("mem locked");
+            return;
+        }
+        self.last_banks_plus2 = v2;
+        self.update_banks();
+    }
+
     pub fn last_banks(&self) -> u8 {
         self.last_banks
     }

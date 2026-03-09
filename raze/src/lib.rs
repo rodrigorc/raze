@@ -6,5 +6,5 @@ mod speaker;
 mod tape;
 mod z80;
 
-pub use game::{Game, Gui};
+pub use game::{Game, Gui, Model};
 pub use z80::Z80;

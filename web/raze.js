@@ -3,7 +3,7 @@ import raze_init, * as wasm_bindgen from "./pkg/raze_web.js";
 import * as base64 from "./base64.js";
 
 let g_game;
-let g_is128k;
+let g_model;
 let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
@@ -155,8 +155,15 @@ async function onDocumentLoad() {
 
     await raze_init();
 
-    g_is128k = !boolURLParamDef(urlParams, '48k', false)
-    g_game = wasm_bindgen.wasm_main(g_is128k);
+    if (boolURLParamDef(urlParams, '48k', false))
+        g_model = 0;
+    else if (boolURLParamDef(urlParams, 'plus3', false))
+        g_model = 2;
+    else
+        g_model = 1;
+
+    console.log("Spec model", g_model);
+    g_game = wasm_bindgen.wasm_main(g_model);
 
     let snapshot = urlParams.get("snapshot");
     if (snapshot) {
@@ -178,13 +185,8 @@ async function onDocumentLoad() {
         await fetch_with_cors_if_needed(tape,
             bytes => {
                 if (bytes) {
-                    if (g_is128k) {
-                        call_with_delay(1500, 100, [
-                            () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
-                            () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
-                            () => onLoadTape(bytes),
-                        ]);
-                    } else {
+                    if (g_model == 0) {
+                        // 48K loading sequence: typìng LOAD ""
                         call_with_delay(2000, 100, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x63), //J (LOAD)
                             () => wasm_bindgen.wasm_key_up(g_game, 0x63),
@@ -194,6 +196,14 @@ async function onDocumentLoad() {
                             () => wasm_bindgen.wasm_key_down(g_game, 0x50), //P (")
                             () => wasm_bindgen.wasm_key_up(g_game, 0x50), //P (")
                             () => wasm_bindgen.wasm_key_up(g_game, 0x71), //SS
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
+                            () => onLoadTape(bytes),
+                        ]);
+                    } else {
+                        // 128K loading sequence: enter in the load menu
+                        // +3 loading sequence: same as 128K but a slightly longer delay because of the floppy
+                        call_with_delay(g_model == 3 ? 2000 : 1500, 100, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
@@ -217,8 +227,9 @@ async function onDocumentLoad() {
         onFocus();
 
     document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
-    document.getElementById('reset_48k').addEventListener('click', handleReset48k, false);
-    document.getElementById('reset_128k').addEventListener('click', handleReset128k, false);
+    document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, 0), false);
+    document.getElementById('reset_128k').addEventListener('click', e => handleReset(e, 1), false);
+    document.getElementById('reset_plus3').addEventListener('click', e => handleReset(e, 2), false);
     document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
     document.getElementById('stop_tape').addEventListener('click', handleStopTape, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
@@ -749,18 +760,11 @@ function handleTapeBlock(evt) {
     wasm_bindgen.wasm_tape_seek(g_game, index);
 }
 
-function handleReset48k(evt) {
+function handleReset(evt, model) {
     resetTape();
     wasm_bindgen.wasm_drop(g_game);
-    g_is128k = false;
-    g_game = wasm_bindgen.wasm_main(g_is128k);
-}
-
-function handleReset128k(evt) {
-    resetTape();
-    wasm_bindgen.wasm_drop(g_game);
-    g_is128k = true;
-    g_game = wasm_bindgen.wasm_main(g_is128k);
+    g_model = model;
+    g_game = wasm_bindgen.wasm_main(g_model);
 }
 
 function handleLoadTape(evt) {
@@ -804,7 +808,7 @@ function saveLastSnapshot(data) {
 function handleLoadLastSnapshot(evt) {
     if (!g_lastSnapshot)
         return;
-    g_is128k = wasm_bindgen.wasm_load_snapshot(g_game, g_lastSnapshot);
+    g_model = wasm_bindgen.wasm_load_snapshot(g_game, g_lastSnapshot);
 }
 
 function handleSnapshot(evt) {

@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use std::io::{self, prelude::*};
 
+use crate::game::Model;
+
 #[derive(Copy, Clone, Debug)]
 struct Tone {
     //Number of cycles
@@ -366,7 +368,7 @@ fn latin1_to_string(s: &[u8]) -> String {
 }
 
 #[cfg(feature = "zip")]
-fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> anyhow::Result<Vec<Block>> {
+fn new_zip<R: Read + Seek>(r: &mut R, model: Model) -> anyhow::Result<Vec<Block>> {
     let mut zip = zip::ZipArchive::new(r)?;
 
     for i in 0..zip.len() {
@@ -378,7 +380,7 @@ fn new_zip<R: Read + Seek>(r: &mut R, is128k: bool) -> anyhow::Result<Vec<Block>
             return new_tap(&mut ze);
         } else if name_l.ends_with(".tzx") {
             log::debug!("unzipping TZX {name}");
-            return new_tzx(&mut ze, is128k);
+            return new_tzx(&mut ze, model);
         }
     }
     Err(anyhow!("ZIP file does not contain any *.tap or *.tzx file"))
@@ -404,7 +406,7 @@ fn new_tap(r: &mut impl Read) -> anyhow::Result<Vec<Block>> {
     Ok(blocks)
 }
 
-fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
+fn new_tzx(r: &mut impl Read, model: Model) -> anyhow::Result<Vec<Block>> {
     let mut sig = [0; 10];
     r.read_exact(&mut sig)?;
     if &sig[0..8] != b"ZXTape!\x1a" {
@@ -735,7 +737,7 @@ fn new_tzx(r: &mut impl Read, is128k: bool) -> anyhow::Result<Vec<Block>> {
                     return Err(anyhow!("invalid TAP-stop48k block"));
                 }
                 log::debug!("stop tape if 48k");
-                if !is128k {
+                if model == Model::Spec48k {
                     let block = Block::stop_block();
                     parser.add_block(block);
                 }
@@ -1044,13 +1046,13 @@ fn string_from_zx(bs: &[u8]) -> String {
 }
 
 impl Tape {
-    pub fn new<R: Read + Seek>(mut tap: R, is128k: bool) -> anyhow::Result<Tape> {
+    pub fn new<R: Read + Seek>(mut tap: R, model: Model) -> anyhow::Result<Tape> {
         let start_pos = tap.stream_position()?;
 
-        let mut blocks = new_zip(tap.by_ref(), is128k)
+        let mut blocks = new_zip(tap.by_ref(), model)
             .or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;
-                new_tzx(tap.by_ref(), is128k)
+                new_tzx(tap.by_ref(), model)
             })
             .or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;

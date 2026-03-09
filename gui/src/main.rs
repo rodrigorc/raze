@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use zxspectrum_raze::{self as raze, Game};
+use zxspectrum_raze::{self as raze, Game, Model};
 
 struct App {
     redock: bool,
@@ -357,7 +357,7 @@ impl Application for App {
 
         let atlas = args.imgui.io_mut().font_atlas_mut();
         let fd_atlas = easy_imgui_filechooser::build_custom_atlas(atlas);
-        let game = raze::Game::new(/*is128k*/ true, &mut gui);
+        let game = raze::Game::new(Model::Spec128k, &mut gui);
 
         App {
             redock: true,
@@ -436,7 +436,7 @@ impl Application for App {
 #[derive(Debug)]
 enum UiAction {
     None,
-    Reset { is128k: bool },
+    Reset { model: Model },
     TapeLoadDlg,
     TapeLoad(PathBuf),
     TapeStop,
@@ -665,12 +665,23 @@ impl UiBuilder for App {
             .flags(WindowFlags::HorizontalScrollbar)
             .with(|| {
                 if ui.button(lbl_id("Reset 128K", "reset_128")) {
-                    ui_action = UiAction::Reset { is128k: true };
+                    ui_action = UiAction::Reset {
+                        model: Model::Spec128k,
+                    };
                 }
                 ui.same_line();
                 if ui.button(lbl_id("Reset 48K", "reset_48")) {
-                    ui_action = UiAction::Reset { is128k: false };
+                    ui_action = UiAction::Reset {
+                        model: Model::Spec48k,
+                    };
                 }
+                ui.same_line();
+                if ui.button(lbl_id("Reset +3", "reset_plus3")) {
+                    ui_action = UiAction::Reset {
+                        model: Model::Plus3,
+                    };
+                }
+
                 ui.with_push(
                     if self.pause {
                         Some([
@@ -905,8 +916,8 @@ impl App {
         // Do the action recorded above
         match ui_action {
             UiAction::None => {}
-            UiAction::Reset { is128k } => {
-                self.game = raze::Game::new(is128k, &mut self.gui);
+            UiAction::Reset { model } => {
+                self.game = raze::Game::new(model, &mut self.gui);
             }
             UiAction::TapeLoadDlg => {
                 let mut fd = FileChooser::new();

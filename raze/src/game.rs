@@ -10,10 +10,6 @@ use std::io::{Cursor, Read, Write};
 
 const TIME_TO_INT: i32 = 69888;
 
-static ROM_128_0: &[u8] = include_bytes!("128-0.rom");
-static ROM_128_1: &[u8] = include_bytes!("128-1.rom");
-static ROM_48: &[u8] = include_bytes!("48k.rom");
-
 //margins
 const BX0: usize = 5;
 const BX1: usize = 5;
@@ -321,8 +317,15 @@ pub trait Gui {
     fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]);
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Model {
+    Spec48k,
+    Spec128k,
+    Plus3,
+}
+
 pub struct Game<GUI: Gui> {
-    is128k: bool,
+    model: Model,
     z80: Z80,
     ula: Ula,
     speaker: Speaker,
@@ -415,10 +418,13 @@ fn write_screen<PIX: Copy>(
 // General speed of the emulation is controlled by the audio output.
 // The main audio channel should be configured at 22050 Hz, this function will return how many
 // CPU ticks are required for every audio sample.
-fn t_per_sample(is_128k: bool) -> u32 {
+fn t_per_sample(model: Model) -> u32 {
     const SAMPLER: u32 = 22050;
     // CPU freq is slightly different for different models
-    let cpu_freq = if is_128k { 3_546_900 } else { 3_500_000 };
+    let cpu_freq = match model {
+        Model::Spec48k => 3_500_000,
+        Model::Spec128k | Model::Plus3 => 3_546_900,
+    };
     // Round to nearest, that will give a maximum relative error in the emulation speed of:
     // (22.05k / 3.5M / 2) = 0.3%
     // That I think is acceptable. To get exact timings we would need to choose a sample output rate that is an exact division of the
@@ -427,21 +433,17 @@ fn t_per_sample(is_128k: bool) -> u32 {
 }
 
 impl<GUI: Gui> Game<GUI> {
-    pub fn new(is128k: bool, gui: &mut GUI) -> Game<GUI> {
+    pub fn new(model: Model, gui: &mut GUI) -> Game<GUI> {
         log::info!("Go!");
-        let memory;
-        let psg;
-        if is128k {
-            memory = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
-            psg = Some(Psg::new());
-        } else {
-            memory = Memory::new_from_bytes(ROM_48, None);
-            psg = None;
+        let memory = Memory::new_from_model(model);
+        let psg = match model {
+            Model::Spec48k => None,
+            Model::Spec128k | Model::Plus3 => Some(Psg::new()),
         };
         let z80 = Z80::new();
         gui.on_rzx_running(false, 0);
         Game {
-            is128k,
+            model,
             z80,
             ula: Ula {
                 memory,
@@ -457,12 +459,12 @@ impl<GUI: Gui> Game<GUI> {
                 fetch_count: 0,
                 rzx_info: None,
             },
-            speaker: Speaker::new(t_per_sample(is128k)),
+            speaker: Speaker::new(t_per_sample(model)),
             image: black_screen(&GUI::PALETTE),
         }
     }
-    pub fn is_128k(&self) -> bool {
-        self.is128k
+    pub fn model(&self) -> Model {
+        self.model
     }
     pub fn psg_status(&self) -> Option<[u8; 17]> {
         self.ula.psg.as_ref().map(|psg| {
@@ -568,7 +570,7 @@ impl<GUI: Gui> Game<GUI> {
         self.ula.keys = Default::default();
     }
     pub fn tape_load(&mut self, data: Vec<u8>) -> Result<usize> {
-        let tape = Tape::new(Cursor::new(data), self.is128k)?;
+        let tape = Tape::new(Cursor::new(data), self.model)?;
         let res = tape.len();
         if res > 0 {
             self.ula.tape = Some((tape, Some(TapePos::new_at_block(0))));
@@ -628,11 +630,13 @@ impl<GUI: Gui> Game<GUI> {
         }
     }
     pub fn snapshot(&self) -> Vec<u8> {
-        //We will save V2 or V3 depending on the plus2 memory bank
+        //With the 128K, we will save V2 or V3 depending on the plus2 memory bank
         let banks_plus2 = self.ula.memory.last_banks_plus2();
 
+        let v3 = self.model == Model::Plus3 || banks_plus2 != 0;
+
         const HEADER: usize = 32;
-        let header_extra = if banks_plus2 == 0 { 23 } else { 55 };
+        let header_extra = if v3 { 55 } else { 23 };
         let mut data = vec![0; HEADER + header_extra];
         self.z80.snapshot(&mut data);
         data[12] |= self.ula.border << 1;
@@ -647,20 +651,23 @@ impl<GUI: Gui> Game<GUI> {
         data[6] = 0;
         data[7] = 0;
         //hw mode
-        data[34] = if self.is128k { 3 } else { 0 };
+        data[34] = match self.model {
+            Model::Spec48k => 0,
+            Model::Spec128k => 3,
+            Model::Plus3 => 7,
+        };
         //memory map
-        data[35] = if self.is128k {
-            self.ula.memory.last_banks()
-        } else {
-            0
+        data[35] = match self.model {
+            Model::Spec48k => 0,
+            Model::Spec128k | Model::Plus3 => self.ula.memory.last_banks(),
         };
         //36
         data[37] = 3 | // R emulation | LDIR emulation
-                   (if !self.is128k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
+                   (if self.model == Model::Spec48k && self.ula.psg.is_some() { 4 } else { 0 }); //PSG in 48k
         if let Some(ref psg) = self.ula.psg {
             psg.snapshot(&mut data[38..55]);
         }
-        if self.is128k && banks_plus2 != 0 {
+        if v3 {
             data[86] = banks_plus2;
         }
 
@@ -714,16 +721,19 @@ impl<GUI: Gui> Game<GUI> {
             data[start + 1] = (len >> 8) as u8;
         }
 
-        if self.is128k {
-            for i in 0..8 {
-                let bank = self.ula.memory.get_bank(i);
-                // 3 first banks are ROM, do not save those
-                compress(&mut data, i as u8 + 3, bank);
+        match self.model {
+            Model::Spec48k => {
+                for i in 1..4 {
+                    let bank = self.ula.memory.get_bank(i);
+                    compress(&mut data, [0, 8, 4, 5][i], bank);
+                }
             }
-        } else {
-            for i in 1..4 {
-                let bank = self.ula.memory.get_bank(i);
-                compress(&mut data, [0, 8, 4, 5][i], bank);
+            Model::Spec128k | Model::Plus3 => {
+                for i in 0..8 {
+                    let bank = self.ula.memory.get_bank(i);
+                    // 3 first banks are ROM, do not save those
+                    compress(&mut data, i as u8 + 3, bank);
+                }
             }
         }
         data
@@ -777,50 +787,48 @@ impl<GUI: Gui> Game<GUI> {
                 data.get(87..).ok_or_else(file_too_short_error)?,
             ),
         };
-        let is128k = match version {
-            Z80FileVersion::V1 => false,
+        let model = match version {
+            Z80FileVersion::V1 => Model::Spec48k,
             Z80FileVersion::V2 => {
                 match hdr[34] {
-                    0 => false,
-                    3 => true,
-                    _ => true, //if in doubt, assume 128k
+                    0 => Model::Spec48k,
+                    3 => Model::Spec128k,
+                    7 => Model::Plus3,
+                    13 => Model::Plus3,
+                    _ => Model::Spec128k, //if in doubt, assume 128k
                 }
             }
             Z80FileVersion::V3(_) => {
                 match hdr[34] {
-                    0 => false,
-                    4 => true,
-                    _ => true, //if in doubt, assume 128k
+                    0 => Model::Spec48k,
+                    4 => Model::Spec128k,
+                    7 => Model::Plus3,
+                    13 => Model::Plus3,
+                    _ => Model::Spec128k, //if in doubt, assume 128k
                 }
             }
         };
-        let psg = if (version != Z80FileVersion::V1 && (hdr[37] & 4) != 0) || is128k {
-            Some(Psg::load_snapshot(&hdr[38..55]))
-        } else {
-            None
-        };
-        match (is128k, &psg) {
-            (true, _) => {
-                log::debug!("machine = 128k");
-            }
-            (false, Some(_)) => {
-                log::debug!("machine = 48k with PSG");
-            }
-            (false, None) => {
-                log::debug!("machine = 48k");
-            }
+        let psg =
+            if (version != Z80FileVersion::V1 && (hdr[37] & 4) != 0) || model != Model::Spec48k {
+                Some(Psg::load_snapshot(&hdr[38..55]))
+            } else {
+                None
+            };
+
+        log::debug!("machine = {:?}", model);
+        log::debug!("PSG = {}", psg.is_some());
+
+        let mut memory = Memory::new_from_model(model);
+        if model != Model::Spec48k {
+            // port 0x7ffd, 0x1ffd
+            let v1 = hdr[35];
+            let v2 = if version == Z80FileVersion::V3(true) {
+                hdr[86]
+            } else {
+                0x04
+            };
+            memory.restore_banks(v1, v2);
         }
-        let mut memory = if is128k {
-            let mut m = Memory::new_from_bytes(ROM_128_0, Some(ROM_128_1));
-            //port 0x7ffd
-            m.switch_banks(hdr[35]);
-            if version == Z80FileVersion::V3(true) {
-                m.switch_banks_plus2(hdr[86]);
-            }
-            m
-        } else {
-            Memory::new_from_bytes(ROM_48, None)
-        };
 
         fn uncompress(cdata: &[u8], bank: &mut [u8]) -> Result<()> {
             let mut wbank = bank;
@@ -894,7 +902,7 @@ impl<GUI: Gui> Game<GUI> {
                         .ok_or_else(|| anyhow!("invalid compressed memory block"))?;
                     offset += memlen;
 
-                    let ibank = match (is128k, page) {
+                    let ibank = match (model != Model::Spec48k, page) {
                         (false, 8) => 1,
                         (false, 4) => 2,
                         (false, 5) => 3,
@@ -907,7 +915,11 @@ impl<GUI: Gui> Game<GUI> {
                         (true, 9) => 6,
                         (true, 10) => 7,
                         _ => {
-                            return Err(anyhow!("unknown memory page: {} (128k={})", page, is128k));
+                            return Err(anyhow!(
+                                "unknown memory page: {} (model={:?})",
+                                page,
+                                model
+                            ));
                         }
                     };
                     log::debug!("MEM {ibank:02x}: {memlen:04x}");
@@ -921,7 +933,7 @@ impl<GUI: Gui> Game<GUI> {
             }
         }
         let game = Game {
-            is128k,
+            model,
             z80,
             ula: Ula {
                 memory,
@@ -942,7 +954,7 @@ impl<GUI: Gui> Game<GUI> {
                     in_idx: 0,
                 }),
             },
-            speaker: Speaker::new(t_per_sample(is128k)),
+            speaker: Speaker::new(t_per_sample(model)),
             image: black_screen(&GUI::PALETTE),
         };
         gui.on_rzx_running(game.ula.rzx_info.is_some(), 0);
