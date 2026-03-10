@@ -579,7 +579,7 @@ impl<GUI: Gui> Game<GUI> {
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
     }
-    pub fn tape_load(&mut self, data: Vec<u8>) -> Result<usize> {
+    pub fn tape_load(&mut self, data: &[u8]) -> Result<usize> {
         let tape = Tape::new(Cursor::new(data), self.model)?;
         let res = tape.len();
         if res > 0 {

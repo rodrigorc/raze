@@ -978,7 +978,7 @@ impl App {
             UiAction::TapeLoad(path_buf) => {
                 let mut load_file = || -> Result<()> {
                     let data = std::fs::read(&path_buf)?;
-                    self.game.tape_load(data)?;
+                    self.game.tape_load(&data)?;
                     if let Some(path) = path_buf.parent() {
                         self.fd_tape_path = path.to_owned();
                     }

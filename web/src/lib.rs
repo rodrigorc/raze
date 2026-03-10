@@ -124,7 +124,7 @@ mod exports {
         game.draw_frame(turbo, &mut JSGui);
     }
     #[wasm_bindgen]
-    pub fn wasm_load_tape(game: *mut Game<JSGui>, data: Vec<u8>) -> usize {
+    pub fn wasm_load_tape(game: *mut Game<JSGui>, data: &[u8]) -> usize {
         let game = unsafe { &mut *game };
         match game.tape_load(data) {
             Ok(blocks) => blocks,
