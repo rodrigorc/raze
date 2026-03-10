@@ -734,15 +734,17 @@ impl<GUI: Gui> Game<GUI> {
         match self.model {
             Model::Spec48k => {
                 for i in 1..4 {
-                    let bank = self.ula.memory.get_bank(i);
-                    compress(&mut data, [0, 8, 4, 5][i], bank);
+                    if let Some(bank) = self.ula.memory.get_bank(i) {
+                        compress(&mut data, [0, 8, 4, 5][i], bank);
+                    }
                 }
             }
             Model::Spec128k | Model::Plus3 => {
                 for i in 0..8 {
-                    let bank = self.ula.memory.get_bank(i);
-                    // 3 first banks are ROM, do not save those
-                    compress(&mut data, i as u8 + 3, bank);
+                    if let Some(bank) = self.ula.memory.get_bank(i) {
+                        // 3 first banks are ROM, do not save those
+                        compress(&mut data, i as u8 + 3, bank);
+                    }
                 }
             }
         }
@@ -894,7 +896,9 @@ impl<GUI: Gui> Game<GUI> {
                     Cow::Borrowed(mem)
                 };
                 for (ibank, blockmem) in ram.chunks_exact(0x4000).enumerate() {
-                    let bank = memory.get_bank_mut(ibank + 1);
+                    let bank = memory
+                        .get_bank_mut(ibank + 1)
+                        .ok_or_else(|| anyhow!("invalid snapshot memory"))?;
                     bank.copy_from_slice(blockmem)
                 }
             }
@@ -933,7 +937,9 @@ impl<GUI: Gui> Game<GUI> {
                         }
                     };
                     log::debug!("MEM {ibank:02x}: {memlen:04x}");
-                    let bank = memory.get_bank_mut(ibank);
+                    let bank = memory
+                        .get_bank_mut(ibank)
+                        .ok_or_else(|| anyhow!("invalid snapshot memory"))?;
                     if compressed {
                         uncompress(cdata, bank)?;
                     } else {

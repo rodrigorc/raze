@@ -185,7 +185,10 @@ impl Memory {
         // Restoring exactly in this order will do the lock as the last operation
         self.last_banks = v1;
         self.last_banks_plus2 = v2;
-        self.update_banks();
+        // Just in case it is in 48k mode
+        if !self.locked {
+            self.update_banks();
+        }
     }
 
     fn update_banks(&mut self) {
@@ -257,10 +260,10 @@ impl Memory {
     pub fn last_banks_plus2(&self) -> u8 {
         self.last_banks_plus2
     }
-    pub fn get_bank(&self, i: usize) -> &[u8] {
-        &self.data[i].data
+    pub fn get_bank(&self, i: usize) -> Option<&[u8]> {
+        self.data.get(i).map(|bank| &bank.data[..])
     }
-    pub fn get_bank_mut(&mut self, i: usize) -> &mut [u8] {
-        &mut self.data[i].data
+    pub fn get_bank_mut(&mut self, i: usize) -> Option<&mut [u8]> {
+        self.data.get_mut(i).map(|bank| &mut bank.data[..])
     }
 }
