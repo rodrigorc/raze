@@ -89,29 +89,61 @@ impl std::fmt::Debug for Sector {
 }
 
 impl Disk {
-    pub fn new(rdr: &mut (impl Read + Seek)) -> anyhow::Result<Disk> {
-        let sig = rdr.read_string(34)?;
-        if sig != "EXTENDED CPC DSK File\r\nDisk-Info\r\n" {
-            bail!("Invalid EXTENDED CPC DISK signature");
+    pub fn new_formatted() -> Disk {
+        let tracks = (0..40)
+            .map(|c| Track::new_formatted(c, 0, 2, 9, 0x2f, 0xe5))
+            .collect();
+        Disk { tracks }
+    }
+
+    pub fn new<R: Read + Seek>(mut rdr: R) -> anyhow::Result<Disk> {
+        enum FileVer {
+            Normal,
+            Extended,
         }
-        let creator = rdr.read_string(14)?;
-        dbg!(creator);
+
+        let signature = rdr.read_string(12)?;
+        let file_ver = if signature == "EXTENDED CPC" {
+            FileVer::Extended
+        } else if signature.starts_with("MV - CPC") {
+            FileVer::Normal
+        } else {
+            bail!("Invalid EXTENDED CPC");
+        };
+
+        // Header strings are somewhat inconsistent
+        rdr.seek(SeekFrom::Start(0x30))?;
         let tracks = rdr.read_u8()?;
         let sides = rdr.read_u8()?;
         dbg!(tracks, sides);
-        rdr.read_u16()?;
 
-        let track_sizes = (0..tracks * sides)
-            .map(|_| rdr.read_u8())
-            .collect::<std::io::Result<Vec<u8>>>()?;
+        let num_tracks = tracks as usize * sides as usize;
+        let mut track_sizes = Vec::with_capacity(num_tracks);
+        match file_ver {
+            FileVer::Normal => {
+                let track_size = rdr.read_u16()?;
+                track_sizes.resize_with(num_tracks, || Some(track_size));
+            }
+            FileVer::Extended => {
+                rdr.read_u16()?;
+                for _ in 0..num_tracks {
+                    let track_size = (rdr.read_u8()? as u16) << 8;
+                    if track_size == 0 {
+                        track_sizes.push(None);
+                    } else {
+                        track_sizes.push(Some(track_size));
+                    }
+                }
+            }
+        };
 
         let mut tracks = Vec::with_capacity(track_sizes.len());
         let mut pos = 0x100;
 
         for track_size in track_sizes {
-            if track_size == 0 {
+            let Some(track_size) = track_size else {
                 continue;
-            }
+            };
 
             rdr.seek(SeekFrom::Start(pos))?;
 
@@ -136,13 +168,18 @@ impl Disk {
                 let h = rdr.read_u8()?;
                 let r = rdr.read_u8()?;
                 let n = rdr.read_u8()?;
+                let id = SectorId { c, h, r, n };
                 let st1 = St1::from_bits_retain(rdr.read_u8()?);
                 let st2 = St2::from_bits_retain(rdr.read_u8()?);
-                let real_len = rdr.read_u16()?;
+                let file_len = rdr.read_u16()?;
 
-                let data = vec![0; real_len as usize];
+                let real_len = match file_ver {
+                    FileVer::Normal => id.len(),
+                    FileVer::Extended => file_len as usize,
+                };
 
-                let id = SectorId { c, h, r, n };
+                let data = vec![0; real_len];
+
                 let sector = Sector { id, st1, st2, data };
                 sectors.push(sector);
             }
@@ -163,7 +200,7 @@ impl Disk {
             };
             tracks.push(track);
 
-            pos += track_size as u64 * 0x100;
+            pos += track_size as u64;
         }
         Ok(Disk { tracks })
     }

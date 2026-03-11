@@ -42,6 +42,7 @@ struct App {
     file_dialog: Option<AppFileDialog>,
     fd_tape_path: PathBuf,
     fd_snapshot_path: PathBuf,
+    fd_disk_path: PathBuf,
 
     modal_message: Option<ModalMessage>,
 }
@@ -375,6 +376,7 @@ impl Application for App {
             file_dialog: None,
             fd_tape_path: PathBuf::from("."),
             fd_snapshot_path: PathBuf::from("."),
+            fd_disk_path: PathBuf::from("."),
             modal_message: None,
         }
     }
@@ -448,6 +450,8 @@ enum UiAction {
     SnapshotDo,
     SnapshotRestore(usize),
     SnapshotDelete(usize),
+    DiskLoadDlg,
+    DiskLoad(PathBuf),
 }
 
 impl UiBuilder for App {
@@ -529,6 +533,7 @@ impl UiBuilder for App {
                 builder.dock_window(id("display"), d_display);
                 builder.dock_window(id("tape"), d_tape);
                 builder.dock_window(id("snapshots"), d_tape);
+                builder.dock_window(id("disks"), d_tape);
                 builder.dock_window(id("control"), d_control);
                 builder.dock_window(id("sound"), d_control);
                 builder.dock_window(id("psg"), d_control);
@@ -660,6 +665,12 @@ impl UiBuilder for App {
                         });
                     }
                 });
+        });
+
+        ui.window_config(lbl_id("Disks", "disks")).with(|| {
+            if ui.button(lbl_id("Load...", "load")) {
+                ui_action = UiAction::DiskLoadDlg;
+            }
         });
 
         ui.window_config(lbl_id("Control", "control"))
@@ -976,6 +987,24 @@ impl App {
                     on_ok: Box::new(move |p| UiAction::SnapshotSave(p, idx, false)),
                 });
             }
+            UiAction::DiskLoadDlg => {
+                let mut fd = FileChooser::new();
+                fd.add_filter(easy_imgui_filechooser::Filter {
+                    id: easy_imgui_filechooser::FilterId(0),
+                    text: String::from("Disk files"),
+                    globs: vec![
+                        glob::Pattern::new("*.dsk").unwrap(),
+                        glob::Pattern::new("*.zip").unwrap(),
+                    ],
+                });
+                let _ = fd.set_path(&self.fd_disk_path);
+                self.file_dialog = Some(AppFileDialog {
+                    fd,
+                    title: String::from("Open disk..."),
+                    default_extension: None,
+                    on_ok: Box::new(UiAction::DiskLoad),
+                });
+            }
             UiAction::TapeLoad(path_buf) => {
                 let mut load_file = || -> Result<()> {
                     let data = std::fs::read(&path_buf)?;
@@ -1004,6 +1033,21 @@ impl App {
                     );
                     if let Some(path) = path_buf.parent() {
                         self.fd_snapshot_path = path.to_owned();
+                    }
+                    Ok(())
+                };
+                match load_file() {
+                    // Close the file dialog
+                    Ok(()) => self.file_dialog = None,
+                    Err(e) => self.modal_message = Some(ModalMessage::error(format!("{e:#}"))),
+                }
+            }
+            UiAction::DiskLoad(path_buf) => {
+                let mut load_file = || -> Result<()> {
+                    let data = std::fs::read(&path_buf)?;
+                    self.game.load_disk(&data)?;
+                    if let Some(path) = path_buf.parent() {
+                        self.fd_disk_path = path.to_owned();
                     }
                     Ok(())
                 };

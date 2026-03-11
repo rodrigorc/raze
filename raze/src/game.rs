@@ -1,3 +1,4 @@
+use crate::disk::Disk;
 use crate::floppy::Floppy;
 use crate::memory::Memory;
 use crate::psg::Psg;
@@ -5,7 +6,7 @@ use crate::rzx;
 use crate::speaker::Speaker;
 use crate::tape::{Tape, TapePos};
 use crate::z80::{self, Bus, Z80FileVersion, Z80};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Write};
 
@@ -135,6 +136,21 @@ impl Ula {
             self.time -= TIME_TO_INT;
         }
     }
+
+    fn read_floating_bus(&self) -> u8 {
+        //reads stale data from the floating bus (last attr byte?)
+        let row = self.time / 224;
+        let ofs = self.time % 224;
+        if (64..256).contains(&row) && ofs < 128 {
+            let row = row - 64;
+            let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
+            let addr = 32 * 192 + 32 * (row / 8) + ofs;
+            self.memory.video_memory()[addr as usize]
+        } else {
+            //borders or retraces
+            0xff
+        }
+    }
 }
 
 impl Bus for Ula {
@@ -218,36 +234,30 @@ impl Bus for Ula {
                                 r = floppy.read_cmd();
                             }
                         }
+                        // Some +3 games use 0x0ffd as floating bus
+                        0x0f => r = self.read_floating_bus(),
                         _ => {
+                            r = self.read_floating_bus();
                             log::info!("IN {:04x}, {:02x}", port, r);
                         }
                     }
                 }
-                0xff => {
-                    //reads stale data from the floating bus (last attr byte?)
-                    let row = self.time / 224;
-                    let ofs = self.time % 224;
-                    r = if (64..256).contains(&row) && ofs < 128 {
-                        let row = row - 64;
-                        let ofs = ofs / 8 * 2 + 1; //attrs are read in pairs each 8 T, more or less
-                        let addr = 32 * 192 + 32 * (row / 8) + ofs;
-                        self.memory.video_memory()[addr as usize]
-                    } else {
-                        //borders or retraces
-                        0xff
-                    }
-                }
+                // If all bits are 1, no device is selected, it reads the floating bus
+                0xff => r = self.read_floating_bus(),
+
                 x if x & 0x20 == 0 => {
                     //kempston joystick (0x1f | 0xdf ...)
                     r = self.keys[8];
                 }
                 _ => {
+                    r = self.read_floating_bus();
                     log::info!("IN {:04x}, {:02x}", port, r);
                 }
             }
         }
         r
     }
+
     fn do_out(&mut self, port: impl Into<u16>, value: u8) {
         let port = port.into();
         let lo = port as u8;
@@ -617,6 +627,7 @@ impl<GUI: Gui> Game<GUI> {
         }
         Ok(res)
     }
+
     /// If there is a tape loaded, it Returns the number of blocks and, if playing, the current block.
     pub fn tape_len_and_pos(&self) -> Option<(usize, Option<(usize, f32)>)> {
         self.ula.tape.as_ref().map(|(tape, pos)| {
@@ -995,6 +1006,27 @@ impl<GUI: Gui> Game<GUI> {
         }
         Ok(game)
     }
+
+    pub fn load_disk(&mut self, data: &[u8]) -> Result<()> {
+        let Some(floppy) = self.ula.floppy.as_mut() else {
+            bail!("Floppy drive not available")
+        };
+        let data = match disk_from_zip(data) {
+            Ok(v) => Cow::Owned(v),
+            Err(_) => Cow::Borrowed(data),
+        };
+        let disk = Disk::new(Cursor::new(data))?;
+        floppy.set_disk(disk);
+
+        Ok(())
+    }
+
+    pub fn load_formatted_disk(&mut self) {
+        let Some(floppy) = self.ula.floppy.as_mut() else {
+            return;
+        };
+        floppy.set_disk(Disk::new_formatted());
+    }
 }
 
 #[cfg(feature = "zip")]
@@ -1017,5 +1049,28 @@ fn snapshot_from_zip(data: &[u8]) -> Result<Vec<u8>> {
 
 #[cfg(not(feature = "zip"))]
 fn snapshot_from_zip(_data: &[u8]) -> Result<Vec<u8>> {
+    Err(anyhow!("ZIP format not supported"))
+}
+
+#[cfg(feature = "zip")]
+fn disk_from_zip(data: &[u8]) -> Result<Vec<u8>> {
+    let rdr = Cursor::new(data);
+    let mut zip = zip::ZipArchive::new(rdr)?;
+    for i in 0..zip.len() {
+        let mut ze = zip.by_index(i)?;
+        let name = ze.name();
+        let lowname = name.to_ascii_lowercase();
+        if lowname.ends_with(".dsk") {
+            log::debug!("unzipping DSK {name}");
+            let mut res = Vec::new();
+            ze.read_to_end(&mut res)?;
+            return Ok(res);
+        }
+    }
+    Err(anyhow!("ZIP file does not contain any *.z80 or *.rzx file"))
+}
+
+#[cfg(not(feature = "zip"))]
+fn disk_from_zip(_data: &[u8]) -> Result<Vec<u8>> {
     Err(anyhow!("ZIP format not supported"))
 }

@@ -106,12 +106,7 @@ bitflags! {
 
 impl Floppy {
     pub fn new() -> Floppy {
-        let mut d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("../files/tosec/dsk/Turbo Out Run (1990)(U.S. Gold)(Side A).dsk");
-
-        let f = std::fs::File::open(&d).unwrap();
-        let mut f = std::io::BufReader::new(f);
-        let disk = dbg!(Disk::new(&mut f).unwrap());
+        let disk = Disk::new_formatted();
 
         Floppy {
             cmd: Vec::new(),
@@ -126,8 +121,12 @@ impl Floppy {
         }
     }
 
+    pub fn set_disk(&mut self, disk: Disk) {
+        self.disk = disk;
+    }
+
     pub fn write_cmd(&mut self, b: u8) {
-        log::info!("DAT W: {:02x}", b);
+        //log::info!("DAT W: {:02x}", b);
         if let Some((head, in_id, in_len)) = self.data_in.as_mut() {
             self.data.push_back(b);
             *in_len -= 1;
@@ -173,7 +172,7 @@ impl Floppy {
             log::info!("undeflow!");
             r = 0;
         }
-        log::info!("DAT R: {:02x}", r);
+        //log::info!("DAT R: {:02x}", r);
         self.lost_read = 0;
         r
     }
@@ -184,12 +183,11 @@ impl Floppy {
         if self.data_in.is_some() {
             r.insert(MainReg::RQM | MainReg::EXE_MODE | MainReg::BUSY);
         } else if !self.data.is_empty() {
-            dbg!(self.data.len());
             self.lost_read += 1;
             if self.lost_read > 2 {
-                let r = self.data.pop_front().unwrap();
+                let _r = self.data.pop_front().unwrap();
                 self.lost_read = 0;
-                log::info!("Lost {r:02x}");
+                //log::info!("Lost {_r:02x}");
             }
             r.insert(MainReg::RQM | MainReg::DIO | MainReg::EXE_MODE | MainReg::BUSY);
         } else if !self.reply.is_empty() {
@@ -433,7 +431,7 @@ impl Floppy {
             }
             c if c & 0b1011_1111 == 0b0000_1010 => {
                 if len == 2 {
-                    log::info!("Read ID {:02x?}", self.cmd);
+                    log::info!("Read ID {:02x?} at cyl {}", self.cmd, self.cylinder);
                     let c1 = self.cmd[1];
                     let head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
