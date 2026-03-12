@@ -104,6 +104,18 @@ bitflags! {
 
 }
 
+impl St0 {
+    fn from_c1(c1: u8) -> St0 {
+        St0::from_bits_retain(c1 & 0x7)
+    }
+}
+
+impl St3 {
+    fn from_c1(c1: u8) -> St3 {
+        St3::from_bits_retain(c1 & 0x7)
+    }
+}
+
 impl Floppy {
     pub fn new() -> Floppy {
         let disk = Disk::new_formatted();
@@ -127,11 +139,12 @@ impl Floppy {
 
     pub fn write_cmd(&mut self, b: u8) {
         //log::info!("DAT W: {:02x}", b);
-        if let Some((head, in_id, in_len)) = self.data_in.as_mut() {
+        if let Some((c1, in_id, in_len)) = self.data_in.as_mut() {
+            let c1 = *c1;
             self.data.push_back(b);
             *in_len -= 1;
             if *in_len == 0 {
-                let st0 = St0::FAIL;
+                let st0 = St0::from_c1(c1) | St0::FAIL;
                 let st1 = St1::END_OF_CYLINDER;
                 self.reply = VecDeque::from([
                     st0.bits(),
@@ -145,9 +158,10 @@ impl Floppy {
                 let data = Vec::from(std::mem::take(&mut self.data));
                 log::info!("{data:02x?}");
 
+                let head = (c1 & 0b0100 != 0) as u8;
                 if let Some(sector) = self
                     .disk
-                    .get_track_mut(*head, self.cylinder)
+                    .get_track_mut(head, self.cylinder)
                     .and_then(|track| track.get_sector_mut(in_id))
                 {
                     // TODO write different length
@@ -228,17 +242,19 @@ impl Floppy {
                 if len == 2 {
                     log::info!("Sense drive status {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
-                    //let head = (c1 & 0b0100 != 0) as u8;
+                    let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
                     let st3 = match drive {
                         0 => {
-                            St3::READY
+                            St3::from_c1(c1)
+                                | St3::READY
+                                | St3::TWO_SIDE
                                 | if self.cylinder == 0 {
                                     St3::TRACK_0
                                 } else {
                                     St3::empty()
                                 }
-                        } // | St3::TWO_SIDE,
+                        }
                         _ => St3::FAULT,
                     };
                     self.reply = VecDeque::from([st3.bits() | drive]);
@@ -250,10 +266,13 @@ impl Floppy {
                 if len == 2 {
                     log::info!("Recalibrate {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
-                    let _drive = c1 & 0b0011;
-                    self.reply = VecDeque::new();
-                    self.cylinder = 0;
-                    self.int_seek_completed = IntStatus::Running;
+                    let _head = (c1 & 0b0100 != 0) as u8;
+                    let drive = c1 & 0b0011;
+                    if drive == 0 {
+                        self.int_seek_completed = IntStatus::Running;
+                        self.cylinder = 0;
+                        self.reply = VecDeque::new();
+                    }
                     self.cmd.clear();
                 }
             }
@@ -277,10 +296,13 @@ impl Floppy {
                 if len == 3 {
                     log::info!("Seek {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
-                    let _drive = c1 & 0b0011;
-                    self.cylinder = self.cmd[2];
-                    self.int_seek_completed = IntStatus::Running;
-                    self.reply = VecDeque::new();
+                    let _head = (c1 & 0b0100 != 0) as u8;
+                    let drive = c1 & 0b0011;
+                    if drive == 0 {
+                        self.int_seek_completed = IntStatus::Running;
+                        self.cylinder = self.cmd[2];
+                        self.reply = VecDeque::new();
+                    }
                     self.cmd.clear();
                 }
             }
@@ -327,7 +349,7 @@ impl Floppy {
                             self.data = VecDeque::from(sector.data.clone());
                             log::info!("Reading {} {} = {}", self.cylinder, r, self.data.len());
 
-                            let st0 = St0::FAIL;
+                            let st0 = St0::from_c1(c1) | St0::FAIL;
                             let mut st1 = sector.st1;
                             let mut st2 = sector.st2;
                             if deleted {
@@ -367,13 +389,13 @@ impl Floppy {
                             self.reply =
                                 VecDeque::from([st0.bits(), st1.bits(), st2.bits(), c, h, eot, n]);
                         } else {
-                            let st0 = St0::FAIL;
+                            let st0 = St0::from_c1(c1) | St0::FAIL;
                             let st1 = St1::MISSING_AM;
                             self.reply =
                                 VecDeque::from([st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
                         }
                     } else {
-                        let st0 = St0::FAIL | St0::UNKNOWN | St0::NOT_READY;
+                        let st0 = St0::from_c1(c1) | St0::FAIL | St0::UNKNOWN | St0::NOT_READY;
                         self.reply = VecDeque::from([st0.bits(), 0, 0, c, h, r, n]);
                     }
 
@@ -402,15 +424,15 @@ impl Floppy {
                             .and_then(|track| track.get_sector_mut(&sid))
                         {
                             let len = sid.len();
-                            self.data_in = Some((head, sid, len));
+                            self.data_in = Some((c1, sid, len));
                         } else {
-                            let st0 = St0::FAIL;
+                            let st0 = St0::from_c1(c1) | St0::FAIL;
                             let st1 = St1::MISSING_AM;
                             self.reply =
                                 VecDeque::from([st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
                         }
                     } else {
-                        let st0 = St0::FAIL | St0::UNKNOWN | St0::NOT_READY;
+                        let st0 = St0::from_c1(c1) | St0::FAIL | St0::UNKNOWN | St0::NOT_READY;
                         self.reply = VecDeque::from([st0.bits(), 0, 0, 0xff, 0xff, 0xff, 0xff]);
                     }
                     self.cmd.clear();
@@ -442,9 +464,10 @@ impl Floppy {
                             .and_then(|track| track.get_sector_by_idx(self.read_id_idx as usize))
                         {
                             let id = &sector.id;
-                            self.reply = VecDeque::from([0, 0, 0, id.c, id.h, id.r, id.n]);
+                            let st0 = St0::from_c1(c1);
+                            self.reply = VecDeque::from([st0.bits(), 0, 0, id.c, id.h, id.r, id.n]);
                         } else {
-                            let st0 = St0::FAIL;
+                            let st0 = St0::from_c1(c1) | St0::FAIL;
                             let st1 = St1::MISSING_AM;
                             self.reply =
                                 VecDeque::from([st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
@@ -453,7 +476,7 @@ impl Floppy {
                     }
 
                     if self.reply.is_empty() {
-                        let st0 = St0::UNKNOWN | St0::FAIL | St0::NOT_READY;
+                        let st0 = St0::from_c1(c1) | St0::UNKNOWN | St0::FAIL | St0::NOT_READY;
                         self.reply = VecDeque::from([st0.bits(), 0, 0, 0, 0, 0, 2]);
                     }
                     log::info!("<<< {:02x?}", self.reply);
@@ -478,9 +501,10 @@ impl Floppy {
                             self.cylinder,
                             Track::new_formatted(self.cylinder, head, n, sectors, gpl, filler),
                         );
-                        self.reply = VecDeque::from([0, 0, 0, 0, 0, 0, n]);
+                        let st0 = St0::from_c1(c1);
+                        self.reply = VecDeque::from([st0.bits(), 0, 0, 0, 0, 0, n]);
                     } else {
-                        let st0 = St0::UNKNOWN | St0::FAIL | St0::NOT_READY;
+                        let st0 = St0::from_c1(c1) | St0::UNKNOWN | St0::FAIL | St0::NOT_READY;
                         self.reply = VecDeque::from([st0.bits(), 0, 0, self.cylinder, head, 0, n]);
                     }
                     log::info!("<<< {:02x?}", self.reply);
