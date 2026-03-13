@@ -816,8 +816,7 @@ impl UiBuilder for App {
                     }
                     let f = (3_546_900.0 / 32.0 / f.max(1) as f32)
                         .log10()
-                        .max(2.0)
-                        .min(4.0)
+                        .clamp(2.0, 4.0)
                         - 2.0;
                     let x = canvas_p0.x + canvas_sz.x * f / 2.0 + canvas_sz.y / 2.0;
                     let y = canvas_p0.y + canvas_sz.y / 2.0;

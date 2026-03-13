@@ -66,7 +66,7 @@ fn set_flag8(f: u8, bit: u8, set: bool) -> u8 {
 #[inline]
 #[must_use]
 fn parity(b: u8) -> bool {
-    (b.count_ones()) % 2 == 0
+    b.count_ones().is_multiple_of(2)
 }
 
 #[inline]

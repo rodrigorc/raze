@@ -232,7 +232,7 @@ impl Block {
     }
     fn pure_tone_block(len_tone: u32, num_tones: u32) -> Block {
         let mut tones = Vec::new();
-        if num_tones % 2 != 0 {
+        if !num_tones.is_multiple_of(2) {
             tones.push(Tone {
                 num: 1,
                 len1: 0,
