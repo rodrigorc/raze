@@ -1,12 +1,12 @@
-use crate::disk::Disk;
+pub use crate::disk::Disk;
 use crate::floppy::Floppy;
 use crate::memory::Memory;
 use crate::psg::Psg;
 use crate::rzx;
 use crate::speaker::Speaker;
 use crate::tape::{Tape, TapePos};
-use crate::z80::{self, Bus, Z80FileVersion, Z80};
-use anyhow::{anyhow, bail, Result};
+use crate::z80::{self, Bus, Z80, Z80FileVersion};
+use anyhow::{Result, anyhow, bail};
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Write};
 
@@ -290,6 +290,9 @@ impl Bus for Ula {
                             //+2 Memory banks
                             //log::info!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
+                            if let Some(floppy) = self.floppy.as_mut() {
+                                floppy.set_motor(value & 0x08 != 0);
+                            }
                         }
                         0xff => {
                             if let Some(psg) = &mut self.psg {
@@ -423,11 +426,7 @@ fn write_screen_row<PIX: Copy>(
         pixels.fill_with(|| {
             let on = bits & 0x80 != 0;
             bits <<= 1;
-            if on {
-                ink
-            } else {
-                paper
-            }
+            if on { ink } else { paper }
         });
     }
 }
@@ -1016,16 +1015,28 @@ impl<GUI: Gui> Game<GUI> {
             Err(_) => Cow::Borrowed(data),
         };
         let disk = Disk::new(Cursor::new(data))?;
-        floppy.set_disk(disk);
-
+        floppy.set_disk(Some(disk));
         Ok(())
     }
 
-    pub fn load_formatted_disk(&mut self) {
+    pub fn load_formatted_disk(&mut self) -> Result<()> {
         let Some(floppy) = self.ula.floppy.as_mut() else {
-            return;
+            bail!("Floppy drive not available")
         };
-        floppy.set_disk(Disk::new_formatted());
+        floppy.set_disk(Some(Disk::new_formatted()));
+        Ok(())
+    }
+
+    pub fn eject_disk(&mut self) -> Result<()> {
+        let Some(floppy) = self.ula.floppy.as_mut() else {
+            bail!("Floppy drive not available")
+        };
+        floppy.set_disk(None);
+        Ok(())
+    }
+
+    pub fn floppy(&self) -> Option<&Floppy> {
+        self.ula.floppy.as_ref()
     }
 }
 

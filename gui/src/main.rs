@@ -7,7 +7,9 @@ use easy_imgui::{
     easy_imgui_sys::{self, ImVec2},
     id, lbl_id, vec2,
 };
-use easy_imgui_filechooser::{FileChooser, glob};
+use easy_imgui_filechooser::{self as filechooser, glob};
+
+type FileChooser = filechooser::FileChooserD<filechooser::FileSystemDirEnumWithZip>;
 
 use easy_imgui_opengl::{
     Texture,
@@ -20,7 +22,8 @@ use sdl3::video::{GLProfile, SwapInterval, WindowPos};
 use std::{
     cell::Cell,
     collections::VecDeque,
-    path::PathBuf,
+    io::{BufReader, Read},
+    path::{Path, PathBuf},
     slice,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -38,7 +41,7 @@ struct App {
     snapshots: Vec<Snapshot>,
     snapshot_sel: Option<usize>,
     last_snapshot_id: usize,
-    fd_atlas: easy_imgui_filechooser::CustomAtlas,
+    fd_atlas: filechooser::CustomAtlas,
     file_dialog: Option<AppFileDialog>,
     fd_tape_path: PathBuf,
     fd_snapshot_path: PathBuf,
@@ -143,6 +146,21 @@ impl From<&[f32]> for AudioBlock {
         };
         res.data[..res.length].copy_from_slice(src);
         res
+    }
+}
+
+fn read_bytes(path: &Path) -> Result<Vec<u8>> {
+    match filechooser::FileSystemDirEnumWithZip::analyze(path) {
+        filechooser::ZipAnalyzeResult::Regular(path) => Ok(std::fs::read(path)?),
+        filechooser::ZipAnalyzeResult::Zip { zip_name, inner } => {
+            let f = std::fs::File::open(zip_name)?;
+            let f = BufReader::new(f);
+            let mut z = zip::ZipArchive::new(f)?;
+            let mut e = z.by_name(&inner.to_string_lossy())?;
+            let mut data = Vec::with_capacity(usize::try_from(e.size())?);
+            e.read_to_end(&mut data)?;
+            Ok(data)
+        }
     }
 }
 
@@ -358,7 +376,7 @@ impl Application for App {
         };
 
         let atlas = args.imgui.io_mut().font_atlas_mut();
-        let fd_atlas = easy_imgui_filechooser::build_custom_atlas(atlas);
+        let fd_atlas = filechooser::build_custom_atlas(atlas);
         let game = raze::Game::new(Model::Spec128k, &mut gui);
 
         App {
@@ -452,6 +470,7 @@ enum UiAction {
     SnapshotDelete(usize),
     DiskLoadDlg,
     DiskLoad(PathBuf),
+    DiskEject,
 }
 
 impl UiBuilder for App {
@@ -667,11 +686,32 @@ impl UiBuilder for App {
                 });
         });
 
-        ui.window_config(lbl_id("Disks", "disks")).with(|| {
-            if ui.button(lbl_id("Load...", "load")) {
-                ui_action = UiAction::DiskLoadDlg;
-            }
-        });
+        if let Some(floppy) = self.game.floppy() {
+            ui.window_config(lbl_id("Disks", "disks"))
+                .flags(WindowFlags::NoFocusOnAppearing)
+                .with(|| {
+                    if ui.button(lbl_id("Load...", "load")) {
+                        ui_action = UiAction::DiskLoadDlg;
+                    }
+                    ui.same_line();
+
+                    ui.with_disabled(floppy.disk().is_none(), || {
+                        if ui.button(lbl_id("Eject", "eject")) {
+                            ui_action = UiAction::DiskEject;
+                        }
+                    });
+
+                    ui.with_disabled(!floppy.motor(), || {
+                        let track = floppy.current_track();
+                        let txt = match floppy.disk().map(|d| d.geometry()) {
+                            None => String::new(),
+                            Some((t0, 0)) => format!("Track: {track} / {t0}"),
+                            Some((t0, t1)) => format!("Track: {track} / {t0}+{t1}"),
+                        };
+                        ui.text(&txt);
+                    });
+                });
+        }
 
         ui.window_config(lbl_id("Control", "control"))
             .flags(WindowFlags::HorizontalScrollbar)
@@ -855,11 +895,11 @@ impl UiBuilder for App {
                 .with(|| {
                     let output = file_dialog.fd.do_ui(ui, &self.fd_atlas);
                     match output {
-                        easy_imgui_filechooser::Output::Continue => {}
-                        easy_imgui_filechooser::Output::Cancel => {
+                        filechooser::Output::Continue => {}
+                        filechooser::Output::Cancel => {
                             closed = true;
                         }
-                        easy_imgui_filechooser::Output::Ok => {
+                        filechooser::Output::Ok => {
                             ui_action = (file_dialog.on_ok)(
                                 file_dialog.fd.full_path(file_dialog.default_extension),
                             );
@@ -932,13 +972,12 @@ impl App {
             }
             UiAction::TapeLoadDlg => {
                 let mut fd = FileChooser::new();
-                fd.add_filter(easy_imgui_filechooser::Filter {
-                    id: easy_imgui_filechooser::FilterId(0),
+                fd.add_filter(filechooser::Filter {
+                    id: filechooser::FilterId(0),
                     text: String::from("Tape files"),
                     globs: vec![
                         glob::Pattern::new("*.tap").unwrap(),
                         glob::Pattern::new("*.tzx").unwrap(),
-                        glob::Pattern::new("*.zip").unwrap(),
                     ],
                 });
                 let _ = fd.set_path(&self.fd_tape_path);
@@ -954,13 +993,12 @@ impl App {
             }
             UiAction::SnapshotLoadDlg => {
                 let mut fd = FileChooser::new();
-                fd.add_filter(easy_imgui_filechooser::Filter {
-                    id: easy_imgui_filechooser::FilterId(0),
+                fd.add_filter(filechooser::Filter {
+                    id: filechooser::FilterId(0),
                     text: String::from("Snapshot files"),
                     globs: vec![
                         glob::Pattern::new("*.z80").unwrap(),
                         glob::Pattern::new("*.rzx").unwrap(),
-                        glob::Pattern::new("*.zip").unwrap(),
                     ],
                 });
                 let _ = fd.set_path(&self.fd_snapshot_path);
@@ -973,8 +1011,8 @@ impl App {
             }
             UiAction::SnapshotSaveDlg(idx) => {
                 let mut fd = FileChooser::new();
-                fd.add_filter(easy_imgui_filechooser::Filter {
-                    id: easy_imgui_filechooser::FilterId(0),
+                fd.add_filter(filechooser::Filter {
+                    id: filechooser::FilterId(0),
                     text: String::from("Snapshot files"),
                     globs: vec![glob::Pattern::new("*.z80").unwrap()],
                 });
@@ -988,13 +1026,10 @@ impl App {
             }
             UiAction::DiskLoadDlg => {
                 let mut fd = FileChooser::new();
-                fd.add_filter(easy_imgui_filechooser::Filter {
-                    id: easy_imgui_filechooser::FilterId(0),
+                fd.add_filter(filechooser::Filter {
+                    id: filechooser::FilterId(0),
                     text: String::from("Disk files"),
-                    globs: vec![
-                        glob::Pattern::new("*.dsk").unwrap(),
-                        glob::Pattern::new("*.zip").unwrap(),
-                    ],
+                    globs: vec![glob::Pattern::new("*.dsk").unwrap()],
                 });
                 let _ = fd.set_path(&self.fd_disk_path);
                 self.file_dialog = Some(AppFileDialog {
@@ -1006,7 +1041,7 @@ impl App {
             }
             UiAction::TapeLoad(path_buf) => {
                 let mut load_file = || -> Result<()> {
-                    let data = std::fs::read(&path_buf)?;
+                    let data = read_bytes(&path_buf)?;
                     self.game.tape_load(&data)?;
                     if let Some(path) = path_buf.parent() {
                         self.fd_tape_path = path.to_owned();
@@ -1021,7 +1056,7 @@ impl App {
             }
             UiAction::SnapshotLoad(path_buf) => {
                 let mut load_file = || -> Result<()> {
-                    let data = std::fs::read(&path_buf)?;
+                    let data = read_bytes(&path_buf)?;
                     let game = Game::load_snapshot(&data, &mut self.gui)?;
                     self.game = game;
                     self.add_snapshot(
@@ -1043,7 +1078,7 @@ impl App {
             }
             UiAction::DiskLoad(path_buf) => {
                 let mut load_file = || -> Result<()> {
-                    let data = std::fs::read(&path_buf)?;
+                    let data = read_bytes(&path_buf)?;
                     self.game.load_disk(&data)?;
                     if let Some(path) = path_buf.parent() {
                         self.fd_disk_path = path.to_owned();
@@ -1113,6 +1148,9 @@ impl App {
                         self.snapshot_sel = None;
                     }
                 }
+            }
+            UiAction::DiskEject => {
+                let _ = self.game.eject_disk();
             }
         }
     }

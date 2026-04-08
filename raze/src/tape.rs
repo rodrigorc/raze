@@ -599,7 +599,8 @@ fn new_tzx(r: &mut impl Read, model: Model) -> anyhow::Result<Vec<Block>> {
                 let asd = r.read_u8()?;
                 let asd = if asd == 0 { 0xff } else { asd };
                 log::debug!(
-                    "generalized data block: len={len}, pause={pause}, totp={totp}, npp={npp}, asp={asp}, totd={totd}, npd={npd}, asd={asd}");
+                    "generalized data block: len={len}, pause={pause}, totp={totp}, npp={npp}, asp={asp}, totd={totd}, npd={npd}, asd={asd}"
+                );
                 let mut pilot_def = Vec::new();
                 let mut pilot = Vec::with_capacity(totp as usize);
                 if totp > 0 {

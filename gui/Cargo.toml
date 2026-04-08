@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-zxspectrum-raze = { version = "*", path = "../raze" }
-easy-imgui = "0.21"
-easy-imgui-sdl3 = "0.21"
-easy-imgui-opengl = "0.2"
-easy-imgui-filechooser = "0.4"
+zxspectrum-raze = { path = "../raze" }
+easy-imgui = "0.22"
+easy-imgui-sdl3 = "0.22"
+easy-imgui-opengl = "0.2.1"
+easy-imgui-filechooser = { version = "0.5", features = ["zip"] }
 cpal = "0.17"
 anyhow = "1.0.98"
 sdl3 = "0.17.3"
@@ -17,3 +17,4 @@ fancy-duration = "0.9.2"
 fftw = "0.8.0"
 log = "0.4.29"
 env_logger = "0.11.9"
+zip = "8.5.0"

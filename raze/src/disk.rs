@@ -2,8 +2,8 @@ use anyhow::bail;
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::{
-    floppy::{SectorId, St1, St2},
     ReadExt,
+    floppy::{SectorId, St1, St2},
 };
 
 #[derive(Debug)]
@@ -54,7 +54,6 @@ impl Track {
     }
 
     pub fn get_sector(&self, id: &SectorId) -> Option<&Sector> {
-        dbg!(id);
         self.sectors.iter().find(|s| s.id == *id)
     }
 
@@ -115,7 +114,6 @@ impl Disk {
         rdr.seek(SeekFrom::Start(0x30))?;
         let tracks = rdr.read_u8()?;
         let sides = rdr.read_u8()?;
-        dbg!(tracks, sides);
 
         let num_tracks = tracks as usize * sides as usize;
         let mut track_sizes = Vec::with_capacity(num_tracks);
@@ -205,6 +203,20 @@ impl Disk {
         Ok(Disk { tracks })
     }
 
+    /// Returns (cylinders_side_0, cylinders_side_1)
+    pub fn geometry(&self) -> (u8, u8) {
+        let mut c0 = 0;
+        let mut c1 = 0;
+        for track in &self.tracks {
+            if track.side == 0 {
+                c0 = c0.max(track.cylinder);
+            } else {
+                c1 = c1.max(track.cylinder);
+            }
+        }
+        (c0, c1)
+    }
+
     pub fn get_track(&self, side: u8, cylinder: u8) -> Option<&Track> {
         self.tracks
             .iter()
@@ -228,22 +240,5 @@ impl Disk {
                 self.tracks.sort_by_key(|t| (t.cylinder, t.side));
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test1() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("../files/disks/test.dsk");
-
-        let f = std::fs::File::open(&d).unwrap();
-        let mut f = std::io::BufReader::new(f);
-        let d = Disk::new(&mut f).unwrap();
-        dbg!(d);
     }
 }

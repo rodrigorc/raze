@@ -1,4 +1,9 @@
-use std::collections::VecDeque;
+/*!
+ * Emulates a floppy drive controller uPD765A.
+ */
+
+use std::borrow::BorrowMut;
+use std::io::Cursor;
 
 use bitflags::bitflags;
 
@@ -27,19 +32,67 @@ impl SectorId {
 }
 
 pub struct Floppy {
+    /// The command as being received.
     cmd: Vec<u8>,
-    reply: VecDeque<u8>,
-    data: VecDeque<u8>,
+    /// Reply to be read.
+    reply: Cursor<Vec<u8>>,
+    /// Data to be read.
+    data: Cursor<Vec<u8>>,
 
-    data_in: Option<(u8, SectorId, usize)>,
+    /// If a write command is in progress, this has (cmd[1], SectorId, expected_len, data).
+    data_in: Option<(u8, SectorId, usize, Vec<u8>)>,
 
+    /// Is motor on?
+    motor: bool,
+    /// The current cylinder the head is over.
     cylinder: u8,
+    /// The status of the last seek command.
     int_seek_completed: IntStatus,
 
+    /// The index of the sector read by the next "Read ID" command.
+    /// Some programs issue repeating "Read ID" to explore the track, and we don't want
+    /// to read the same sector every time.
     read_id_idx: u16,
-    disk: Disk,
+
+    /// The inserted disk, if any.
+    disk: Option<Disk>,
+
+    /// Counts how many statuses have been read when there are pending data bytes.
+    /// If there is pending data to be read, but the CPU reads the status instead a few times
+    /// the data byte is lost, overriden by the next one.
     lost_read: u32,
 }
+
+/// Extension methods for Cursor<Vec<u8>>.
+trait CursorExt: BorrowMut<Cursor<Vec<u8>>> {
+    #[inline]
+    fn next_byte(&mut self) -> Option<u8> {
+        // Could use Read::read_exact(), but that would probably be slower
+        let this = self.borrow_mut();
+        let p = this.position();
+        let b = this.get_ref().get(p as usize).copied()?;
+        this.set_position(p + 1);
+        Some(b)
+    }
+    #[inline]
+    fn is_empty(&self) -> bool {
+        // Could use BufRead::has_data_left() but that is unstable.
+        let this = self.borrow();
+        this.position() as usize >= this.get_ref().len()
+    }
+
+    #[inline]
+    fn set(&mut self, data: &[u8]) {
+        let this = self.borrow_mut();
+        this.set_position(0);
+        let v = this.get_mut();
+        v.clear();
+        v.extend(data);
+    }
+}
+
+//impl CursorExt for Cursor<Vec<u8>> { }
+impl<T: BorrowMut<Cursor<Vec<u8>>>> CursorExt for T {}
 
 bitflags! {
     #[derive(Debug, Copy, Clone)]
@@ -118,35 +171,52 @@ impl St3 {
 
 impl Floppy {
     pub fn new() -> Floppy {
-        let disk = Disk::new_formatted();
-
         Floppy {
             cmd: Vec::new(),
-            reply: VecDeque::new(),
-            data: VecDeque::new(),
+            reply: Cursor::default(),
+            data: Cursor::default(),
             data_in: None,
+            motor: false,
             cylinder: 0,
             int_seek_completed: IntStatus::Idle,
             read_id_idx: 0,
-            disk,
+            disk: None,
             lost_read: 0,
         }
     }
 
-    pub fn set_disk(&mut self, disk: Disk) {
+    pub fn set_motor(&mut self, motor: bool) {
+        self.motor = motor;
+    }
+
+    pub fn motor(&self) -> bool {
+        self.motor
+    }
+
+    pub fn current_track(&self) -> u8 {
+        self.cylinder
+    }
+
+    pub fn disk(&self) -> Option<&Disk> {
+        self.disk.as_ref()
+    }
+
+    pub fn set_disk(&mut self, disk: Option<Disk>) {
         self.disk = disk;
     }
 
     pub fn write_cmd(&mut self, b: u8) {
-        //log::info!("DAT W: {:02x}", b);
-        if let Some((c1, in_id, in_len)) = self.data_in.as_mut() {
+        //log::debug!("DAT W: {:02x}", b);
+        // Is in the middle of a "Write" command?
+        if let Some((c1, in_id, in_len, data)) = self.data_in.as_mut() {
             let c1 = *c1;
-            self.data.push_back(b);
+            data.push(b);
             *in_len -= 1;
+            // Write is complete, commit to disk
             if *in_len == 0 {
                 let st0 = St0::from_c1(c1) | St0::FAIL;
                 let st1 = St1::END_OF_CYLINDER;
-                self.reply = VecDeque::from([
+                self.reply.set(&[
                     st0.bits(),
                     st1.bits(),
                     0,
@@ -155,20 +225,21 @@ impl Floppy {
                     in_id.r,
                     in_id.n,
                 ]);
-                let data = Vec::from(std::mem::take(&mut self.data));
-                log::info!("{data:02x?}");
+
+                //log::debug!("{data:02x?}");
 
                 let head = (c1 & 0b0100 != 0) as u8;
                 if let Some(sector) = self
                     .disk
-                    .get_track_mut(head, self.cylinder)
+                    .as_mut()
+                    .and_then(|d| d.get_track_mut(head, self.cylinder))
                     .and_then(|track| track.get_sector_mut(in_id))
                 {
                     // TODO write different length
-                    sector.data = data;
+                    sector.data = std::mem::take(data);
                 }
                 self.data_in = None;
-                log::info!("<<< {:02x?}", self.reply);
+                log::debug!("<<< {:02x?}", self.reply);
             }
         } else {
             self.cmd.push(b);
@@ -178,15 +249,15 @@ impl Floppy {
 
     pub fn read_cmd(&mut self) -> u8 {
         let r;
-        if let Some(b) = self.data.pop_front() {
+        if let Some(b) = self.data.next_byte() {
             r = b;
-        } else if let Some(b) = self.reply.pop_front() {
+        } else if let Some(b) = self.reply.next_byte() {
             r = b;
         } else {
             log::info!("undeflow!");
             r = 0;
         }
-        //log::info!("DAT R: {:02x}", r);
+        //log::debug!("DAT R: {:02x}", r);
         self.lost_read = 0;
         r
     }
@@ -199,9 +270,9 @@ impl Floppy {
         } else if !self.data.is_empty() {
             self.lost_read += 1;
             if self.lost_read > 2 {
-                let _r = self.data.pop_front().unwrap();
+                let _r = self.data.next_byte();
                 self.lost_read = 0;
-                //log::info!("Lost {_r:02x}");
+                //log::debug!("Lost {_r:02x}");
             }
             r.insert(MainReg::RQM | MainReg::DIO | MainReg::EXE_MODE | MainReg::BUSY);
         } else if !self.reply.is_empty() {
@@ -224,7 +295,7 @@ impl Floppy {
             }
         }
 
-        //log::info!("msr: {0:02x}  -  {0:?}", r);
+        //log::debug!("msr: {0:02x}  -  {0:?}", r);
         r.bits()
     }
 
@@ -234,18 +305,18 @@ impl Floppy {
         match self.cmd[0] {
             0x03 => {
                 if len == 3 {
-                    log::info!("Specify {:02x?}", self.cmd);
+                    log::debug!("Specify {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             0x04 => {
                 if len == 2 {
-                    log::info!("Sense drive status {:02x?}", self.cmd);
+                    log::debug!("Sense drive status {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
-                    let st3 = match drive {
-                        0 => {
+                    let st3 = match (drive, &self.disk) {
+                        (0, Some(_)) => {
                             St3::from_c1(c1)
                                 | St3::READY
                                 | St3::TWO_SIDE
@@ -257,28 +328,28 @@ impl Floppy {
                         }
                         _ => St3::FAULT,
                     };
-                    self.reply = VecDeque::from([st3.bits() | drive]);
-                    log::info!("<<< {:02x?}", self.reply);
+                    self.reply.set(&[st3.bits() | drive]);
+                    log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
             0x07 => {
                 if len == 2 {
-                    log::info!("Recalibrate {:02x?}", self.cmd);
+                    log::debug!("Recalibrate {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
                     if drive == 0 {
                         self.int_seek_completed = IntStatus::Running;
                         self.cylinder = 0;
-                        self.reply = VecDeque::new();
+                        self.reply.set(&[]);
                     }
                     self.cmd.clear();
                 }
             }
             0x08 => {
                 if len == 1 {
-                    //log::info!("Sense interrupt status {:02x?}", self.cmd);
+                    //log::debug!("Sense interrupt status {:02x?}", self.cmd);
                     let mut st0 = St0::empty();
                     if self.int_seek_completed == IntStatus::Running {
                         self.int_seek_completed = IntStatus::Done;
@@ -287,30 +358,30 @@ impl Floppy {
                     } else {
                         st0.insert(St0::UNKNOWN);
                     }
-                    self.reply = VecDeque::from([st0.bits(), self.cylinder]);
-                    //log::info!("<<< {:02x?}", self.reply);
+                    self.reply.set(&[st0.bits(), self.cylinder]);
+                    //log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
             0x0f => {
                 if len == 3 {
-                    log::info!("Seek {:02x?}", self.cmd);
+                    log::debug!("Seek {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
                     if drive == 0 {
                         self.int_seek_completed = IntStatus::Running;
                         self.cylinder = self.cmd[2];
-                        self.reply = VecDeque::new();
+                        self.reply.set(&[]);
                     }
                     self.cmd.clear();
                 }
             }
             c if c & 0b0001_1111 == 0b0001_0000 => {
                 if len == 1 {
-                    log::info!("Version {:02x?}", self.cmd);
-                    self.reply = VecDeque::from([0x80]); // PD765A
-                    log::info!("<<< {:02x?}", self.reply);
+                    log::debug!("Version {:02x?}", self.cmd);
+                    self.reply.set(&[0x80]); // PD765A
+                    log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
@@ -320,7 +391,7 @@ impl Floppy {
                     let deleted = c & 0b11111 == 0b01100;
                     let skip = c & 0x20 != 0;
                     let multitrack = c & 0x80 != 0;
-                    log::info!(
+                    log::debug!(
                         "Read {}data {:02x?} SK={} MT={}",
                         if deleted { "deleted " } else { "" },
                         self.cmd,
@@ -338,16 +409,17 @@ impl Floppy {
                     let _gpl = self.cmd[7];
                     let _dtl = self.cmd[8];
 
-                    if drive == 0 {
+                    if drive == 0
+                        && let Some(disk) = self.disk.as_mut()
+                    {
                         let id = SectorId { c, h, r, n };
-                        if let Some(sector) = self
-                            .disk
+                        if let Some(sector) = disk
                             .get_track(head, self.cylinder)
                             .and_then(|track| track.get_sector(&id))
                         {
                             let mut expected_len = sector.id.len();
-                            self.data = VecDeque::from(sector.data.clone());
-                            log::info!("Reading {} {} = {}", self.cylinder, r, self.data.len());
+                            self.data.set(&sector.data);
+                            log::debug!("Reading {} {} = {}", self.cylinder, r, sector.data.len());
 
                             let st0 = St0::from_c1(c1) | St0::FAIL;
                             let mut st1 = sector.st1;
@@ -359,9 +431,9 @@ impl Floppy {
                             if eot > r {
                                 // TODO eot < r???
 
-                                log::info!("Multi sector read!!!");
+                                log::debug!("Multi sector read!!!");
                                 //let mut cur = id;
-                                let track = self.disk.get_track(head, self.cylinder).unwrap();
+                                let track = disk.get_track(head, self.cylinder).unwrap();
                                 //for next_r in 0 .. track.sector_count() {
                                 //let Some(next) = track.get_next_sector(&cur) else { break };
                                 for next_r in r + 1..=eot {
@@ -372,40 +444,40 @@ impl Floppy {
                                         break;
                                     };
                                     expected_len += next.id.len();
-                                    self.data.extend(&next.data);
-                                    log::info!("   extend {}", next.id.r);
+                                    self.data.get_mut().extend(&next.data);
+                                    log::debug!("   extend {}", next.id.r);
                                     //if next.id.r == eot {
                                     //    break;
                                     //}
                                     //cur = next.id.clone();
                                 }
                             }
-                            if self.data.len() == expected_len {
+                            if self.data.get_ref().len() == expected_len {
                                 st1.insert(St1::END_OF_CYLINDER);
                             } else {
                                 st1.insert(St1::OVERRUN);
                             }
 
-                            self.reply =
-                                VecDeque::from([st0.bits(), st1.bits(), st2.bits(), c, h, eot, n]);
+                            self.reply
+                                .set(&[st0.bits(), st1.bits(), st2.bits(), c, h, eot, n]);
                         } else {
                             let st0 = St0::from_c1(c1) | St0::FAIL;
                             let st1 = St1::MISSING_AM;
-                            self.reply =
-                                VecDeque::from([st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
+                            self.reply
+                                .set(&[st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
                         }
                     } else {
                         let st0 = St0::from_c1(c1) | St0::FAIL | St0::UNKNOWN | St0::NOT_READY;
-                        self.reply = VecDeque::from([st0.bits(), 0, 0, c, h, r, n]);
+                        self.reply.set(&[st0.bits(), 0, 0, c, h, r, n]);
                     }
 
-                    log::info!("<<< {:02x?}", self.reply);
+                    //log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
             c if c & 0b111111 == 0b000101 => {
                 if len == 9 {
-                    log::info!("Write data {:02x?}", self.cmd);
+                    log::debug!("Write data {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -416,77 +488,79 @@ impl Floppy {
                     let _eot = self.cmd[6];
                     let _gpl = self.cmd[7];
                     let _dtl = self.cmd[8];
-                    if drive == 0 {
+                    if drive == 0
+                        && let Some(disk) = self.disk.as_mut()
+                    {
                         let sid = SectorId { c, h, r, n };
-                        if let Some(_sector) = self
-                            .disk
+                        if let Some(_sector) = disk
                             .get_track_mut(head, self.cylinder)
                             .and_then(|track| track.get_sector_mut(&sid))
                         {
                             let len = sid.len();
-                            self.data_in = Some((c1, sid, len));
+                            self.data_in = Some((c1, sid, len, Vec::new()));
                         } else {
                             let st0 = St0::from_c1(c1) | St0::FAIL;
                             let st1 = St1::MISSING_AM;
-                            self.reply =
-                                VecDeque::from([st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
+                            self.reply
+                                .set(&[st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
                         }
                     } else {
                         let st0 = St0::from_c1(c1) | St0::FAIL | St0::UNKNOWN | St0::NOT_READY;
-                        self.reply = VecDeque::from([st0.bits(), 0, 0, 0xff, 0xff, 0xff, 0xff]);
+                        self.reply.set(&[st0.bits(), 0, 0, 0xff, 0xff, 0xff, 0xff]);
                     }
                     self.cmd.clear();
                 }
             }
             c if c & 0b111111 == 0b001001 => {
                 if len == 9 {
-                    log::info!("Write deleted data *TODO* {:02x?}", self.cmd);
+                    log::debug!("Write deleted data *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b1001_1111 == 0b0000_0010 => {
                 if len == 9 {
                     // or is it read track?
-                    log::info!("Read diagnostic *TODO* {:02x?}", self.cmd);
+                    log::debug!("Read diagnostic *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b1011_1111 == 0b0000_1010 => {
                 if len == 2 {
-                    log::info!("Read ID {:02x?} at cyl {}", self.cmd, self.cylinder);
+                    log::debug!("Read ID {:02x?} at cyl {}", self.cmd, self.cylinder);
                     let c1 = self.cmd[1];
                     let head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
-                    if drive == 0 {
-                        if let Some(sector) = self
-                            .disk
+                    if drive == 0
+                        && let Some(disk) = self.disk.as_mut()
+                    {
+                        if let Some(sector) = disk
                             .get_track(head, self.cylinder)
                             .and_then(|track| track.get_sector_by_idx(self.read_id_idx as usize))
                         {
                             let id = &sector.id;
                             let st0 = St0::from_c1(c1);
-                            self.reply = VecDeque::from([st0.bits(), 0, 0, id.c, id.h, id.r, id.n]);
+                            self.reply.set(&[st0.bits(), 0, 0, id.c, id.h, id.r, id.n]);
                         } else {
                             let st0 = St0::from_c1(c1) | St0::FAIL;
                             let st1 = St1::MISSING_AM;
-                            self.reply =
-                                VecDeque::from([st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
+                            self.reply
+                                .set(&[st0.bits(), st1.bits(), 0, 0xff, 0xff, 0xff, 0xff]);
                         }
                         self.read_id_idx = self.read_id_idx.wrapping_add(1);
                     }
 
                     if self.reply.is_empty() {
                         let st0 = St0::from_c1(c1) | St0::UNKNOWN | St0::FAIL | St0::NOT_READY;
-                        self.reply = VecDeque::from([st0.bits(), 0, 0, 0, 0, 0, 2]);
+                        self.reply.set(&[st0.bits(), 0, 0, 0, 0, 0, 2]);
                     }
-                    log::info!("<<< {:02x?}", self.reply);
+                    //log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
             c if c & 0b1011_1111 == 0b0000_1101 => {
                 if len == 6 {
                     // AKA format track
-                    log::info!("Write ID {:02x?}", self.cmd);
+                    log::debug!("Write ID {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -495,44 +569,47 @@ impl Floppy {
                     let gpl = self.cmd[4];
                     let filler = self.cmd[5];
 
-                    if drive == 0 {
-                        self.disk.set_track(
+                    if drive == 0
+                        && let Some(disk) = self.disk.as_mut()
+                    {
+                        disk.set_track(
                             head,
                             self.cylinder,
                             Track::new_formatted(self.cylinder, head, n, sectors, gpl, filler),
                         );
                         let st0 = St0::from_c1(c1);
-                        self.reply = VecDeque::from([st0.bits(), 0, 0, 0, 0, 0, n]);
+                        self.reply.set(&[st0.bits(), 0, 0, 0, 0, 0, n]);
                     } else {
                         let st0 = St0::from_c1(c1) | St0::UNKNOWN | St0::FAIL | St0::NOT_READY;
-                        self.reply = VecDeque::from([st0.bits(), 0, 0, self.cylinder, head, 0, n]);
+                        self.reply
+                            .set(&[st0.bits(), 0, 0, self.cylinder, head, 0, n]);
                     }
-                    log::info!("<<< {:02x?}", self.reply);
+                    //log::debug!("<<< {:02x?}", self.reply);
 
                     self.cmd.clear();
                 }
             }
             c if c & 0b11111 == 0b10001 => {
                 if len == 9 {
-                    log::info!("Scan equal *TODO* {:02x?}", self.cmd);
+                    log::debug!("Scan equal *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b11111 == 0b11001 => {
                 if len == 9 {
-                    log::info!("Scan low or equal *TODO* {:02x?}", self.cmd);
+                    log::debug!("Scan low or equal *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b11111 == 0b11101 => {
                 if len == 9 {
-                    log::info!("Scan high or equal *TODO* {:02x?}", self.cmd);
+                    log::debug!("Scan high or equal *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c => {
                 if len == 1 {
-                    log::info!("Invalid {c:02x}");
+                    log::debug!("Invalid {c:02x}");
                     self.cmd.clear();
                 }
             }
