@@ -96,7 +96,7 @@ mod exports {
     use super::*;
 
     #[wasm_bindgen]
-    pub fn wasm_main(model: i32) -> *mut Game<JSGui> {
+    pub fn wasm_main(model: i32, border_x: i32, border_y: i32) -> *mut Game<JSGui> {
         let model = match model {
             0 => Model::Spec48k,
             1 => Model::Spec128k,
@@ -104,7 +104,8 @@ mod exports {
             _ => Model::Spec128k,
         };
         let _ = console_log::init_with_level(log::Level::Debug);
-        let game = Box::new(Game::new(model, &mut JSGui));
+        let mut game = Box::new(Game::new(model, &mut JSGui));
+        game.set_border_size(border_x as usize, border_y as usize);
         Box::into_raw(game)
     }
     #[wasm_bindgen]

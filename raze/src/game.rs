@@ -12,6 +12,7 @@ use std::io::{Cursor, Read, Write};
 
 const TIME_TO_INT: i32 = 69888;
 
+/*
 //margins
 const BX0: usize = 5;
 const BX1: usize = 5;
@@ -23,9 +24,7 @@ const SCREEN_WIDTH: usize = BX0 + 256 + BX1;
 const SCREEN_HEIGHT: usize = BY0 + 192 + BY1;
 const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 
-fn black_screen<PIX: Copy>(palette: &[[PIX; 8]; 2]) -> [PIX; SCREEN_SIZE] {
-    [palette[0][0]; SCREEN_SIZE]
-}
+*/
 
 struct RzxInfo {
     frames: Vec<rzx::InputFrame>,
@@ -367,85 +366,119 @@ pub struct Game<GUI: Gui> {
     z80: Z80,
     ula: Ula,
     speaker: Speaker,
-    image: [GUI::Pixel; SCREEN_SIZE],
+    screen: Screen<GUI::Pixel>,
 }
 
-fn write_border_row<PIX: Copy>(y: usize, border: PIX, ps: &mut [PIX]) {
-    let prow = &mut ps[SCREEN_WIDTH * y..SCREEN_WIDTH * (y + 1)];
-    prow.fill(border);
+pub struct Screen<Pixel: Copy> {
+    bx0: usize,
+    bx1: usize,
+    by0: usize,
+    by1: usize,
+    screen_width: usize,
+    screen_height: usize,
+    screen_size: usize,
+    // image.len() == screen_size
+    image: Vec<Pixel>,
 }
 
-fn write_screen_row<PIX: Copy>(
-    y: usize,
-    border: PIX,
-    inv: bool,
-    data: &[u8],
-    palette: &[[PIX; 8]; 2],
-    ps: &mut [PIX],
-) {
-    let orow = match y {
-        0..=63 => (y % 8) * 256 + (y / 8) * 32,
-        64..=127 => {
-            let y = y - 64;
-            let y = (y % 8) * 256 + (y / 8) * 32;
-            y + 64 * 32
+impl<Pixel: Copy> Screen<Pixel> {
+    fn new(black: Pixel) -> Self {
+        let mut res = Screen {
+            bx0: 0,
+            bx1: 0,
+            by0: 0,
+            by1: 0,
+            screen_width: 0,
+            screen_height: 0,
+            screen_size: 0,
+            image: Vec::new(),
+        };
+        res.set_border_size(black, 5, 4);
+        res
+    }
+
+    fn set_border_size(&mut self, black: Pixel, bx: usize, by: usize) {
+        self.bx0 = bx;
+        self.bx1 = bx;
+        self.by0 = by;
+        self.by1 = by;
+        self.screen_width = self.bx0 + 256 + self.bx1;
+        self.screen_height = self.by0 + 192 + self.by1;
+        self.screen_size = self.screen_width * self.screen_height;
+        self.image = vec![black; self.screen_size];
+    }
+
+    fn write_border_row(&mut self, y: usize, border: Pixel) {
+        let prow = &mut self.image[self.screen_width * y..self.screen_width * (y + 1)];
+        prow.fill(border);
+    }
+
+    fn write_screen_row(
+        &mut self,
+        y: usize,
+        border: Pixel,
+        inv: bool,
+        data: &[u8],
+        palette: &[[Pixel; 8]; 2],
+    ) {
+        let orow = match y {
+            0..=63 => (y % 8) * 256 + (y / 8) * 32,
+            64..=127 => {
+                let y = y - 64;
+                let y = (y % 8) * 256 + (y / 8) * 32;
+                y + 64 * 32
+            }
+            128..=191 => {
+                let y = y - 128;
+                let y = (y % 8) * 256 + (y / 8) * 32;
+                y + 128 * 32
+            }
+            _ => unreachable!(),
+        };
+        let ym = y + self.by0;
+        let prow_full = &mut self.image[self.screen_width * ym..self.screen_width * (ym + 1)];
+        prow_full[..self.bx0].fill(border);
+        prow_full[self.bx0 + 256..].fill(border);
+        let prow = &mut prow_full[self.bx0..self.bx0 + 256];
+        let arow = 192 * 32 + (y / 8) * 32;
+
+        //Attributes are 8 bits:
+        // b7: blink
+        // b6: bright
+        // b5-b3: bk color
+        // b2-b0: fg color
+        //Bitmap and attribute addresses are related in a funny way.
+        //Binary values are grouped as octal, clippy doesn't seem to like that.
+        #[allow(clippy::unusual_byte_groupings)]
+        for ((&bits, &attr), pixels) in data[orow..orow + 32]
+            .iter()
+            .zip(&data[arow..arow + 32])
+            .zip(prow.chunks_mut(8))
+        {
+            let bright = (attr & 0b01_000_000) != 0;
+            let colors = &palette[bright as usize];
+            let ink = colors[(attr & 0b00_000_111) as usize];
+            let paper = colors[((attr & 0b00_111_000) >> 3) as usize];
+            let inv = inv && (attr & 0b10_000_000) != 0;
+            let mut bits = if inv { bits ^ 0xff } else { bits };
+            pixels.fill_with(|| {
+                let on = bits & 0x80 != 0;
+                bits <<= 1;
+                if on { ink } else { paper }
+            });
         }
-        128..=191 => {
-            let y = y - 128;
-            let y = (y % 8) * 256 + (y / 8) * 32;
-            y + 128 * 32
+    }
+
+    fn write_screen(&mut self, border: Pixel, palette: &[[Pixel; 8]; 2], inv: bool, data: &[u8]) {
+        for y in 0..self.by0 {
+            self.write_border_row(y, border);
         }
-        _ => unreachable!(),
-    };
-    let ym = y + BY0;
-    let prow_full = &mut ps[SCREEN_WIDTH * ym..SCREEN_WIDTH * (ym + 1)];
-    prow_full[..BX0].fill(border);
-    prow_full[BX0 + 256..].fill(border);
-    let prow = &mut prow_full[BX0..BX0 + 256];
-    let arow = 192 * 32 + (y / 8) * 32;
-
-    //Attributes are 8 bits:
-    // b7: blink
-    // b6: bright
-    // b5-b3: bk color
-    // b2-b0: fg color
-    //Bitmap and attribute addresses are related in a funny way.
-    //Binary values are grouped as octal, clippy doesn't seem to like that.
-    #[allow(clippy::unusual_byte_groupings)]
-    for ((&bits, &attr), pixels) in data[orow..orow + 32]
-        .iter()
-        .zip(&data[arow..arow + 32])
-        .zip(prow.chunks_mut(8))
-    {
-        let bright = (attr & 0b01_000_000) != 0;
-        let colors = &palette[bright as usize];
-        let ink = colors[(attr & 0b00_000_111) as usize];
-        let paper = colors[((attr & 0b00_111_000) >> 3) as usize];
-        let inv = inv && (attr & 0b10_000_000) != 0;
-        let mut bits = if inv { bits ^ 0xff } else { bits };
-        pixels.fill_with(|| {
-            let on = bits & 0x80 != 0;
-            bits <<= 1;
-            if on { ink } else { paper }
-        });
-    }
-}
-
-fn write_screen<PIX: Copy>(
-    border: PIX,
-    palette: &[[PIX; 8]; 2],
-    inv: bool,
-    data: &[u8],
-    ps: &mut [PIX],
-) {
-    for y in 0..BY0 {
-        write_border_row(y, border, ps);
-    }
-    for y in 0..192 {
-        write_screen_row(y, border, inv, data, palette, ps);
-    }
-    for y in 0..BY1 {
-        write_border_row(BY0 + 192 + y, border, ps);
+        for y in 0..192 {
+            self.write_screen_row(y, border, inv, data, palette);
+        }
+        for y in 0..self.by1 {
+            self.write_border_row(self.by0 + 192 + y, border);
+        }
     }
 }
 
@@ -506,8 +539,13 @@ impl<GUI: Gui> Game<GUI> {
                 rzx_info: None,
             },
             speaker: Speaker::new(t_per_sample(model)),
-            image: black_screen(&GUI::PALETTE),
+            screen: Screen::new(GUI::PALETTE[0][0]),
         }
+    }
+
+    pub fn set_border_size(&mut self, border_x: usize, border_y: usize) {
+        self.screen
+            .set_border_size(GUI::PALETTE[0][0], border_x, border_y);
     }
 
     pub fn model(&self) -> Model {
@@ -520,6 +558,7 @@ impl<GUI: Gui> Game<GUI> {
             res
         })
     }
+
     pub fn draw_frame(&mut self, turbo: bool, gui: &mut GUI) {
         //log::info!("Draw!");
         let n = if turbo { 100 } else { 1 };
@@ -528,7 +567,7 @@ impl<GUI: Gui> Game<GUI> {
             self.ula.frame_counter = self.ula.frame_counter.wrapping_add(1);
             let inverted = self.ula.frame_counter % 32 < 16;
             let mut screen_time = 0;
-            let mut screen_row = 0;
+            let mut screen_row: usize = 0;
             while !self.ula.has_to_interrupt() {
                 let mut t = self.z80.exec(&mut self.ula);
                 //self.z80._dump_regs();
@@ -543,21 +582,23 @@ impl<GUI: Gui> Game<GUI> {
                     while screen_time >= 224 {
                         screen_time -= 224;
                         match screen_row {
-                            60..=63 | 256..=259 => {
-                                write_border_row(screen_row - 60, border, &mut self.image);
-                            }
-                            64..=255 => {
+                            64..256 => {
                                 let screen = self.ula.memory.video_memory();
-                                write_screen_row(
+                                self.screen.write_screen_row(
                                     screen_row - 64,
                                     border,
                                     inverted,
                                     screen,
                                     &GUI::PALETTE,
-                                    &mut self.image,
                                 );
                             }
-                            _ => {}
+                            _ => {
+                                if let Some(row) = (screen_row + self.screen.by0).checked_sub(64)
+                                    && row < self.screen.screen_height
+                                {
+                                    self.screen.write_border_row(row, border);
+                                }
+                            }
                         }
                         screen_row += 1;
                     }
@@ -567,10 +608,10 @@ impl<GUI: Gui> Game<GUI> {
             self.ula.post_interrupt(gui);
         }
         if turbo {
-            let screen = self.ula.memory.video_memory();
+            let vmem = self.ula.memory.video_memory();
             //Border is never bright
             let border = GUI::PALETTE[0][self.ula.border as usize];
-            write_screen(border, &GUI::PALETTE, false, screen, &mut self.image);
+            self.screen.write_screen(border, &GUI::PALETTE, false, vmem);
         } else {
             //adding samples should be rarely necessary, so use lazy generation
             let ula = &mut self.ula;
@@ -580,7 +621,11 @@ impl<GUI: Gui> Game<GUI> {
             gui.put_sound_data(audio);
             self.speaker.clear();
         }
-        gui.put_image_data(SCREEN_WIDTH, SCREEN_HEIGHT, &self.image);
+        gui.put_image_data(
+            self.screen.screen_width,
+            self.screen.screen_height,
+            &self.screen.image,
+        );
     }
     //Every byte in key is a key pressed:
     //  * low nibble: key number (0..5)

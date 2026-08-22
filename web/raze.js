@@ -4,6 +4,7 @@ import * as base64 from "./base64.js";
 
 let g_game;
 let g_model;
+let g_border;
 let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
@@ -124,13 +125,32 @@ export function putImageData(w, h, data) {
     }
 }
 
+function parse2Ints(str) {
+    if (!str)
+        return { x: 5, y: 4 };
+    const [x, y] = str.split(',').map(x => parseInt(x));
+    if (isNaN(x))
+        return { x: 5, y: 4 };
+    if (isNaN(y))
+        return { x, y: x };
+    return { x, y };
+}
+
 async function onDocumentLoad() {
 
     let urlParams = new URLSearchParams(window.location.search);
-    let webgl = boolURLParamDef(urlParams, 'webgl', true)
+    let webgl = boolURLParamDef(urlParams, 'webgl', true);
+    let dither = boolURLParamDef(urlParams, 'dither', false);
+    g_border = parse2Ints(urlParams.get("border"));
+
+    let screen_width = 2 * g_border.x + 256;
+    let screen_height = 2 * g_border.y + 192;
 
     let canvas3d = document.getElementById('game-layer-3d');
     let canvas = document.getElementById('game-layer');
+
+    canvas3d.width = canvas.width = screen_width;
+    canvas3d.height = canvas.height = screen_height;
 
     if (webgl) {
         g_gl = canvas3d.getContext('webgl');
@@ -163,7 +183,7 @@ async function onDocumentLoad() {
         g_model = 1;
 
     console.log("Spec model", g_model);
-    g_game = wasm_bindgen.wasm_main(g_model);
+    g_game = wasm_bindgen.wasm_main(g_model, g_border.x, g_border.y);
 
     let snapshot = urlParams.get("snapshot");
     if (snapshot) {
@@ -242,8 +262,13 @@ async function onDocumentLoad() {
     document.getElementById('poke').addEventListener('click', handlePoke, false);
     document.getElementById('peek').addEventListener('click', handlePeek, false);
     document.getElementById('toggle_kbd').addEventListener('click', handleToggleKbd, false);
-    document.getElementById('dither').addEventListener('click', handleDither, false);
-    setDither(false, g_gl);
+    let btnDither = document.getElementById('dither');
+    btnDither.addEventListener('click', handleDither, false);
+
+    if (dither) {
+        btnDither.classList.add('active');
+    }
+    setDither(dither, g_gl);
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
@@ -764,7 +789,7 @@ function handleReset(evt, model) {
     resetTape();
     wasm_bindgen.wasm_drop(g_game);
     g_model = model;
-    g_game = wasm_bindgen.wasm_main(g_model);
+    g_game = wasm_bindgen.wasm_main(g_model, g_border.x, g_border.y);
 }
 
 function handleLoadTape(evt) {
@@ -907,16 +932,14 @@ function handleDither(evt) {
 
 function setDither(dither, gl) {
     if (dither) {
+        g_realCanvas.classList.remove('pixelated');
         if (gl) {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        } else {
-            document.getElementById('game-layer').classList.remove('pixelated');
         }
     } else {
+        g_realCanvas.classList.add('pixelated');
         if (gl) {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        } else {
-            document.getElementById('game-layer').classList.add('pixelated');
         }
     }
 }

@@ -13,7 +13,6 @@ h1 span.version {
 }
 #stage {
     width: 798px;
-    height: 600px;
     position: relative;
     margin: 0 auto;
 }
@@ -81,8 +80,7 @@ h1 span.version {
 }
 
 #stage canvas {
-    width: 798px;
-    height: 600px;
+    width: 100%;
     border: 2px solid black;
     cursor: none;
 }
