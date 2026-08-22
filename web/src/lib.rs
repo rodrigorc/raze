@@ -125,7 +125,7 @@ mod exports {
         game.draw_frame(turbo, &mut JSGui);
     }
     #[wasm_bindgen]
-    pub fn wasm_load_tape(game: *mut Game<JSGui>, data: &[u8]) -> usize {
+    pub fn wasm_tape_load(game: *mut Game<JSGui>, data: &[u8]) -> usize {
         let game = unsafe { &mut *game };
         match game.tape_load(data) {
             Ok(blocks) => blocks,
@@ -172,6 +172,22 @@ mod exports {
             Model::Spec128k => 1,
             Model::Plus3 => 2,
         }
+    }
+    #[wasm_bindgen]
+    pub fn wasm_disk_load(game: *mut Game<JSGui>, data: &[u8]) -> bool {
+        let game = unsafe { &mut *game };
+        match game.load_disk(data) {
+            Ok(()) => true,
+            Err(e) => {
+                alert(format!("Tape error: {e}"));
+                false
+            }
+        }
+    }
+    #[wasm_bindgen]
+    pub fn wasm_disk_eject(game: *mut Game<JSGui>) {
+        let game = unsafe { &mut *game };
+        let _ = game.eject_disk();
     }
     #[wasm_bindgen]
     pub fn wasm_snapshot(game: *mut Game<JSGui>) -> Vec<u8> {

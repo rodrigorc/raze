@@ -239,7 +239,7 @@ impl Floppy {
                     sector.data = std::mem::take(data);
                 }
                 self.data_in = None;
-                log::debug!("<<< {:02x?}", self.reply);
+                //log::debug!("<<< {:02x?}", self.reply);
             }
         } else {
             self.cmd.push(b);
@@ -254,7 +254,7 @@ impl Floppy {
         } else if let Some(b) = self.reply.next_byte() {
             r = b;
         } else {
-            log::info!("undeflow!");
+            //log::info!("undeflow!");
             r = 0;
         }
         //log::debug!("DAT R: {:02x}", r);
@@ -305,13 +305,13 @@ impl Floppy {
         match self.cmd[0] {
             0x03 => {
                 if len == 3 {
-                    log::debug!("Specify {:02x?}", self.cmd);
+                    //log::debug!("Specify {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             0x04 => {
                 if len == 2 {
-                    log::debug!("Sense drive status {:02x?}", self.cmd);
+                    //log::debug!("Sense drive status {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -329,13 +329,13 @@ impl Floppy {
                         _ => St3::FAULT,
                     };
                     self.reply.set(&[st3.bits() | drive]);
-                    log::debug!("<<< {:02x?}", self.reply);
+                    //log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
             0x07 => {
                 if len == 2 {
-                    log::debug!("Recalibrate {:02x?}", self.cmd);
+                    //log::debug!("Recalibrate {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -365,7 +365,7 @@ impl Floppy {
             }
             0x0f => {
                 if len == 3 {
-                    log::debug!("Seek {:02x?}", self.cmd);
+                    //log::debug!("Seek {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let _head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -379,9 +379,9 @@ impl Floppy {
             }
             c if c & 0b0001_1111 == 0b0001_0000 => {
                 if len == 1 {
-                    log::debug!("Version {:02x?}", self.cmd);
+                    //log::debug!("Version {:02x?}", self.cmd);
                     self.reply.set(&[0x80]); // PD765A
-                    log::debug!("<<< {:02x?}", self.reply);
+                    //log::debug!("<<< {:02x?}", self.reply);
                     self.cmd.clear();
                 }
             }
@@ -419,7 +419,7 @@ impl Floppy {
                         {
                             let mut expected_len = sector.id.len();
                             self.data.set(&sector.data);
-                            log::debug!("Reading {} {} = {}", self.cylinder, r, sector.data.len());
+                            //log::debug!("Reading {} {} = {}", self.cylinder, r, sector.data.len());
 
                             let st0 = St0::from_c1(c1) | St0::FAIL;
                             let mut st1 = sector.st1;
@@ -431,7 +431,7 @@ impl Floppy {
                             if eot > r {
                                 // TODO eot < r???
 
-                                log::debug!("Multi sector read!!!");
+                                //log::debug!("Multi sector read!!!");
                                 //let mut cur = id;
                                 let track = disk.get_track(head, self.cylinder).unwrap();
                                 //for next_r in 0 .. track.sector_count() {
@@ -445,7 +445,7 @@ impl Floppy {
                                     };
                                     expected_len += next.id.len();
                                     self.data.get_mut().extend(&next.data);
-                                    log::debug!("   extend {}", next.id.r);
+                                    //log::debug!("   extend {}", next.id.r);
                                     //if next.id.r == eot {
                                     //    break;
                                     //}
@@ -513,20 +513,20 @@ impl Floppy {
             }
             c if c & 0b111111 == 0b001001 => {
                 if len == 9 {
-                    log::debug!("Write deleted data *TODO* {:02x?}", self.cmd);
+                    //log::debug!("Write deleted data *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b1001_1111 == 0b0000_0010 => {
                 if len == 9 {
                     // or is it read track?
-                    log::debug!("Read diagnostic *TODO* {:02x?}", self.cmd);
+                    //log::debug!("Read diagnostic *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b1011_1111 == 0b0000_1010 => {
                 if len == 2 {
-                    log::debug!("Read ID {:02x?} at cyl {}", self.cmd, self.cylinder);
+                    //log::debug!("Read ID {:02x?} at cyl {}", self.cmd, self.cylinder);
                     let c1 = self.cmd[1];
                     let head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -560,7 +560,7 @@ impl Floppy {
             c if c & 0b1011_1111 == 0b0000_1101 => {
                 if len == 6 {
                     // AKA format track
-                    log::debug!("Write ID {:02x?}", self.cmd);
+                    //log::debug!("Write ID {:02x?}", self.cmd);
                     let c1 = self.cmd[1];
                     let head = (c1 & 0b0100 != 0) as u8;
                     let drive = c1 & 0b0011;
@@ -591,25 +591,25 @@ impl Floppy {
             }
             c if c & 0b11111 == 0b10001 => {
                 if len == 9 {
-                    log::debug!("Scan equal *TODO* {:02x?}", self.cmd);
+                    //log::debug!("Scan equal *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b11111 == 0b11001 => {
                 if len == 9 {
-                    log::debug!("Scan low or equal *TODO* {:02x?}", self.cmd);
+                    //log::debug!("Scan low or equal *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
             c if c & 0b11111 == 0b11101 => {
                 if len == 9 {
-                    log::debug!("Scan high or equal *TODO* {:02x?}", self.cmd);
+                    //log::debug!("Scan high or equal *TODO* {:02x?}", self.cmd);
                     self.cmd.clear();
                 }
             }
-            c => {
+            _c => {
                 if len == 1 {
-                    log::debug!("Invalid {c:02x}");
+                    //log::debug!("Invalid {_c:02x}");
                     self.cmd.clear();
                 }
             }

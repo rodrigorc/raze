@@ -67,8 +67,12 @@ h1 span.version {
     grid-column-end: 5;
     text-align: end;
 }
-#load_tape {
+#load_media {
     grid-column: 1;
+
+    display: grid;
+    grid-gap: 5px;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 #pause {
     grid-column: 2;

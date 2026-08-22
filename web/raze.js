@@ -179,6 +179,8 @@ async function onDocumentLoad() {
         g_model = 0;
     else if (boolURLParamDef(urlParams, 'plus3', false))
         g_model = 2;
+    else if (urlParams.has("disk"))
+        g_model = 2; // disk drive only in plus3
     else
         g_model = 1;
 
@@ -200,6 +202,7 @@ async function onDocumentLoad() {
     }
 
     let tape = urlParams.get("tape");
+    let disk = urlParams.get("disk");
     if (tape) {
         console.log("TAPE=", tape);
         await fetch_with_cors_if_needed(tape,
@@ -223,7 +226,7 @@ async function onDocumentLoad() {
                     } else {
                         // 128K loading sequence: enter in the load menu
                         // +3 loading sequence: same as 128K but a slightly longer delay because of the floppy
-                        call_with_delay(g_model == 3 ? 2000 : 1500, 100, [
+                        call_with_delay(g_model == 2 ? 2000 : 1500, 100, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
@@ -235,7 +238,29 @@ async function onDocumentLoad() {
                 alert("Cannot download file " + tape);
             }
         );
+    } else if (disk) {
+        console.log("DISK=", disk);
+        if (g_model == 2) {
+            await fetch_with_cors_if_needed(disk,
+                bytes => {
+                    // Contrary to tapes, the disk is best loaded first, and then press enter, else
+                    // the floppy may not be detected and the system will default to loading the tape.
+                    if (onLoadDisk(bytes)) {
+                        call_with_delay(2000, 100, [
+                            () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
+                            () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
+                        ]);
+                    }
+                },
+                error => {
+                    alert("Cannot download file " + tape);
+                }
+            );
+        } else {
+            alert("disk= option only available with plus3=1");
+        }
     }
+
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('focus', onFocus)
@@ -255,6 +280,7 @@ async function onDocumentLoad() {
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
     document.getElementById('load_snapshot').addEventListener('click', handleLoadSnapshot, false);
     document.getElementById('load_last_snapshot').addEventListener('click', handleLoadLastSnapshot, false);
+    document.getElementById('load_disk').addEventListener('click', handleLoadDisk, false);
     document.getElementById('fullscreen').addEventListener('click', handleFullscreen, false);
     document.getElementById('rzx_replay').addEventListener('click', handleRZXReplay, false);
     document.getElementById('turbo').addEventListener('click', e => handleTurbo(e, false), false);
@@ -751,7 +777,7 @@ function resetTape() {
 }
 
 function onLoadTape(data) {
-    let tape_len = wasm_bindgen.wasm_load_tape(g_game, new Uint8Array(data));
+    let tape_len = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data));
     let xTape = resetTape();
 
     for (let i = 0; i < tape_len; ++i) {
@@ -785,8 +811,36 @@ function handleTapeBlock(evt) {
     wasm_bindgen.wasm_tape_seek(g_game, index);
 }
 
+function resetDisk(model) {
+    let disk = document.getElementById("load_disk");
+    disk.classList.remove('active');
+    if (model == 2) {
+        disk.style.display = null;
+    } else {
+        disk.style.display = 'none'
+    }
+}
+
+function onLoadDisk(data) {
+    if (!wasm_bindgen.wasm_disk_load(g_game, new Uint8Array(data))) {
+        return false;
+    }
+    let disk = document.getElementById('load_disk');
+    disk.classList.add('active');
+    return true;
+}
+
+function handleDiskSelect(evt) {
+    let f = evt.target.files[0];
+    console.log("reading " + f.name);
+    let reader = new FileReader();
+    reader.onload = function(e) { onLoadDisk(this.result); };
+    reader.readAsArrayBuffer(f);
+}
+
 function handleReset(evt, model) {
     resetTape();
+    resetDisk(model);
     wasm_bindgen.wasm_drop(g_game);
     g_model = model;
     g_game = wasm_bindgen.wasm_main(g_model, g_border.x, g_border.y);
@@ -802,6 +856,20 @@ function handleLoadTape(evt) {
 
 function handleStopTape(evt) {
     wasm_bindgen.wasm_tape_stop(g_game);
+}
+
+function handleLoadDisk(evt) {
+    if (this.classList.contains('active')) {
+        wasm_bindgen.wasm_disk_eject(g_game);
+        this.classList.remove('active');
+        return;
+    }
+
+    let x = document.createElement("input");
+    x.type = "file";
+    x.accept = [".dsk", ".zip"];
+    x.addEventListener('change', handleDiskSelect, false);
+    x.click();
 }
 
 function handleLoadSnapshotSelect(evt) {
