@@ -305,11 +305,14 @@ async function onDocumentLoad() {
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
-    if (window.localStorage) {
-        let cursorSel = parseInt(window.localStorage.getItem("cursorKeys"));
-        if (!isNaN(cursorSel))
-            cursorKeys.selectedIndex = cursorSel;
+    let cursorSel = parseInt(urlParams.get('cursorKeys'));
+    if (isNaN(cursorSel)) {
+        if (window.localStorage) {
+            cursorSel = parseInt(window.localStorage.getItem("cursorKeys"));
+        }
     }
+    if (!isNaN(cursorSel))
+        cursorKeys.selectedIndex = cursorSel;
     handleCursorKeys.call(cursorKeys, null);
 
     let keyboard = document.getElementById('keyboard');
