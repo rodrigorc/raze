@@ -15,6 +15,7 @@ h1 span.version {
     width: 798px;
     position: relative;
     margin: 0 auto;
+    border: 2px solid black;
 }
 #controls {
     width: 798px;
@@ -83,10 +84,36 @@ h1 span.version {
     text-align: end;
 }
 
-#stage canvas {
+#canvases {
     width: 100%;
-    border: 2px solid black;
     cursor: none;
+}
+
+#canvases canvas {
+    width: 100%;
+    display: block;
+}
+
+#start-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#start-overlay button {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    background: #4f46e5;
+    color: white;
+    border: none;
+    border-radius: 6px;
 }
 
 canvas.pixelated {

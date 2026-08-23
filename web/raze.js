@@ -19,11 +19,14 @@ let g_gamepad = null;
 let g_gamepadStatus = { fire: false, x: 0, y: 0 };
 let g_cursorKeys = null;
 
-function ensureAudioRunning() {
-    //autoplay policy in chrome requires this
+async function ensureAudioRunning() {
+    //autoplay policy requires this
     if (g_actx.state == "suspended") {
         console.log("Resume AutoPlay");
-        g_actx.resume();
+        await g_actx.resume();
+        if (g_actx.state != "suspended") {
+            document.getElementById('start-overlay').style.display = "none";
+        }
     }
 }
 
@@ -158,6 +161,7 @@ async function onDocumentLoad() {
 
     if (g_gl && initMyGL(g_gl)) {
         console.log("using webgl rendering");
+        canvas.style.display = 'none';
         g_realCanvas = canvas3d;
     } else {
         if (webgl)
@@ -166,7 +170,6 @@ async function onDocumentLoad() {
             console.log("webgl initialization skipped, falling back to canvas");
         g_gl = null;
         canvas3d.style.display = 'none';
-        canvas.style.display = '';
 
         g_ctx = canvas.getContext('2d');
         g_ctx.imageSmoothingEnabled = false;
@@ -270,6 +273,10 @@ async function onDocumentLoad() {
     g_audio_next = g_actx.currentTime;
     if (document.hasFocus())
         onFocus();
+
+    if (g_actx.state == "suspended") {
+        document.getElementById('start-overlay').style.display = null;
+    }
 
     document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
     document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, 0), false);

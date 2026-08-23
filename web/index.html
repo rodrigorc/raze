@@ -9,8 +9,13 @@
 <body>
 <h1>R.A.Z.E. A ZX Spectrum Emulator <a href="https://github.com/rodrigorc/raze"><span class="version">v1.13</span></a></h1>
 <div id="stage">
-  <canvas id="game-layer-3d"></canvas>
-  <canvas id="game-layer" style="display:none" class="pixelated"></canvas>
+  <div id="canvases">
+    <canvas id="game-layer-3d"></canvas>
+    <canvas id="game-layer"></canvas>
+  </div>
+  <div id="start-overlay" style="display:none">
+      <button>Click to Start</button>
+  </div>
 </div>
 <p>
 <div id="controls">
