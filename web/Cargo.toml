@@ -11,7 +11,7 @@ license = "MIT"
 crate-type=["cdylib"]
 
 [dependencies]
-zxspectrum-raze = { version = "*", path = "../raze" }
+zxspectrum-raze = { path = "../raze" }
 wasm-bindgen = "0.2.85"
 console_log = { version = "1", features = ["color"] }
 log = "0.4"

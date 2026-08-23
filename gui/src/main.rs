@@ -1,5 +1,8 @@
 use anyhow::Result;
-use cpal::{SampleFormat, Stream, traits::DeviceTrait};
+use cpal::{
+    SampleFormat, Stream,
+    traits::{DeviceTrait, StreamTrait},
+};
 use easy_imgui::{
     ChildFlags, Color, ColorId, Cond, Dir, DockNodeFlags, DrawFlags, InputFlags, Key, MouseCursor,
     SelectableFlags, TextWrapPos, TextureRef, UiBuilder, VEC2_ZERO, Vector2, WindowClass,
@@ -347,7 +350,7 @@ impl Application for App {
         let audio_buffer = Arc::new(Mutex::new(AudioBuffer::default()));
         let audio = snd_dev
             .build_output_stream(
-                &snd_cfg,
+                snd_cfg,
                 {
                     let audio_buffer = Arc::clone(&audio_buffer);
                     move |data: &mut [f32], _info| {
@@ -361,6 +364,7 @@ impl Application for App {
                 None,
             )
             .unwrap();
+        audio.play().unwrap();
         let mut gui = GameUi {
             texture,
             size: Cell::new(vec2(4.0, 3.0)),
@@ -842,8 +846,8 @@ impl UiBuilder for App {
                     canvas_p1,
                     Color::WHITE,
                     0.0,
-                    DrawFlags::None,
                     1.0,
+                    DrawFlags::None,
                 );
 
                 for (act, f, v, c) in [
