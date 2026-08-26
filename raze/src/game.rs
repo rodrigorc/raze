@@ -1,6 +1,6 @@
 pub use crate::disk::Disk;
 use crate::floppy::Floppy;
-use crate::memory::Memory;
+use crate::memory::{Memory, RomBlob};
 use crate::psg::Psg;
 use crate::rzx;
 use crate::speaker::Speaker;
@@ -816,13 +816,16 @@ impl<GUI: Gui> Game<GUI> {
 
         match self.model {
             Model::Spec48k => {
-                for i in 1..4 {
+                // ROM is only saved if it is custom load.
+                let first_bank = if self.ula.memory.custom_rom() { 0 } else { 1 };
+                for i in first_bank..4 {
                     if let Some(bank) = self.ula.memory.get_bank(i) {
                         compress(&mut data, [0, 8, 4, 5][i], bank);
                     }
                 }
             }
             Model::Spec128k | Model::Plus3 => {
+                // Currently ROMs are never saved.
                 for i in 0..8 {
                     if let Some(bank) = self.ula.memory.get_bank(i) {
                         // 3 first banks are ROM, do not save those
@@ -1000,6 +1003,7 @@ impl<GUI: Gui> Game<GUI> {
                     offset += memlen;
 
                     let ibank = match (model != Model::Spec48k, page) {
+                        (false, 0) => 0,
                         (false, 8) => 1,
                         (false, 4) => 2,
                         (false, 5) => 3,
@@ -1048,6 +1052,23 @@ impl<GUI: Gui> Game<GUI> {
         if game.ula.rzx_info.is_some() {
             gui.on_rzx_running(true, 0);
         }
+        Ok(game)
+    }
+
+    pub fn load_rom(data: &[u8], gui: &mut GUI) -> Result<Game<GUI>> {
+        match data.len() {
+            0x2000 | 0x4000 => (),
+            _ => bail!("invalid ROM length"),
+        }
+        if data[0] != 0xf3 {
+            bail!("invalid ROM prefix");
+        }
+
+        let mut game = Game::new(Model::Spec48k, gui);
+        let mut rom = data.to_vec();
+        // Extend from 0x2000 to 0x4000 if needed
+        rom.resize(0x4000, 0xff);
+        game.ula.memory = Memory::new_from_rom(RomBlob::R48k(&rom), true);
         Ok(game)
     }
 

@@ -24,6 +24,7 @@ impl Bank {
 
 pub struct Memory {
     data: Vec<Bank>,
+    custom_rom: bool,
     banks: [usize; 4],
     vram: usize,
     locked: bool,
@@ -40,38 +41,36 @@ static ROM_PLUS3_1: &[u8] = include_bytes!("pl3-1.rom");
 static ROM_PLUS3_2: &[u8] = include_bytes!("pl3-2.rom");
 static ROM_PLUS3_3: &[u8] = include_bytes!("pl3-3.rom");
 
-#[derive(Copy, Clone)]
-pub enum RomBlob {
-    R48k(&'static [u8]),
-    R128k(&'static [u8], &'static [u8]),
-    Plus3(&'static [u8], &'static [u8], &'static [u8], &'static [u8]),
+pub enum RomBlob<'a> {
+    R48k(&'a [u8]),
+    R128k(&'a [u8], &'a [u8]),
+    Plus3(&'a [u8], &'a [u8], &'a [u8], &'a [u8]),
 }
 
 impl Memory {
     pub fn new_from_model(model: Model) -> Self {
         match model {
-            Model::Spec48k => Self::new_from_rom(RomBlob::R48k(ROM_48)),
-            Model::Spec128k => Self::new_from_rom(RomBlob::R128k(ROM_128_0, ROM_128_1)),
-            Model::Plus3 => Self::new_from_rom(RomBlob::Plus3(
-                ROM_PLUS3_0,
-                ROM_PLUS3_1,
-                ROM_PLUS3_2,
-                ROM_PLUS3_3,
-            )),
+            Model::Spec48k => Self::new_from_rom(RomBlob::R48k(ROM_48), false),
+            Model::Spec128k => Self::new_from_rom(RomBlob::R128k(ROM_128_0, ROM_128_1), false),
+            Model::Plus3 => Self::new_from_rom(
+                RomBlob::Plus3(ROM_PLUS3_0, ROM_PLUS3_1, ROM_PLUS3_2, ROM_PLUS3_3),
+                false,
+            ),
         }
     }
 
-    pub fn new_from_rom(rom: RomBlob) -> Self {
+    pub fn new_from_rom(rom: RomBlob, custom_rom: bool) -> Self {
         match rom {
             RomBlob::R48k(rom0) => {
                 let data = vec![
-                    Bank::rom(rom0),
+                    Bank::rom(&rom0),
                     Bank::ram(true),
                     Bank::ram(false),
                     Bank::ram(false),
                 ];
                 Memory {
                     data,
+                    custom_rom,
                     banks: [0, 1, 2, 3],
                     vram: 1,
                     locked: true,
@@ -95,6 +94,7 @@ impl Memory {
                 ];
                 Memory {
                     data,
+                    custom_rom,
                     banks: [8, 5, 2, 0],
                     vram: 5,
                     locked: false,
@@ -120,6 +120,7 @@ impl Memory {
                 ];
                 Memory {
                     data,
+                    custom_rom,
                     banks: [8, 5, 2, 0],
                     vram: 5,
                     locked: false,
@@ -130,6 +131,11 @@ impl Memory {
             }
         }
     }
+
+    pub fn custom_rom(&self) -> bool {
+        self.custom_rom
+    }
+
     //All these functions use unchecked access to the arrays because the bit size of the arguments
     //make it impossible to overflow. Not checking bounds improves about 10% of CPU time.
 
@@ -265,6 +271,11 @@ impl Memory {
         self.data.get(i).map(|bank| &bank.data[..])
     }
     pub fn get_bank_mut(&mut self, i: usize) -> Option<&mut [u8]> {
-        self.data.get_mut(i).map(|bank| &mut bank.data[..])
+        let bank = self.data.get_mut(i)?;
+        // If a mutable ref to a ROM is requested, it will be changed, so it is custom now.
+        if bank.ro {
+            self.custom_rom = true;
+        }
+        Some(&mut bank.data[..])
     }
 }

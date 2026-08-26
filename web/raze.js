@@ -897,7 +897,7 @@ function handleLoadSnapshotSelect(evt) {
 function handleLoadSnapshot(evt) {
     let x = document.createElement("input");
     x.type = "file";
-    x.accept = [".z80", ".rzx", ".zip"];
+    x.accept = [".z80", ".rzx", ".zip", ".bin"];
     x.addEventListener('change', handleLoadSnapshotSelect, false);
     x.click();
 }

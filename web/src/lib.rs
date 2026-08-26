@@ -159,7 +159,7 @@ mod exports {
     pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> i32 {
         let old_game = unsafe { &mut *game };
         log::debug!("snap len {}", data.len());
-        match Game::load_snapshot(data, &mut JSGui) {
+        match Game::load_rom(data, &mut JSGui).or_else(|_| Game::load_snapshot(data, &mut JSGui)) {
             Ok(new_game) => {
                 *old_game = new_game;
             }
