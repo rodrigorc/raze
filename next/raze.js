@@ -256,7 +256,7 @@ async function onDocumentLoad() {
                     }
                 },
                 error => {
-                    alert("Cannot download file " + tape);
+                    alert("Cannot download file " + disk);
                 }
             );
         } else {
@@ -302,6 +302,7 @@ async function onDocumentLoad() {
         btnDither.classList.add('active');
     }
     setDither(dither, g_gl);
+    resetDisk();
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
@@ -821,10 +822,10 @@ function handleTapeBlock(evt) {
     wasm_bindgen.wasm_tape_seek(g_game, index);
 }
 
-function resetDisk(model) {
+function resetDisk() {
     let disk = document.getElementById("load_disk");
     disk.classList.remove('active');
-    if (model == 2) {
+    if (g_model == 2) {
         disk.style.display = null;
     } else {
         disk.style.display = 'none'
@@ -849,10 +850,10 @@ function handleDiskSelect(evt) {
 }
 
 function handleReset(evt, model) {
-    resetTape();
-    resetDisk(model);
-    wasm_bindgen.wasm_drop(g_game);
     g_model = model;
+    resetTape();
+    resetDisk();
+    wasm_bindgen.wasm_drop(g_game);
     g_game = wasm_bindgen.wasm_main(g_model, g_border.x, g_border.y);
 }
 
@@ -896,7 +897,7 @@ function handleLoadSnapshotSelect(evt) {
 function handleLoadSnapshot(evt) {
     let x = document.createElement("input");
     x.type = "file";
-    x.accept = [".z80", ".rzx", ".zip"];
+    x.accept = [".z80", ".rzx", ".zip", ".bin"];
     x.addEventListener('change', handleLoadSnapshotSelect, false);
     x.click();
 }
