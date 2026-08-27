@@ -1,50 +1,53 @@
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use std::error::Error;
 use std::path::PathBuf;
 use xshell::Shell;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-fn main() -> Result<()> {
-    let mut args = std::env::args();
-    args.next(); //skip argv[0]
-    let task = args.next();
-    match task.as_deref() {
-        None => help(),
-        Some("pack") => do_pack(&args.collect::<Vec<_>>()),
-        Some("deploy") => do_deploy(),
-        Some(task) => {
-            help()?;
-            Err(format!("Unknown xtask '{task}'").into())
-        }
-    }
+#[derive(Parser)]
+#[command(name = "xtask", about = "Developer task runner")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
 }
 
-fn help() -> Result<()> {
-    println!("USAGE: ");
-    println!("    xtask [TASK]");
-    println!();
-    println!("Available TASKs:");
-    println!("    pack      💼 Compile and wasm-pack. Can Add --debug or --release (default).");
-    println!("    deploy    🚀 Update the DEMO worktree");
-    println!();
-    Ok(())
+#[derive(Subcommand)]
+enum Command {
+    /// 💼 Compile and wasm-pack
+    Pack {
+        /// Use the debug build profile.
+        #[arg(long, conflicts_with = "release")]
+        debug: bool,
+        /// Use the release build profile (default).
+        #[arg(long)]
+        release: bool,
+    },
+    /// 🚀 Update the DEMO worktree
+    Deploy {
+        /// Destination directory (default: DEMO).
+        #[arg(long, default_value = "DEMO")]
+        dest: PathBuf,
+    },
+}
+
+fn main() -> Result<()> {
+    let matches = Cli::command().flatten_help(true).get_matches();
+    let cli = Cli::from_arg_matches(&matches)?;
+    match cli.command {
+        Command::Pack { debug, release: _ } => do_pack(debug),
+        Command::Deploy { dest } => do_deploy(&dest),
+    }
 }
 
 fn ch_web(sh: &Shell) {
     sh.change_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../web"));
 }
 
-fn do_pack(args: &[String]) -> Result<()> {
+fn do_pack(debug: bool) -> Result<()> {
     let sh = Shell::new()?;
     ch_web(&sh);
-    let mut mode = "--release";
-    for arg in args {
-        match arg.as_str() {
-            "--debug" => mode = "--debug",
-            "--release" => {}
-            arg => return Err(format!("unknown argument '{arg}'").into()),
-        }
-    }
+    let mode = if debug { "--debug" } else { "--release" };
 
     sh.cmd("wasm-pack")
         .arg("build")
@@ -57,10 +60,10 @@ fn do_pack(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn do_deploy() -> Result<()> {
+fn do_deploy(dest: &PathBuf) -> Result<()> {
     let sh = Shell::new()?;
     ch_web(&sh);
-    let dst = sh.current_dir().join("DEMO");
+    let dst = sh.current_dir().join(dest);
     sh.create_dir(&dst)?;
     let pkg = dst.join("pkg");
     sh.create_dir(&pkg)?;
