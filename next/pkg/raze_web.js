@@ -2,12 +2,47 @@ import { onRZXRunning, onTapeBlock, putImageData, putSoundData } from '../raze.j
 
 
 /**
- * @param {number} size
+ * @param {number} bld
  * @returns {number}
  */
-export function wasm_alloc(size) {
-    const ret = wasm.wasm_alloc(size);
+export function wasm_builder_build(bld) {
+    const ret = wasm.wasm_builder_build(bld);
     return ret >>> 0;
+}
+
+/**
+ * @returns {number}
+ */
+export function wasm_builder_new() {
+    const ret = wasm.wasm_builder_new();
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} bld
+ * @param {number} border_x
+ * @param {number} border_y
+ */
+export function wasm_builder_set_border(bld, border_x, border_y) {
+    wasm.wasm_builder_set_border(bld, border_x, border_y);
+}
+
+/**
+ * @param {number} bld
+ * @param {number} model
+ */
+export function wasm_builder_set_model(bld, model) {
+    wasm.wasm_builder_set_model(bld, model);
+}
+
+/**
+ * @param {number} bld
+ * @param {Uint8Array} data
+ */
+export function wasm_builder_set_snapshot(bld, data) {
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.wasm_builder_set_snapshot(bld, ptr0, len0);
 }
 
 /**
@@ -40,8 +75,17 @@ export function wasm_draw_frame(game, turbo) {
 /**
  * @param {number} game
  */
-export function wasm_drop(game) {
-    wasm.wasm_drop(game);
+export function wasm_game_drop(game) {
+    wasm.wasm_game_drop(game);
+}
+
+/**
+ * @param {number} game
+ * @returns {number}
+ */
+export function wasm_game_model(game) {
+    const ret = wasm.wasm_game_model(game);
+    return ret;
 }
 
 /**
@@ -60,27 +104,8 @@ export function wasm_key_up(game, key) {
     wasm.wasm_key_up(game, key);
 }
 
-/**
- * @param {number} game
- * @param {Uint8Array} data
- * @returns {number}
- */
-export function wasm_load_snapshot(game, data) {
-    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.wasm_load_snapshot(game, ptr0, len0);
-    return ret;
-}
-
-/**
- * @param {number} model
- * @param {number} border_x
- * @param {number} border_y
- * @returns {number}
- */
-export function wasm_main(model, border_x, border_y) {
-    const ret = wasm.wasm_main(model, border_x, border_y);
-    return ret >>> 0;
+export function wasm_main() {
+    wasm.wasm_main();
 }
 
 /**

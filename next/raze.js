@@ -2,9 +2,13 @@
 import raze_init, * as wasm_bindgen from "./pkg/raze_web.js";
 import * as base64 from "./base64.js";
 
-let g_game;
-let g_model;
-let g_border;
+
+const SPEC48K = 0;
+const SPEC128K = 1;
+const PLUS3 = 2;
+
+let g_game = null;
+let g_border = { x: 5, y: 4 };
 let g_actx = new (window.AudioContext || window.webkitAudioContext)();
 let g_audio_next = 0;
 let g_turbo = false;
@@ -18,6 +22,35 @@ let g_interval = null;
 let g_gamepad = null;
 let g_gamepadStatus = { fire: false, x: 0, y: 0 };
 let g_cursorKeys = null;
+
+// Options:
+// * snapshot: Uint8Array
+// * model: number
+function createGame(options = {}) {
+    let builder = wasm_bindgen.wasm_builder_new();
+
+    // fixed options
+    wasm_bindgen.wasm_builder_set_border(builder, g_border.x, g_border.y);
+
+    // variable options
+    if (options.snapshot !== undefined) {
+        wasm_bindgen.wasm_builder_set_snapshot(builder, options.snapshot);
+    } else if (options.model !== undefined) {
+        wasm_bindgen.wasm_builder_set_model(builder, options.model);
+    }
+
+    let new_game = wasm_bindgen.wasm_builder_build(builder);
+    if (!new_game)
+        return;
+
+    if (g_game)
+        wasm_bindgen.wasm_game_drop(g_game);
+
+    g_game = new_game;
+    g_delayed_funcs = null;
+    resetTape();
+    resetDisk();
+}
 
 async function ensureAudioRunning() {
     //autoplay policy requires this
@@ -130,10 +163,10 @@ export function putImageData(w, h, data) {
 
 function parse2Ints(str) {
     if (!str)
-        return { x: 5, y: 4 };
+        return null;
     const [x, y] = str.split(',').map(x => parseInt(x));
     if (isNaN(x))
-        return { x: 5, y: 4 };
+        return null;
     if (isNaN(y))
         return { x, y: x };
     return { x, y };
@@ -144,7 +177,9 @@ async function onDocumentLoad() {
     let urlParams = new URLSearchParams(window.location.search);
     let webgl = boolURLParamDef(urlParams, 'webgl', true);
     let dither = boolURLParamDef(urlParams, 'dither', false);
-    g_border = parse2Ints(urlParams.get("border"));
+    let border = parse2Ints(urlParams.get("border"));
+    if (border)
+        g_border = border;
 
     let screen_width = 2 * g_border.x + 256;
     let screen_height = 2 * g_border.y + 192;
@@ -177,18 +212,21 @@ async function onDocumentLoad() {
     }
 
     await raze_init();
+    wasm_bindgen.wasm_main();
 
+    let gameOpts = { };
     if (boolURLParamDef(urlParams, '48k', false))
-        g_model = 0;
+        gameOpts.model = SPEC48K;
     else if (boolURLParamDef(urlParams, 'plus3', false))
-        g_model = 2;
+        gameOpts.model = PLUS3;
     else if (urlParams.has("disk"))
-        g_model = 2; // disk drive only in plus3
+        // disk drive only in plus3, so if there is disk= but no model=, assume +3
+        gameOpts.model = PLUS3;
     else
-        g_model = 1;
+        gameOpts.model = SPEC128K;
 
-    console.log("Spec model", g_model);
-    g_game = wasm_bindgen.wasm_main(g_model, g_border.x, g_border.y);
+    console.log("Spec model", gameOpts.model);
+
 
     let snapshot = urlParams.get("snapshot");
     if (snapshot) {
@@ -196,7 +234,10 @@ async function onDocumentLoad() {
         await fetch_with_cors_if_needed(snapshot,
             bytes => {
                 saveLastSnapshot(new Uint8Array(bytes));
-                handleLoadLastSnapshot();
+                gameOpts.snapshot = g_lastSnapshot;
+                // If there is a snapshot ignore the selected model, this will disable the autotype if a tape/disk is autoloaded.
+                // The autotype is only useful if the system is reset.
+                delete gameOpts.model;
             },
             error => {
                 alert("Cannot download file " + snapshot);
@@ -204,6 +245,9 @@ async function onDocumentLoad() {
         );
     }
 
+    createGame(gameOpts);
+
+    // Load tape/disk. If there is no snapshot type the initial sequence to start the load procedure
     let tape = urlParams.get("tape");
     let disk = urlParams.get("disk");
     if (tape) {
@@ -211,7 +255,8 @@ async function onDocumentLoad() {
         await fetch_with_cors_if_needed(tape,
             bytes => {
                 if (bytes) {
-                    if (g_model == 0) {
+                    switch (gameOpts.model) {
+                    case SPEC48K:
                         // 48K loading sequence: typìng LOAD ""
                         call_with_delay(2000, 100, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x63), //J (LOAD)
@@ -226,14 +271,21 @@ async function onDocumentLoad() {
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
                         ]);
-                    } else {
+                        break;
+                    case SPEC128K:
+                    case PLUS3:
                         // 128K loading sequence: enter in the load menu
                         // +3 loading sequence: same as 128K but a slightly longer delay because of the floppy
-                        call_with_delay(g_model == 2 ? 2000 : 1500, 100, [
+                        call_with_delay(gameOpts.model == PLUS3 ? 2000 : 1500, 100, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
                         ]);
+                        break;
+                    case undefined:
+                        onLoadTape(bytes);
+                        break;
+
                     }
                 }
             },
@@ -243,25 +295,23 @@ async function onDocumentLoad() {
         );
     } else if (disk) {
         console.log("DISK=", disk);
-        if (g_model == 2) {
-            await fetch_with_cors_if_needed(disk,
-                bytes => {
-                    // Contrary to tapes, the disk is best loaded first, and then press enter, else
-                    // the floppy may not be detected and the system will default to loading the tape.
-                    if (onLoadDisk(bytes)) {
+        await fetch_with_cors_if_needed(disk,
+            bytes => {
+                // Contrary to tapes, the disk is best loaded first, and then press enter, else
+                // the floppy may not be detected and the system will default to loading the tape.
+                if (onLoadDisk(bytes)) {
+                    if (gameOpts.model == PLUS3) {
                         call_with_delay(2000, 100, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                         ]);
                     }
-                },
-                error => {
-                    alert("Cannot download file " + disk);
                 }
-            );
-        } else {
-            alert("disk= option only available with plus3=1");
-        }
+            },
+            error => {
+                alert("Cannot download file " + disk);
+            }
+        );
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -279,9 +329,9 @@ async function onDocumentLoad() {
     }
 
     document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
-    document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, 0), false);
-    document.getElementById('reset_128k').addEventListener('click', e => handleReset(e, 1), false);
-    document.getElementById('reset_plus3').addEventListener('click', e => handleReset(e, 2), false);
+    document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, SPEC48K), false);
+    document.getElementById('reset_128k').addEventListener('click', e => handleReset(e, SPEC128K), false);
+    document.getElementById('reset_plus3').addEventListener('click', e => handleReset(e, PLUS3), false);
     document.getElementById('load_tape').addEventListener('click', handleLoadTape, false);
     document.getElementById('stop_tape').addEventListener('click', handleStopTape, false);
     document.getElementById('snapshot').addEventListener('click', handleSnapshot, false);
@@ -302,7 +352,6 @@ async function onDocumentLoad() {
         btnDither.classList.add('active');
     }
     setDither(dither, g_gl);
-    resetDisk();
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
@@ -340,11 +389,15 @@ async function onDocumentLoad() {
         //joystick fire
         joyFire.addEventListener('touchstart', ev => {
             ev.preventDefault();
+            if (g_delayed_funcs)
+                return;
             drawJoystickFire(joyFireCtx, true);
             wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[4]);
         }, false);
         joyFire.addEventListener('touchend', ev => {
             ev.preventDefault();
+            if (g_delayed_funcs)
+                return;
             drawJoystickFire(joyFireCtx, false);
             wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[4]);
         }, false);
@@ -416,6 +469,9 @@ function drawJoystickFire(ctx, f) {
 
 function onOSJoyDown(ev) {
     ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
     let t = null;
     for (let i = 0; i < ev.changedTouches.length; ++i)
         if (g_joyTouchIdentifier == null || g_joyTouchIdentifier == ev.changedTouches[i].identifier) {
@@ -474,6 +530,9 @@ function onOSJoyDown(ev) {
 
 function onOSJoyUp(ev) {
     ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
     let t = null;
     for (let i = 0; i < ev.changedTouches.length; ++i)
         if (g_joyTouchIdentifier == ev.changedTouches[i].identifier) {
@@ -491,9 +550,12 @@ function onOSJoyUp(ev) {
 }
 
 function onOSKeyDown(ev) {
+    ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
     //mouse events obey sticky keys, touch events do not
     let key = parseInt(this.dataset.code);
-    ev.preventDefault();
     if (!this.classList.contains('pressed2') && !this.classList.contains('pressed')) {
         this.classList.add('pressed');
         wasm_bindgen.wasm_key_down(g_game, key);
@@ -550,7 +612,8 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "F10":
-        setTurbo(true, false);
+        if (!g_delayed_funcs)
+            setTurbo(true, false);
         ev.preventDefault();
         return;
     case "F11":
@@ -567,9 +630,13 @@ function onKeyDown(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    wasm_bindgen.wasm_key_down(g_game, key);
     ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
+    wasm_bindgen.wasm_key_down(g_game, key);
 }
+
 function onKeyUp(ev) {
     switch (ev.code) {
     case "F10":
@@ -581,8 +648,12 @@ function onKeyUp(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    wasm_bindgen.wasm_key_up(g_game, key);
+
     ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
+    wasm_bindgen.wasm_key_up(g_game, key);
 }
 
 function onFocus(ev) {
@@ -590,6 +661,8 @@ function onFocus(ev) {
         wasm_bindgen.wasm_reset_input(g_game);
     if (g_interval === null) {
         g_interval = setInterval(function(){
+            if (g_actx.state == "suspended")
+                return;
             inputGamepad();
             if (g_turbo) {
                 wasm_bindgen.wasm_draw_frame(g_game, true);
@@ -610,6 +683,7 @@ function onFocus(ev) {
         }, 0);
     }
 }
+
 function onBlur(ev) {
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
@@ -618,7 +692,6 @@ function onBlur(ev) {
         g_interval = null;
     }
 }
-
 
 function onGamepadConnected(ev, connecting) {
     if (!g_gamepad) {
@@ -634,6 +707,9 @@ function onGamepadDisconnected(ev) {
 }
 
 function inputGamepad() {
+    if (g_delayed_funcs != null)
+        return;
+
     if (g_gamepad === null)
         return;
     let gamepad = navigator.getGamepads()[g_gamepad];
@@ -824,8 +900,12 @@ function handleTapeBlock(evt) {
 
 function resetDisk() {
     let disk = document.getElementById("load_disk");
+    // show the disk as not-inserted
     disk.classList.remove('active');
-    if (g_model == 2) {
+
+    // but the button may not be visible
+    let model = wasm_bindgen.wasm_game_model(g_game);
+    if (model == PLUS3) {
         disk.style.display = null;
     } else {
         disk.style.display = 'none'
@@ -850,11 +930,7 @@ function handleDiskSelect(evt) {
 }
 
 function handleReset(evt, model) {
-    g_model = model;
-    resetTape();
-    resetDisk();
-    wasm_bindgen.wasm_drop(g_game);
-    g_game = wasm_bindgen.wasm_main(g_model, g_border.x, g_border.y);
+    createGame({ model: model });
 }
 
 function handleLoadTape(evt) {
@@ -912,7 +988,7 @@ function saveLastSnapshot(data) {
 function handleLoadLastSnapshot(evt) {
     if (!g_lastSnapshot)
         return;
-    g_model = wasm_bindgen.wasm_load_snapshot(g_game, g_lastSnapshot);
+    createGame({ snapshot: g_lastSnapshot })
 }
 
 function handleSnapshot(evt) {
