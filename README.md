@@ -6,7 +6,7 @@ Check the [live version here](https://rodrigorc.github.io/raze/).
 
 ## About this project
 
-R.A.Z.E. stands for "Rusty Attempt to a Z80 Emulator", o something like that. It was build mainly to learn Rust, but then compiling to WebAssembly is just too easy not to do it.
+R.A.Z.E. stands for "Rusty Attempt to a Z80 Emulator", or something like that. It was built mainly to learn Rust, but then compiling to WebAssembly was just too easy not to do.
 
 ## Controls
 
@@ -24,17 +24,39 @@ You can also load ZIP files with tapes, snapshots or recordings inside. Just do 
 
 What works and what not
 
- * It includes the 48K ROM and the 128K ROM. You can add `?48k=N` or `?48k=Y` to the url to force an initial mode, or use the `Reset` buttons below.
+ * It includes the 48K ROM, the 128K ROM and the +3 ROM. You can select the model with the `Reset` buttons below.
  * All documented CPU instructions and most undocumented ones are emulated.
  * CPU flags X and Y are only partially emulated.
  * CPU timing is an approximation. In particular memory contention timing is not totally accurate, but good enough for most purposes (loading tapes, border bars, etc).
- * Loading TAP and TZX files, either directly or from ZIP files. TZX support is somewhat around 90% (if you have some file that does not work and you think it should, please send it to me). You can load a tape dump directly from the URL by adding `?tape=<url>`.
- * Loading and saving Z80 snapshots. Only 48K and 128K snapshots, obviously. You can load a snapshot directly from the URL by adding `?snapshot=<url>`.
+ * Loading TAP and TZX files, either directly or from ZIP files. TZX support is somewhat around 90% (if you have some file that does not work and you think it should, please send it to me).
+ * Loading and saving Z80 snapshots. Only 48K and 128K snapshots, obviously.
+ * Loading DSK floppy disks (single or double sided), only available on the +3 model.
  * Currently you cannot save tape files. You can try to save it and you will hear the sound, but there is no way to record the data.
  * Emulation of the internal speaker. The 128K sound generator (AY-3-8910) is also emulated.
  * Support for joystick Kempston, Sinclair and Protek. Experimental support of gamepads.
- * It uses WebGL for rendereng if available. It falls back to Canvas2D if not. You can force the Canvas2D mode adding `?webgl=N` to the url.
- * In 128k mode, it actually implements the banking of the +2A, although it does not ship the necessary ROMs. This is useful for the full RAM mode used by some programs, such as [this great Pacman emulator](http://simonowen.com/spectrum/pacemuzx/).
+ * It uses WebGL for rendering if available. It falls back to Canvas2D if not.
+ * In 128K mode, it actually implements the banking of the +2A, although it does not ship the necessary ROMs. This is useful for the full RAM mode used by some programs, such as [this great Pacman emulator](http://simonowen.com/spectrum/pacemuzx/).
+ * You can inspect and modify arbitrary memory locations with the Poke and Peek controls.
+ * You can also load a custom ROM, for example the ones used by the few games that were distributed on cartridge back in the day. This forces the 48K model. Note that snapshots saved while a custom ROM is loaded may not be usable on other emulators, as they will not know how to load the ROM from the snapshot.
+
+## URL parameters
+
+You can customize the behaviour of the web version by adding query parameters to the URL:
+
+| Parameter | Value(s) | Description |
+|---|---|---|
+| `snapshot` | URL | Load a Z80 or RZX snapshot, or a ROM file, from the given URL. |
+| `tape` | URL | Load a TAP or TZX tape from the given URL and type the corresponding LOAD sequence. |
+| `disk` | URL | Load a DSK disk from the given URL. Only relevant for the +3 model; if no model is given, the +3 is assumed. |
+| `48k` | boolean | Start in 48K mode. |
+| `plus3` | boolean | Start in +3 mode. |
+| `128k` | boolean | Start in 128K mode. This is the default if no model is specified. |
+| `webgl` | boolean | Use WebGL rendering (default). Set to `N` to force Canvas2D. |
+| `dither` | boolean | Enable dithering. |
+| `border` | `x` or `x,y` | Set the left/right (`x`) and top/bottom (`y`) border size. |
+| `cursorKeys` | 0-3 | Select the joystick type: `0` cursor, `1` Kempston, `2` Sinclair, `3` Protek. |
+
+Boolean parameters are enabled by any value whose first character is not `0`, `n` or `f` (e.g. `1`, `Y`, `yes`); an empty value also enables them.
 
 ## How to build
 
@@ -62,10 +84,10 @@ Alternatively you can use the following [xtask](https://github.com/matklad/cargo
 $ cargo xtask pack
 ```
 
-That that's all! Now you can launch a local sever such as `python -m http.server` and point your browser to the appropriate url.
+And that's all! Now you can launch a local server such as `python -m http.server` and point your browser to the appropriate url.
 
 ## LICENSE
 
-As most of the Rust ecosystem, the source code of this projects is published under the MIT License. See [LICENCE.MIT](LICENSE.MIT) for the full details.
+As most of the Rust ecosystem, the source code of this project is published under the MIT License. See [LICENSE.MIT](LICENSE.MIT) for the full details.
 
 ZX Spectrum ROMs are copyrighted by Amstrad. Amstrad have kindly given their permission for the redistribution of their copyrighted material but retain that copyright. See the included [ROMs.txt](ROMs.txt) file for details.
