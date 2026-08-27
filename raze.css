@@ -13,9 +13,9 @@ h1 span.version {
 }
 #stage {
     width: 798px;
-    height: 600px;
     position: relative;
     margin: 0 auto;
+    border: 2px solid black;
 }
 #controls {
     width: 798px;
@@ -68,8 +68,12 @@ h1 span.version {
     grid-column-end: 5;
     text-align: end;
 }
-#load_tape {
+#load_media {
     grid-column: 1;
+
+    display: grid;
+    grid-gap: 5px;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 #pause {
     grid-column: 2;
@@ -80,11 +84,36 @@ h1 span.version {
     text-align: end;
 }
 
-#stage canvas {
-    width: 798px;
-    height: 600px;
-    border: 2px solid black;
+#canvases {
+    width: 100%;
     cursor: none;
+}
+
+#canvases canvas {
+    width: 100%;
+    display: block;
+}
+
+#start-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#start-overlay button {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    background: #4f46e5;
+    color: white;
+    border: none;
+    border-radius: 6px;
 }
 
 canvas.pixelated {
