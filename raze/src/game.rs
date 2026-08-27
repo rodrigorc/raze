@@ -1074,7 +1074,7 @@ impl<GUI: Gui> Game<GUI> {
 
     pub fn load_disk(&mut self, data: &[u8]) -> Result<()> {
         let Some(floppy) = self.ula.floppy.as_mut() else {
-            bail!("Floppy drive not available")
+            bail!("Floppy drive only available in +3 model")
         };
         let data = match disk_from_zip(data) {
             Ok(v) => Cow::Owned(v),

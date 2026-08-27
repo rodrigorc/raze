@@ -6,7 +6,7 @@
 use color::Pixel;
 use zxspectrum_raze as raze;
 
-use raze::{Game, Gui};
+use raze::{Game, Gui, Model};
 use std::mem;
 use wasm_bindgen::prelude::*;
 
@@ -90,40 +90,105 @@ impl Gui for JSGui {
     }
 }
 
+#[derive(Default)]
+struct GameBuilder {
+    model: ModelBuilder,
+    border: Option<(i32, i32)>,
+}
+
+enum ModelBuilder {
+    Model(Model),
+    Snapshot(Vec<u8>),
+}
+
+impl Default for ModelBuilder {
+    fn default() -> Self {
+        ModelBuilder::Model(Model::Spec128k)
+    }
+}
+
 mod exports {
-    use zxspectrum_raze::Model;
 
     use super::*;
 
     #[wasm_bindgen]
-    pub fn wasm_main(model: i32, border_x: i32, border_y: i32) -> *mut Game<JSGui> {
+    pub fn wasm_main() {
+        let _ = console_log::init_with_level(log::Level::Debug);
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_builder_new() -> *mut GameBuilder {
+        let res = Box::new(GameBuilder::default());
+        Box::into_raw(res)
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_builder_set_model(bld: *mut GameBuilder, model: i32) {
+        let bld = unsafe { &mut *bld };
         let model = match model {
             0 => Model::Spec48k,
             1 => Model::Spec128k,
             2 => Model::Plus3,
             _ => Model::Spec128k,
         };
-        let _ = console_log::init_with_level(log::Level::Debug);
-        let mut game = Box::new(Game::new(model, &mut JSGui));
-        game.set_border_size(border_x as usize, border_y as usize);
+        bld.model = ModelBuilder::Model(model);
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_builder_set_snapshot(bld: *mut GameBuilder, data: &[u8]) {
+        let bld = unsafe { &mut *bld };
+        bld.model = ModelBuilder::Snapshot(data.to_vec());
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_builder_set_border(bld: *mut GameBuilder, border_x: i32, border_y: i32) {
+        let bld = unsafe { &mut *bld };
+        bld.border = Some((border_x, border_y));
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_builder_build(bld: *mut GameBuilder) -> *mut Game<JSGui> {
+        let bld = unsafe { Box::from_raw(bld) };
+        let bld = *bld;
+        let mut game = match bld.model {
+            ModelBuilder::Model(model) => Game::new(model, &mut JSGui),
+            ModelBuilder::Snapshot(data) => {
+                match Game::load_rom(&data, &mut JSGui)
+                    .or_else(|_| Game::load_snapshot(&data, &mut JSGui))
+                {
+                    Ok(g) => g,
+                    Err(e) => {
+                        alert(format!("Snapshot error: {e}"));
+                        return std::ptr::null_mut();
+                    }
+                }
+            }
+        };
+        if let Some((bx, by)) = bld.border {
+            game.set_border_size(bx as usize, by as usize);
+        }
+        let game = Box::new(game);
         Box::into_raw(game)
     }
     #[wasm_bindgen]
-    pub fn wasm_drop(game: *mut Game<JSGui>) {
-        let _game = unsafe { Box::from_raw(game) };
+    pub fn wasm_game_model(game: *mut Game<JSGui>) -> i32 {
+        let game = unsafe { &*game };
+        match game.model() {
+            Model::Spec48k => 0,
+            Model::Spec128k => 1,
+            Model::Plus3 => 2,
+        }
     }
     #[wasm_bindgen]
-    pub fn wasm_alloc(size: usize) -> *mut u8 {
-        let mut v = Vec::with_capacity(size);
-        let ptr = v.as_mut_ptr();
-        mem::forget(v);
-        ptr
+    pub fn wasm_game_drop(game: *mut Game<JSGui>) {
+        let _game = unsafe { Box::from_raw(game) };
     }
     #[wasm_bindgen]
     pub fn wasm_draw_frame(game: *mut Game<JSGui>, turbo: bool) {
         let game = unsafe { &mut *game };
         game.draw_frame(turbo, &mut JSGui);
     }
+
     #[wasm_bindgen]
     pub fn wasm_tape_load(game: *mut Game<JSGui>, data: &[u8]) -> usize {
         let game = unsafe { &mut *game };
@@ -155,31 +220,14 @@ mod exports {
         let game = unsafe { &mut *game };
         game.tape_stop();
     }
-    #[wasm_bindgen]
-    pub fn wasm_load_snapshot(game: *mut Game<JSGui>, data: &[u8]) -> i32 {
-        let old_game = unsafe { &mut *game };
-        log::debug!("snap len {}", data.len());
-        match Game::load_rom(data, &mut JSGui).or_else(|_| Game::load_snapshot(data, &mut JSGui)) {
-            Ok(new_game) => {
-                *old_game = new_game;
-            }
-            Err(e) => {
-                alert(format!("Snapshot error: {e}"));
-            }
-        }
-        match old_game.model() {
-            Model::Spec48k => 0,
-            Model::Spec128k => 1,
-            Model::Plus3 => 2,
-        }
-    }
+
     #[wasm_bindgen]
     pub fn wasm_disk_load(game: *mut Game<JSGui>, data: &[u8]) -> bool {
         let game = unsafe { &mut *game };
         match game.load_disk(data) {
             Ok(()) => true,
             Err(e) => {
-                alert(format!("Tape error: {e}"));
+                alert(format!("Disk error: {e}"));
                 false
             }
         }
@@ -189,6 +237,7 @@ mod exports {
         let game = unsafe { &mut *game };
         let _ = game.eject_disk();
     }
+
     #[wasm_bindgen]
     pub fn wasm_snapshot(game: *mut Game<JSGui>) -> Vec<u8> {
         let game = unsafe { &mut *game };
