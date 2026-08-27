@@ -203,6 +203,7 @@ impl Bus for Ula {
                     r &= !self.keys[i];
                 }
             }
+            #[allow(clippy::collapsible_if)]
             if let Some((_, Some(pos))) = &self.tape {
                 if pos.mic() {
                     r &= 0b1011_1111;
@@ -409,7 +410,7 @@ impl<Pixel: Copy> Screen<Pixel> {
     }
 
     fn write_border_row(&mut self, y: usize, border: Pixel) {
-        let prow = &mut self.image[self.screen_width * y..self.screen_width * (y + 1)];
+        let prow = &mut self.image[self.screen_width * y..][..self.screen_width];
         prow.fill(border);
     }
 
@@ -421,6 +422,7 @@ impl<Pixel: Copy> Screen<Pixel> {
         data: &[u8],
         palette: &[[Pixel; 8]; 2],
     ) {
+        // The infamous three-thirds of the Spectrum video RAM
         let orow = match y {
             0..=63 => (y % 8) * 256 + (y / 8) * 32,
             64..=127 => {
@@ -436,10 +438,11 @@ impl<Pixel: Copy> Screen<Pixel> {
             _ => unreachable!(),
         };
         let ym = y + self.by0;
-        let prow_full = &mut self.image[self.screen_width * ym..self.screen_width * (ym + 1)];
-        prow_full[..self.bx0].fill(border);
-        prow_full[self.bx0 + 256..].fill(border);
-        let prow = &mut prow_full[self.bx0..self.bx0 + 256];
+        let prow_full = &mut self.image[self.screen_width * ym..][..self.screen_width];
+        let (start, mid_end) = prow_full.split_at_mut(self.bx0);
+        let (pixel_row, end) = mid_end.split_at_mut(256);
+        start.fill(border);
+        end.fill(border);
         let arow = 192 * 32 + (y / 8) * 32;
 
         //Attributes are 8 bits:
@@ -450,10 +453,10 @@ impl<Pixel: Copy> Screen<Pixel> {
         //Bitmap and attribute addresses are related in a funny way.
         //Binary values are grouped as octal, clippy doesn't seem to like that.
         #[allow(clippy::unusual_byte_groupings)]
-        for ((&bits, &attr), pixels) in data[orow..orow + 32]
+        for ((&bits, &attr), pixels) in data[orow..][..32]
             .iter()
-            .zip(&data[arow..arow + 32])
-            .zip(prow.chunks_mut(8))
+            .zip(&data[arow..][..32])
+            .zip(pixel_row.as_chunks_mut::<8>().0)
         {
             let bright = (attr & 0b01_000_000) != 0;
             let colors = &palette[bright as usize];
@@ -848,6 +851,7 @@ impl<GUI: Gui> Game<GUI> {
 
         if let Some(rzx) = rzx {
             for b in rzx.blocks {
+                #[allow(clippy::collapsible_match)]
                 match b {
                     rzx::Block::Snapshot(ss) => {
                         data = Cow::Owned(ss.data);
@@ -981,7 +985,7 @@ impl<GUI: Gui> Game<GUI> {
                     //is there a signature in uncompressed memory?
                     Cow::Borrowed(mem)
                 };
-                for (ibank, blockmem) in ram.chunks_exact(0x4000).enumerate() {
+                for (ibank, blockmem) in ram.as_chunks::<0x4000>().0.iter().enumerate() {
                     let bank = memory
                         .get_bank_mut(ibank + 1)
                         .ok_or_else(|| anyhow!("invalid snapshot memory"))?;

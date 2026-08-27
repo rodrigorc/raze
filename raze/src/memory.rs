@@ -63,7 +63,7 @@ impl Memory {
         match rom {
             RomBlob::R48k(rom0) => {
                 let data = vec![
-                    Bank::rom(&rom0),
+                    Bank::rom(rom0),
                     Bank::ram(true),
                     Bank::ram(false),
                     Bank::ram(false),
@@ -183,6 +183,8 @@ impl Memory {
         std::mem::take(&mut self.delay)
     }
     pub fn video_memory(&self) -> &[u8] {
+        // Pixel data: 32 bytes/line * 192 lines.
+        // Attr data: 32 bytes/line * 24 lines.
         &self.data[self.vram].data[..32 * 192 + 32 * 24]
     }
 
