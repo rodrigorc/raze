@@ -1,6 +1,6 @@
 [package]
 name = "raze-web"
-version = "1.13.0"
+version = "2.0.0"
 authors = ["Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>"]
 edition = "2024"
 description = "A ZX Spectrum emulator, for WebAssembly, written in Rust"

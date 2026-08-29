@@ -47,7 +47,7 @@ fn ch_web(sh: &Shell) {
 fn do_pack(debug: bool) -> Result<()> {
     let sh = Shell::new()?;
     ch_web(&sh);
-    let mode = if debug { "--debug" } else { "--release" };
+    let mode = if debug { "--dev" } else { "--release" };
 
     sh.cmd("wasm-pack")
         .arg("build")
@@ -60,6 +60,25 @@ fn do_pack(debug: bool) -> Result<()> {
     Ok(())
 }
 
+fn copy_file(sh: &Shell, src: &str, dst: &PathBuf, patch_version: Option<&str>) -> Result<()> {
+    match patch_version {
+        None => {
+            sh.copy_file(src, &dst)?;
+        }
+        Some(ver) => {
+            let cd = sh.current_dir();
+
+            let src = cd.join(src);
+            let dst = cd.join(dst).join(src.file_name().unwrap());
+
+            let text = std::fs::read_to_string(&src)?;
+            let patched = text.replace("__VERSION__", ver);
+            std::fs::write(&dst, &patched)?;
+        }
+    }
+    Ok(())
+}
+
 fn do_deploy(dest: &PathBuf) -> Result<()> {
     let sh = Shell::new()?;
     ch_web(&sh);
@@ -68,13 +87,21 @@ fn do_deploy(dest: &PathBuf) -> Result<()> {
     let pkg = dst.join("pkg");
     sh.create_dir(&pkg)?;
 
-    sh.copy_file("index.html", &dst)?;
-    sh.copy_file("raze.js", &dst)?;
-    sh.copy_file("raze.css", &dst)?;
-    sh.copy_file("favicon.png", &dst)?;
-    sh.copy_file("base64.js", &dst)?;
-    sh.copy_file("pkg/raze_web_bg.wasm", &pkg)?;
-    sh.copy_file("pkg/raze_web.js", &pkg)?;
+    let ver = sh
+        .cmd("git")
+        .arg("rev-parse")
+        .arg("--short")
+        .arg("HEAD")
+        .read()?;
+    let ver = &ver;
+
+    copy_file(&sh, "index.html", &dst, Some(ver))?;
+    copy_file(&sh, "raze.js", &dst, Some(ver))?;
+    copy_file(&sh, "raze.css", &dst, None)?;
+    copy_file(&sh, "favicon.png", &dst, None)?;
+    copy_file(&sh, "base64.js", &dst, Some(ver))?;
+    copy_file(&sh, "pkg/raze_web_bg.wasm", &pkg, None)?;
+    copy_file(&sh, "pkg/raze_web.js", &pkg, Some(ver))?;
     println!("Deployed to {:?}! 👍", dst.to_string_lossy());
     Ok(())
 }

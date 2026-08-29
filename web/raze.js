@@ -1,6 +1,6 @@
 'use strict';
-import raze_init, * as wasm_bindgen from "./pkg/raze_web.js";
-import * as base64 from "./base64.js";
+import raze_init, * as wasm_bindgen from "./pkg/raze_web.js?v=__VERSION__";
+import * as base64 from "./base64.js?v=__VERSION__";
 
 
 const SPEC48K = 0;
@@ -211,7 +211,9 @@ async function onDocumentLoad() {
         g_realCanvas = canvas;
     }
 
-    await raze_init();
+    await raze_init({
+        module_or_path: './pkg/raze_web_bg.wasm?v=__VERSION__',
+    });
     wasm_bindgen.wasm_main();
 
     let gameOpts = { };

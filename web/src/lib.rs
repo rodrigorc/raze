@@ -16,7 +16,7 @@ extern "C" {
     fn alert_slice(s: &str);
 }
 
-#[wasm_bindgen(raw_module = "../raze.js")]
+#[wasm_bindgen(raw_module = "../raze.js?v=__VERSION__")]
 extern "C" {
     pub fn putImageData(w: i32, h: i32, data: &[u8]);
     pub fn putSoundData(data: &[f32]);
