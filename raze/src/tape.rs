@@ -683,6 +683,15 @@ fn new_tzx(r: &mut impl Read, model: Model) -> anyhow::Result<Vec<Block>> {
                 //group end
                 log::debug!("group end");
                 parser.group_end();
+
+                // Add a 1ms pause at the end of a group that doesn't declare any pause.
+                // It should not be needed, but some TZX files fail to add needed pauses.
+                if let Some(last) = parser.blocks.last_mut()
+                    && let Duration::T(time) = &mut last.pause
+                    && *time == 0
+                {
+                    *time = 3500;
+                }
             }
             //0x23 => {} //jump to block
             0x24 => {
