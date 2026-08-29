@@ -20,8 +20,9 @@ let g_delayed_funcs = null;
 let g_joyTouchIdentifier = null;
 let g_interval = null;
 let g_gamepad = null;
-let g_gamepadStatus = { fire: false, x: 0, y: 0 };
 let g_cursorKeys = null;
+let g_gamepadKeys = null;
+let g_gamepadStatus = { fire: false, left: false, right: false, up: false, down: false };
 
 // Options:
 // * snapshot: Uint8Array
@@ -357,15 +358,31 @@ async function onDocumentLoad() {
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
+    let gamepadKeys = document.getElementById('gamepad_keys');
+    gamepadKeys.addEventListener('change', handleGamepadKeys, false);
+
     let cursorSel = parseInt(urlParams.get('cursorKeys'));
+    let gamepadSel = cursorSel;
     if (isNaN(cursorSel)) {
         if (window.localStorage) {
             cursorSel = parseInt(window.localStorage.getItem("cursorKeys"));
+            gamepadSel = parseInt(window.localStorage.getItem("gamepadKeys"));
         }
     }
-    if (!isNaN(cursorSel))
+    if (!isNaN(cursorSel)) {
         cursorKeys.selectedIndex = cursorSel;
+    } else {
+        // default cursorKeys is "cursor"
+        cursorKeys.selectedIndex = 0;
+    }
+    if (!isNaN(gamepadSel)) {
+        gamepadKeys.selectedIndex = gamepadSel;
+    } else {
+        // default gamepadKeys is "kempston"
+        gamepadKeys.selectedIndex = 1;
+    }
     handleCursorKeys.call(cursorKeys, null);
+    handleGamepadKeys.call(gamepadKeys, null);
 
     let keyboard = document.getElementById('keyboard');
     if ('ontouchstart' in keyboard) {
@@ -394,14 +411,14 @@ async function onDocumentLoad() {
             if (g_delayed_funcs)
                 return;
             drawJoystickFire(joyFireCtx, true);
-            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[4]);
+            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.fire);
         }, false);
         joyFire.addEventListener('touchend', ev => {
             ev.preventDefault();
             if (g_delayed_funcs)
                 return;
             drawJoystickFire(joyFireCtx, false);
-            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[4]);
+            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.fire);
         }, false);
         //disable scroll/zoom
         keyboard.addEventListener('touchstart', ev => {
@@ -513,21 +530,21 @@ function onOSJoyDown(ev) {
     //first do the key_up, then the key_down, in case "cursor" mode is used
     //so that the shift key is properly pressed
     if (!left)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[0]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.left);
     if (!right)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[1]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.right);
     if (!down)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[2]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.down);
     if (!up)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[3]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.up);
     if (left)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[0]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.left);
     if (right)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[1]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.right);
     if (down)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[2]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.down);
     if (up)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[3]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.up);
 }
 
 function onOSJoyUp(ev) {
@@ -545,10 +562,10 @@ function onOSJoyUp(ev) {
         return;
     g_joyTouchIdentifier = null;
     drawJoystickBtns(this, false, false, false, false);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[0]);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[1]);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[2]);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[3]);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.left);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.right);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.down);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.up);
 }
 
 function onOSKeyDown(ev) {
@@ -696,15 +713,19 @@ function onBlur(ev) {
 }
 
 function onGamepadConnected(ev, connecting) {
-    if (!g_gamepad) {
+    if (g_gamepad === null) {
         g_gamepad = ev.gamepad.index;
         console.log("Using gamepad " + ev.gamepad.id);
+        let gamepadKeys = document.getElementById('gamepad_keys_p');
+        gamepadKeys.style.display = null;
     }
 }
 function onGamepadDisconnected(ev) {
     if (g_gamepad == ev.gamepad.index) {
         console.log("Removing gamepad");
         g_gamepad = null;
+        let gamepadKeys = document.getElementById('gamepad_keys_p');
+        gamepadKeys.style.display = "none";
     }
 }
 
@@ -716,21 +737,68 @@ function inputGamepad() {
         return;
     let gamepad = navigator.getGamepads()[g_gamepad];
     let fire = false;
-    for (let i = 0; i < 3 && i < gamepad.buttons.length && !fire; ++i)
-        fire |= gamepad.buttons[i].pressed;
+    for (let i = 0; i < 3; ++i) {
+        if (gamepad.buttons[i]?.pressed)
+            fire = true;
+    }
+    let up = gamepad.buttons[12]?.pressed ?? false;
+    let down = gamepad.buttons[13]?.pressed ?? false;
+    let left = gamepad.buttons[14]?.pressed ?? false;
+    let right = gamepad.buttons[15]?.pressed ?? false;
+
     let x = gamepad.axes[0];
     let y = gamepad.axes[1];
-    if (x != g_gamepadStatus.x) {
-        (x < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x81);
-        (x > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x80);
+
+    if (x < -0.3)
+        left = true;
+    else if (x > 0.3)
+        right = true;
+
+    if (y < -0.3)
+        up = true;
+    else if (y > 0.3)
+        down = true;
+
+    // If nothing changed, do nothing.
+    // Sending the keys down/up events will not change this controller
+    // but will prevent the keyboard/virtual-joy to be usable, because
+    // this function is called every frame.
+    if (left != g_gamepadStatus.left ||
+        right != g_gamepadStatus.right ||
+        up !=  g_gamepadStatus.up ||
+        down != g_gamepadStatus.down)
+    {
+        //first do the key_up, then the key_down, in case "cursor" mode is used
+        //so that the shift key is properly pressed
+        if (!left)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.left);
+        if (!right)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.right);
+        if (!down)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.down);
+        if (!up)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.up);
+
+        if (left)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.left);
+        if (right)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.right);
+        if (down)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.down);
+        if (up)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.up);
     }
-    if (y != g_gamepadStatus.y) {
-        (y > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x82);
-        (y < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x83);
+
+    if (fire != g_gamepadStatus.fire) {
+        // The fire never uses shift, so we are safe here
+        if (fire)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.fire);
+        else
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.fire);
     }
-    if (fire != g_gamepadStatus.fire)
-        (fire? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x84);
-    g_gamepadStatus = { fire: fire, x: x, y: y };
+
+    g_gamepadStatus = { fire, left, right, up, down };
+
 }
 
 
@@ -744,29 +812,39 @@ function handleCursorKeys(evt) {
         wasm_bindgen.wasm_reset_input(g_game);
 }
 
+function handleGamepadKeys(evt) {
+    let sel = this.selectedIndex;
+    if (window.localStorage)
+        window.localStorage.setItem("gamepadKeys", sel);
+    g_gamepadKeys = CURSOR_KEYS[sel];
+    this.blur();
+    if (g_game)
+        wasm_bindgen.wasm_reset_input(g_game);
+}
+
 const CURSOR_KEYS = [
     //cursorkeys
-    [0x0834, 0x0842, 0x0844, 0x0843, 0x71], //Shift+{5,8,6,7}, SymbolShift
+    { left: 0x0834, right: 0x0842, down: 0x0844, up: 0x0843, fire: 0x71 }, //Shift+{5,8,6,7}, SymbolShift
     //kempston
-    [0x81, 0x80, 0x82, 0x83, 0x84],
+    { left: 0x81, right: 0x80, down: 0x82, up: 0x83, fire: 0x84 },
     //sinclair
-    [0x44, 0x43, 0x42, 0x41, 0x40], //6, 7, 8, 9, 0
+    { left: 0x44, right: 0x43, down: 0x42, up: 0x41, fire: 0x40 }, //6, 7, 8, 9, 0
     //protek
-    [0x34, 0x42, 0x44, 0x43, 0x40], //5, 8, 6, 7, 0
+    { left: 0x34, right: 0x42, down: 0x44, up: 0x43, fire: 0x40 }, //5, 8, 6, 7, 0
 ];
 
 function getKeyCode(ev) {
     switch (ev.code) {
     case "ArrowLeft":
-        return g_cursorKeys[0];
+        return g_cursorKeys.left;
     case "ArrowRight":
-        return g_cursorKeys[1];
+        return g_cursorKeys.right;
     case "ArrowDown":
-        return g_cursorKeys[2];
+        return g_cursorKeys.down;
     case "ArrowUp":
-        return g_cursorKeys[3];
+        return g_cursorKeys.up;
     case "ControlLeft":
-        return g_cursorKeys[4];
+        return g_cursorKeys.fire;
 
     case "ShiftLeft":
     case "ShiftRight":

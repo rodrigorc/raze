@@ -63,7 +63,7 @@ h1 span.version {
     color: white;
     display: none;
 }
-#buttons #cursor_keys_p {
+#buttons #cursor_keys_p, #buttons #gamepad_keys_p {
     grid-column-start: 3;
     grid-column-end: 5;
     text-align: end;
