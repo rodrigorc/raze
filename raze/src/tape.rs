@@ -725,10 +725,16 @@ fn new_tzx(r: &mut impl Read, model: Model) -> anyhow::Result<Vec<Block>> {
                 //text description
                 let len = r.read_u8()?;
                 let text = r.read_string(usize::from(len))?;
-                log::debug!("text description: {text}");
+                log::info!("text description: {text}");
                 parser.text_description(text);
             }
-            //0x31 => {} //message block
+            0x31 => {
+                //message block
+                let _time = r.read_u8()?;
+                let len = r.read_u8()?;
+                let text = r.read_string(usize::from(len))?;
+                log::info!("Info: {text}");
+            }
             0x32 => {
                 //archive info
                 let len = r.read_u16()?;
@@ -739,14 +745,36 @@ fn new_tzx(r: &mut impl Read, model: Model) -> anyhow::Result<Vec<Block>> {
                     let id = ri.read_u8()?;
                     let ilen = ri.read_u8()?;
                     let itext = ri.read_string(usize::from(ilen))?;
-                    log::debug!("archive info {id:02x}: {itext}");
+                    log::info!("archive info {id:02x}: {itext}");
                 }
             }
-            //0x33 => {} //hardware type
+            0x33 => {
+                //hardware type
+                let n = r.read_u8()?;
+                for _ in 0..n {
+                    let hw = r.read_u8()?;
+                    let id = r.read_u8()?;
+                    let flags = r.read_u8()?;
+                    log::info!("HW type: {hw} {id} {flags:02X}");
+                }
+            }
             //0x34 => {} //emulation info
-            //0x35 => {} //custom info block
+            0x35 => {
+                //custom info block
+                let text = r.read_string(16)?;
+                let len = r.read_u32()?;
+                log::info!("Custom info block: {text} ({len} bytes)");
+                let _info = r.read_vec(len as usize)?;
+                // No clue about what to do with this
+            }
             //0x40 => {} //snapshot block
-            //0x5a => {} //glue block
+            0x5a => {
+                //glue block
+                // skip 9 bytes
+                r.read_u32()?;
+                r.read_u32()?;
+                r.read_u8()?;
+            }
             x => {
                 log::debug!("*** unknown chunk type: 0x{x:02x}");
             }
