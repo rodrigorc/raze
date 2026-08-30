@@ -313,8 +313,7 @@ impl Bus for Ula {
                                 floppy.write_cmd(value);
                             }
                         }
-                        /*
-                        TODO check proper bits
+                        // Some programs use weird values for hi, these seems to be their intention
                         hi if (hi & 0x80) == 0 => {
                             //same as 0x7f
                             //log!("MEM {:04x}, {:02x}", port, value);
@@ -325,7 +324,6 @@ impl Bus for Ula {
                             //log!("MEM+2 {:04x}, {:02x}", port, value);
                             self.memory.switch_banks_plus2(value);
                         }
-                        */
                         _ => {
                             //log::info!("FD OUT {:04x}, {:02x}", port, value);
                         }
