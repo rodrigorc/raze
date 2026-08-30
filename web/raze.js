@@ -59,7 +59,7 @@ async function ensureAudioRunning() {
         console.log("Resume AutoPlay");
         await g_actx.resume();
         if (g_actx.state != "suspended") {
-            document.getElementById('start-overlay').style.display = "none";
+            document.getElementById('start-overlay').classList.add("hidden");
         }
     }
 }
@@ -123,9 +123,9 @@ export function onRZXRunning(isRunning, percent) {
     //console.log("RZX running", isRunning);
     let btn = document.getElementById('rzx_replay');
     if (isRunning) {
-        btn.style.display = 'block';
+        btn.classList.remove("hidden");
     } else {
-        btn.style.display = 'none';
+        btn.classList.add("hidden");
     }
     btn.innerText = "Stop replay (" + percent + "%)";
 }
@@ -197,7 +197,7 @@ async function onDocumentLoad() {
 
     if (g_gl && initMyGL(g_gl)) {
         console.log("using webgl rendering");
-        canvas.style.display = 'none';
+        canvas.classList.add("hidden");
         g_realCanvas = canvas3d;
     } else {
         if (webgl)
@@ -205,7 +205,7 @@ async function onDocumentLoad() {
         else
             console.log("webgl initialization skipped, falling back to canvas");
         g_gl = null;
-        canvas3d.style.display = 'none';
+        canvas3d.classList.add("hidden");
 
         g_ctx = canvas.getContext('2d');
         g_ctx.imageSmoothingEnabled = false;
@@ -328,7 +328,7 @@ async function onDocumentLoad() {
         onFocus();
 
     if (g_actx.state == "suspended") {
-        document.getElementById('start-overlay').style.display = null;
+        document.getElementById('start-overlay').classList.remove("hidden");
     }
 
     document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
@@ -401,7 +401,7 @@ async function onDocumentLoad() {
 
         //joystick
         let joystick = document.getElementById('joystick')
-        joystick.style.display = 'grid';
+        joystick.classList.remove("hidden");
         joyBtns.addEventListener('touchstart', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchmove', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchend', onOSJoyUp.bind(joyBtnsCtx), false);
@@ -716,16 +716,16 @@ function onGamepadConnected(ev, connecting) {
     if (g_gamepad === null) {
         g_gamepad = ev.gamepad.index;
         console.log("Using gamepad " + ev.gamepad.id);
-        let gamepadKeys = document.getElementById('gamepad_keys_p');
-        gamepadKeys.style.display = null;
+        let cursorKeys = document.getElementById('cursor_keys_p');
+        cursorKeys.classList.add("with_gamepad");
     }
 }
 function onGamepadDisconnected(ev) {
     if (g_gamepad == ev.gamepad.index) {
         console.log("Removing gamepad");
         g_gamepad = null;
-        let gamepadKeys = document.getElementById('gamepad_keys_p');
-        gamepadKeys.style.display = "none";
+        let cursorKeys = document.getElementById('cursor_keys_p');
+        cursorKeys.classList.remove("with_gamepad");
     }
 }
 
@@ -986,9 +986,9 @@ function resetDisk() {
     // but the button may not be visible
     let model = wasm_bindgen.wasm_game_model(g_game);
     if (model == PLUS3) {
-        disk.style.display = null;
+        disk.classList.remove("hidden");
     } else {
-        disk.style.display = 'none'
+        disk.classList.add("hidden");
     }
 }
 
@@ -1080,7 +1080,7 @@ function handleSnapshot(evt) {
     saveLastSnapshot(data);
 
     let a = document.createElement("a");
-    a.style = "display: none";
+    a.style.display = "none";
     a.href = url;
     a.download = "snapshot.z80";
     document.body.appendChild(a);
@@ -1148,10 +1148,10 @@ function handleToggleKbd(evt) {
     let keyboard = document.getElementById('keyboard');
     if (this.classList.contains('active')) {
         this.classList.remove('active');
-        keyboard.style.display = 'none'
+        keyboard.classList.add("hidden");
     } else {
         this.classList.add('active');
-        keyboard.style.display = 'block'
+        keyboard.classList.remove("hidden");
     }
 }
 

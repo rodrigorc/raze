@@ -4,6 +4,11 @@ body {
 * {
     font-family: monospace;
 }
+
+.hidden {
+  display: none !important;
+}
+
 h1 {
    text-align: center;
    margin: 0 0 5px;
@@ -61,13 +66,30 @@ h1 span.version {
     grid-column: 2;
     background: red;
     color: white;
-    display: none;
+    display: block;
 }
-#buttons #cursor_keys_p, #buttons #gamepad_keys_p {
+#buttons #cursor_keys_p {
     grid-column-start: 3;
     grid-column-end: 5;
     text-align: end;
 }
+
+#cursor_keys_p .with_gamepad {
+    display: none;
+}
+
+#cursor_keys_p.with_gamepad .with_gamepad {
+    display: revert;
+}
+
+#cursor_keys_p.with_gamepad .without_gamepad {
+    display: none;
+}
+
+#cursor_keys_p.with_gamepad select {
+    width: 140px;
+}
+
 #load_media {
     grid-column: 1;
 
@@ -82,6 +104,14 @@ h1 span.version {
     grid-column-start: 3;
     grid-column-end: 5;
     text-align: end;
+}
+
+#buttons #peek_poke #addr {
+    width: 100px;
+}
+
+#buttons #peek_poke #byte {
+    width: 50px;
 }
 
 #canvases {
@@ -158,7 +188,7 @@ button:hover.active {
     background: white;
 }
 #keyboard {
-    display: none;
+    display: block;
 }
 #keys {
     margin: 10px 0;
@@ -300,7 +330,7 @@ button:hover.active {
     color: black;
 }
 #joystick {
-    display: none;
+    display: grid;
     padding-top: 25px;
     align-items: center;
     justify-items: center;
