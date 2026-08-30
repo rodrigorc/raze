@@ -304,16 +304,14 @@ impl Bus for Ula {
                                 psg.write_reg(value);
                             }
                         }
-                        0x2f => {
-                            // THIS shouldn't happen
+                        0x2f if self.floppy.is_some() => {
+                            // this shouldn't happen, the status registry is not writable
                             log::info!("O FS XXX {:04x}, {:02x}", port, value);
                         }
-                        0x3f => {
-                            if let Some(floppy) = &mut self.floppy {
-                                floppy.write_cmd(value);
-                            }
+                        0x3f if let Some(floppy) = &mut self.floppy => {
+                            floppy.write_cmd(value);
                         }
-                        // Some programs use weird values for hi, these seems to be their intention
+                        // Some programs use weird values for hi, these seems to be their intention:
                         hi if (hi & 0x80) == 0 => {
                             //same as 0x7f
                             //log!("MEM {:04x}, {:02x}", port, value);
