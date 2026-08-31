@@ -178,6 +178,15 @@ impl Bus for Ula {
                 if pos.mic() {
                     r &= 0b1011_1111;
                 }
+            } else {
+                // When there is no tape, the MIC bit is tricky. In 48K the real value seems to be mixed with the EAR, with some float value.
+                // https://worldofspectrum.org/faq/reference/48kreference.htm#PortFE
+                // In 128K it is hardwired to 1, that is required for some speed-loaders.
+                // I don't think most programs care, except some buggy ones that fails to mask the bits when reading the keyboard.
+                // This seems to be good enough, not quite sure why.
+                if self.psg.is_none() && !self.mic {
+                    r &= 0b1011_1111;
+                }
             }
         } else {
             if (0x4000..0x8000).contains(&port) {
