@@ -36,16 +36,16 @@ impl Speaker {
             self.audio_accum = audio_excess;
         }
     }
-    pub fn complete_frame(
-        &mut self,
-        full_time: u32,
-        mut sample_fn: impl FnMut() -> u32,
-    ) -> &mut [f32] {
+    pub fn complete_frame(&mut self, full_time: u32, mut sample_fn: impl FnMut() -> u32) -> &[f32] {
         while self.audio.len() < (full_time / self.t_per_sample) as usize {
             let s = sample_fn();
             self.push_sample(s, self.t_per_sample - self.audio_time);
         }
-        &mut self.audio
+        &self.audio
+    }
+
+    pub fn get_audio(&self) -> &[f32] {
+        &self.audio
     }
 
     fn push_audio_accum(&mut self, sample: u32) {

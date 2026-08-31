@@ -256,11 +256,9 @@ impl raze::Gui for GameUi {
             [0xff, 0xff, 0xff],
         ],
     ];
+}
 
-    fn on_rzx_running(&mut self, _running: bool, _percent: u32) {}
-
-    fn on_tape_block(&mut self, _index: usize) {}
-
+impl GameUi {
     fn put_sound_data(&mut self, data: &[f32]) {
         let mut ab = self.audio_buffer.lock().unwrap();
         ab.data.push_back(AudioBlock::from(data));
@@ -280,7 +278,7 @@ impl raze::Gui for GameUi {
         }
     }
 
-    fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]) {
+    fn put_image_data(&mut self, w: usize, h: usize, data: &[<Self as raze::Gui>::Pixel]) {
         let gl = self.texture.gl();
         unsafe {
             gl.bind_texture(glow::TEXTURE_2D, Some(self.texture.id()));
@@ -365,7 +363,7 @@ impl Application for App {
             )
             .unwrap();
         audio.play().unwrap();
-        let mut gui = GameUi {
+        let gui = GameUi {
             texture,
             size: Cell::new(vec2(4.0, 3.0)),
             audio_buffer,
@@ -381,7 +379,7 @@ impl Application for App {
 
         let atlas = args.imgui.io_mut().font_atlas_mut();
         let fd_atlas = filechooser::build_custom_atlas(atlas);
-        let game = raze::Game::new(Model::Spec128k, &mut gui);
+        let game = raze::Game::new(Model::Spec128k);
 
         App {
             redock: true,
@@ -481,11 +479,15 @@ impl UiBuilder for App {
     fn pre_render(&mut self, _ctx: &mut easy_imgui::CurrentContext<'_>) {
         if !self.pause {
             while self.gui.audio_buffer.lock().unwrap().data.len() < 3 {
-                self.game.draw_frame(self.turbo, &mut self.gui);
+                self.game.do_frame(self.turbo);
                 if self.turbo {
                     break;
                 }
+                let audio = self.game.get_audio();
+                self.gui.put_sound_data(audio);
             }
+            let (w, h, data) = self.game.get_screen();
+            self.gui.put_image_data(w, h, data);
         }
     }
     fn do_ui(&mut self, ui: &easy_imgui::Ui<Self>) {
@@ -603,7 +605,7 @@ impl UiBuilder for App {
                                 )
                                 .build()
                             {
-                                self.game.tape_seek(i, &mut self.gui);
+                                self.game.tape_seek(i);
                             }
                             if current {
                                 let r0 = ui.get_item_rect_min();
@@ -972,7 +974,7 @@ impl App {
         match ui_action {
             UiAction::None => {}
             UiAction::Reset { model } => {
-                self.game = raze::Game::new(model, &mut self.gui);
+                self.game = raze::Game::new(model);
             }
             UiAction::TapeLoadDlg => {
                 let mut fd = FileChooser::new();
@@ -1061,7 +1063,7 @@ impl App {
             UiAction::SnapshotLoad(path_buf) => {
                 let mut load_file = || -> Result<()> {
                     let data = read_bytes(&path_buf)?;
-                    let game = Game::load_snapshot(&data, &mut self.gui)?;
+                    let game = Game::load_snapshot(&data)?;
                     self.game = game;
                     self.add_snapshot(
                         path_buf
@@ -1133,7 +1135,7 @@ impl App {
                 let game = self
                     .snapshots
                     .get(i)
-                    .and_then(|s| Game::load_snapshot(&s.data, &mut self.gui).ok());
+                    .and_then(|s| Game::load_snapshot(&s.data).ok());
                 if let Some(game) = game {
                     self.game = game;
                 };

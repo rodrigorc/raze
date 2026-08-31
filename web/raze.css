@@ -35,6 +35,7 @@ h1 span.version {
 #buttons span {
     text-align: center;
 }
+
 #reset_128k {
     grid-column: 1;
 }
@@ -42,11 +43,17 @@ h1 span.version {
     grid-column: 2;
 }
 #turbo_p {
-    grid-column: 3;
-}
-#dither_p {
     grid-column: 4;
+    display: grid;
+    grid-gap: 5px;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
+
+span.symbol {
+    display: inline-block;
+    transform: scale(2);
+}
+
 #snapshot {
     grid-column: 1;
 }
@@ -97,13 +104,33 @@ h1 span.version {
     grid-gap: 5px;
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
-#pause {
-    grid-column: 2;
-}
 #buttons #peek_poke {
     grid-column-start: 3;
     grid-column-end: 5;
     text-align: end;
+}
+
+#buttons #rzx_replay {
+    grid-column: 4;
+}
+
+#peek_poke {
+    display: revert;
+}
+
+#rzx_replay {
+    display: none;
+}
+
+.rzx_mode #peek_poke {
+    display: none;
+}
+
+.rzx_mode #rzx_replay {
+    display: revert;
+}
+
+#buttons #peek_poke_rzx.poke #peek_poke {
 }
 
 #buttons #peek_poke #addr {

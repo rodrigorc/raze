@@ -40,28 +40,19 @@ function createGame(options = {}) {
         wasm_bindgen.wasm_builder_set_model(builder, options.model);
     }
 
-    let new_game = wasm_bindgen.wasm_builder_build(builder);
-    if (!new_game)
+    try {
+        let new_game = wasm_bindgen.wasm_builder_build(builder);
+        if (g_game)
+            wasm_bindgen.wasm_game_drop(g_game);
+        g_game = new_game;
+    } catch (e) {
+        alert(e.message);
         return;
+    }
 
-    if (g_game)
-        wasm_bindgen.wasm_game_drop(g_game);
-
-    g_game = new_game;
     g_delayed_funcs = null;
     resetTape();
     resetDisk();
-}
-
-async function ensureAudioRunning() {
-    //autoplay policy requires this
-    if (g_actx.state == "suspended") {
-        console.log("Resume AutoPlay");
-        await g_actx.resume();
-        if (g_actx.state != "suspended") {
-            document.getElementById('start-overlay').classList.add("hidden");
-        }
-    }
 }
 
 async function fetch_with_cors_if_needed(url, callback, error) {
@@ -81,8 +72,9 @@ async function fetch_with_cors_if_needed(url, callback, error) {
     }
 }
 
-function call_with_delay(first, other, args) {
-    g_delayed_funcs = [first, other, args];
+// Delays in frames (20ms each)
+function call_with_delay(first_delay, delay, funcs) {
+    g_delayed_funcs = { first_delay, delay, funcs };
 }
 
 if (window.localStorage) {
@@ -105,7 +97,11 @@ function boolURLParamDef(urlParams, key, def) {
     return true;
 }
 
-export function onTapeBlock(index) {
+let g_lastTapeBlock = null;
+function onTapeBlock(index) {
+    if (g_lastTapeBlock == index)
+        return;
+    g_lastTapeBlock = index;
     console.log("Block", index);
     let xTape = document.getElementById("tape");
     for (let i = 0; i < xTape.children.length; ++i) {
@@ -119,18 +115,30 @@ export function onTapeBlock(index) {
         setTurbo(false);
 }
 
-export function onRZXRunning(isRunning, percent) {
+let g_rzxPercent = null;
+function onRZXRunning(percent) {
+    // quick path
+    if (g_rzxPercent == percent)
+        return;
+    g_rzxPercent = percent;
+
     //console.log("RZX running", isRunning);
     let btn = document.getElementById('rzx_replay');
-    if (isRunning) {
-        btn.classList.remove("hidden");
+    let container = document.getElementById('buttons');
+    if (percent != null) {
+        btn.innerText = "Stop replay (" + percent + "%)";
+        container.classList.add("rzx_mode");
     } else {
-        btn.classList.add("hidden");
+        container.classList.remove("rzx_mode");
     }
-    btn.innerText = "Stop replay (" + percent + "%)";
 }
 
-export function putSoundData(slice) {
+function putSoundData(slice) {
+    if (g_actx.state == "suspended") {
+        g_actx.resume();
+        return;
+    }
+
     let asrc = g_actx.createBufferSource();
     //Safari cannot use random frequencies so go with a standard 22.05 kHz
     let freq = 22050;
@@ -149,17 +157,20 @@ export function putSoundData(slice) {
     g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
 }
 
-export function putImageData(w, h, data) {
+function putImageData(w, h, data) {
     if (g_gl) {
         g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
         g_gl.drawArrays(g_gl.TRIANGLE_STRIP, 0, 4);
         g_gl.flush();
     } else {
-        //data is a Uint8Array, but some browsers need a Uint8ClampedArray
-        data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
         let img = new ImageData(data, w, h);
         g_ctx.putImageData(img, 0, 0);
     }
+}
+
+function putNewFrameInfo(rzx, tape_block) {
+    onRZXRunning(rzx);
+    onTapeBlock(tape_block);
 }
 
 function parse2Ints(str) {
@@ -261,7 +272,7 @@ async function onDocumentLoad() {
                     switch (gameOpts.model) {
                     case SPEC48K:
                         // 48K loading sequence: typìng LOAD ""
-                        call_with_delay(2000, 100, [
+                        call_with_delay(100, 5, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x63), //J (LOAD)
                             () => wasm_bindgen.wasm_key_up(g_game, 0x63),
                             () => wasm_bindgen.wasm_key_down(g_game, 0x71), //SS
@@ -279,7 +290,7 @@ async function onDocumentLoad() {
                     case PLUS3:
                         // 128K loading sequence: enter in the load menu
                         // +3 loading sequence: same as 128K but a slightly longer delay because of the floppy
-                        call_with_delay(gameOpts.model == PLUS3 ? 2000 : 1500, 100, [
+                        call_with_delay(gameOpts.model == PLUS3 ? 100 : 75, 5, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
@@ -304,7 +315,7 @@ async function onDocumentLoad() {
                 // the floppy may not be detected and the system will default to loading the tape.
                 if (onLoadDisk(bytes)) {
                     if (gameOpts.model == PLUS3) {
-                        call_with_delay(2000, 100, [
+                        call_with_delay(100, 5, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                         ]);
@@ -319,19 +330,12 @@ async function onDocumentLoad() {
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
-    window.addEventListener('focus', onFocus)
     window.addEventListener('blur', onBlur)
     window.addEventListener("gamepadconnected", onGamepadConnected);
     window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
     g_audio_next = g_actx.currentTime;
-    if (document.hasFocus())
-        onFocus();
+    doPlay();
 
-    if (g_actx.state == "suspended") {
-        document.getElementById('start-overlay').classList.remove("hidden");
-    }
-
-    document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
     document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, SPEC48K), false);
     document.getElementById('reset_128k').addEventListener('click', e => handleReset(e, SPEC128K), false);
     document.getElementById('reset_plus3').addEventListener('click', e => handleReset(e, PLUS3), false);
@@ -345,6 +349,7 @@ async function onDocumentLoad() {
     document.getElementById('rzx_replay').addEventListener('click', handleRZXReplay, false);
     document.getElementById('turbo').addEventListener('click', e => handleTurbo(e, false), false);
     document.getElementById('turbo').addEventListener('dblclick', e => handleTurbo(e, true), false);
+    document.getElementById('pause').addEventListener('click', handlePause, false);
     document.getElementById('poke').addEventListener('click', handlePoke, false);
     document.getElementById('peek').addEventListener('click', handlePeek, false);
     document.getElementById('toggle_kbd').addEventListener('click', handleToggleKbd, false);
@@ -612,7 +617,6 @@ function onOSKeyUp(ev) {
 
 function onKeyDown(ev) {
     //console.log(ev.code);
-    ensureAudioRunning();
     switch (ev.code) {
     case "F6":
         handleSnapshot(ev);
@@ -631,14 +635,16 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "F10":
-        if (!g_delayed_funcs)
-            setTurbo(true, false);
+        setTurbo(true, false);
         ev.preventDefault();
         return;
     case "F11":
         handleFullscreen(ev);
         ev.preventDefault();
         return;
+    case "Escape":
+        handlePause(ev);
+        ev.preventDefault();
     }
 
     let focus = document.activeElement.id;
@@ -675,41 +681,66 @@ function onKeyUp(ev) {
     wasm_bindgen.wasm_key_up(g_game, key);
 }
 
-function onFocus(ev) {
-    if (!g_delayed_funcs)
-        wasm_bindgen.wasm_reset_input(g_game);
-    if (g_interval === null) {
-        g_interval = setInterval(function(){
-            if (g_actx.state == "suspended")
-                return;
-            inputGamepad();
-            if (g_turbo) {
-                wasm_bindgen.wasm_draw_frame(g_game, true);
-            } else while (g_audio_next - g_actx.currentTime < 0.05) {
-                wasm_bindgen.wasm_draw_frame(g_game, false);
-                if (g_delayed_funcs !== null) {
-                    if ((g_delayed_funcs[0] -= 20) <= 0) {
-                        let f = g_delayed_funcs[2].shift();
-                        if (f) {
-                            f();
-                            g_delayed_funcs[0] = g_delayed_funcs[1];
-                        } else {
-                            g_delayed_funcs = null;
-                        }
+let g_frame_next = 0;
+
+function doFrame() {
+    inputGamepad();
+    if (g_turbo && !g_delayed_funcs) {
+        wasm_bindgen.wasm_do_frame(g_game, true, putNewFrameInfo);
+        g_animationFrame ??= window.requestAnimationFrame(drawAnimationFrame);
+    } else {
+        let time = performance.now();
+        // In case we are underpowered, do not do more than N emulated frames per real frame
+        for (let i = 0; i < 5; ++i) {
+            if (!g_turbo) {
+                if (g_actx.state == "running") {
+                    // in seconds
+                    if (g_audio_next - g_actx.currentTime >= 0.05) {
+                        g_frame_next = time + 20;
+                        break;
                     }
+                } else {
+                    // in milliseconds
+                    if (g_frame_next - time >= 20)
+                        break;
+                    g_frame_next += 20;
                 }
             }
-        }, 0);
+
+            wasm_bindgen.wasm_do_frame(g_game, false, putNewFrameInfo);
+            wasm_bindgen.wasm_get_audio(g_game, putSoundData);
+            g_animationFrame ??= window.requestAnimationFrame(drawAnimationFrame);
+
+            run_delayed_funcs();
+        }
+    }
+}
+
+// The actual image is drawn only once, in an animationFrame
+let g_animationFrame = null;
+function drawAnimationFrame() {
+    g_animationFrame = null;
+    wasm_bindgen.wasm_get_image(g_game, putImageData);
+}
+
+function run_delayed_funcs() {
+    if (g_delayed_funcs == null)
+        return;
+
+    if ((g_delayed_funcs.first_delay -= 1) <= 0) {
+        let f = g_delayed_funcs.funcs.shift();
+        if (f) {
+            f();
+            g_delayed_funcs.first_delay = g_delayed_funcs.delay;
+        } else {
+            g_delayed_funcs = null;
+        }
     }
 }
 
 function onBlur(ev) {
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
-    if (g_interval !== null) {
-        clearInterval(g_interval);
-        g_interval = null;
-    }
 }
 
 function onGamepadConnected(ev, connecting) {
@@ -944,7 +975,14 @@ function resetTape() {
 }
 
 function onLoadTape(data) {
-    let tape_len = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data));
+    let tape_len;
+    try {
+        tape_len = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data));
+    } catch (e) {
+        alert(e.message);
+        return;
+    }
+
     let xTape = resetTape();
 
     for (let i = 0; i < tape_len; ++i) {
@@ -993,7 +1031,10 @@ function resetDisk() {
 }
 
 function onLoadDisk(data) {
-    if (!wasm_bindgen.wasm_disk_load(g_game, new Uint8Array(data))) {
+    try {
+        wasm_bindgen.wasm_disk_load(g_game, new Uint8Array(data));
+    } catch (e) {
+        alert(e.message);
         return false;
     }
     let disk = document.getElementById('load_disk');
@@ -1123,6 +1164,35 @@ function setTurbo(mode, persistent) {
         turbo.classList.add('persist');
     } else {
         turbo.classList.remove('persist');
+    }
+}
+
+function doPause() {
+    if (!g_delayed_funcs)
+        wasm_bindgen.wasm_reset_input(g_game);
+    if (g_interval !== null) {
+        window.clearInterval(g_interval);
+        g_interval = null;
+    }
+}
+
+function doPlay() {
+    if (!g_delayed_funcs)
+        wasm_bindgen.wasm_reset_input(g_game);
+    if (g_interval === null) {
+        g_frame_next = performance.now() + 20;
+        g_interval = setInterval(doFrame, 0);
+    }
+}
+
+function handlePause(evt) {
+    let pause = document.getElementById('pause');
+    if (g_interval == null) {
+        doPlay();
+        pause.classList.remove('active');
+    } else {
+        doPause();
+        pause.classList.add('active');
     }
 }
 

@@ -10,26 +10,6 @@ use raze::{Game, Gui, Model};
 use std::mem;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_name = alert)]
-    fn alert_slice(s: &str);
-}
-
-#[wasm_bindgen(raw_module = "../raze.js?v=__VERSION__")]
-extern "C" {
-    pub fn putImageData(w: i32, h: i32, data: &[u8]);
-    pub fn putSoundData(data: &[f32]);
-    pub fn onTapeBlock(index: usize);
-    pub fn onRZXRunning(is_running: bool, percent: u32);
-}
-
-pub fn alert(s: impl AsRef<str>) {
-    let s = s.as_ref();
-    log::error!("{s}");
-    alert_slice(s);
-}
-
 mod color {
     #[repr(C)]
     #[derive(Copy, Clone)]
@@ -69,25 +49,7 @@ pub struct JSGui;
 
 impl Gui for JSGui {
     type Pixel = color::Pixel;
-
     const PALETTE: [[Pixel; 8]; 2] = color::PALETTE;
-
-    fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]) {
-        //Pixel is repr(C) just like [u8;4]
-        let ptr = data.as_ptr() as *const u8;
-        let len = mem::size_of_val(data);
-        let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-        putImageData(w as i32, h as i32, bytes);
-    }
-    fn put_sound_data(&mut self, data: &[f32]) {
-        putSoundData(data);
-    }
-    fn on_tape_block(&mut self, index: usize) {
-        onTapeBlock(index);
-    }
-    fn on_rzx_running(&mut self, running: bool, percent: u32) {
-        onRZXRunning(running, percent);
-    }
 }
 
 #[derive(Default)]
@@ -147,19 +109,16 @@ mod exports {
     }
 
     #[wasm_bindgen]
-    pub fn wasm_builder_build(bld: *mut GameBuilder) -> *mut Game<JSGui> {
+    pub fn wasm_builder_build(bld: *mut GameBuilder) -> Result<*mut Game<JSGui>, JsError> {
         let bld = unsafe { Box::from_raw(bld) };
         let bld = *bld;
         let mut game = match bld.model {
-            ModelBuilder::Model(model) => Game::new(model, &mut JSGui),
+            ModelBuilder::Model(model) => Game::new(model),
             ModelBuilder::Snapshot(data) => {
-                match Game::load_rom(&data, &mut JSGui)
-                    .or_else(|_| Game::load_snapshot(&data, &mut JSGui))
-                {
+                match Game::load_rom(&data).or_else(|_| Game::load_snapshot(&data)) {
                     Ok(g) => g,
                     Err(e) => {
-                        alert(format!("Snapshot error: {e}"));
-                        return std::ptr::null_mut();
+                        return Err(JsError::new(&format!("Snapshot error: {e}")));
                     }
                 }
             }
@@ -168,7 +127,7 @@ mod exports {
             game.set_border_size(bx as usize, by as usize);
         }
         let game = Box::new(game);
-        Box::into_raw(game)
+        Ok(Box::into_raw(game))
     }
     #[wasm_bindgen]
     pub fn wasm_game_model(game: *mut Game<JSGui>) -> i32 {
@@ -183,22 +142,63 @@ mod exports {
     pub fn wasm_game_drop(game: *mut Game<JSGui>) {
         let _game = unsafe { Box::from_raw(game) };
     }
+
     #[wasm_bindgen]
-    pub fn wasm_draw_frame(game: *mut Game<JSGui>, turbo: bool) {
+    pub fn wasm_do_frame(
+        game: *mut Game<JSGui>,
+        turbo: bool,
+        callback: js_sys::Function,
+    ) -> Result<(), JsValue> {
         let game = unsafe { &mut *game };
-        game.draw_frame(turbo, &mut JSGui);
+        game.do_frame(turbo);
+
+        let rzx = game.rzx_status();
+        let tape_block = game.tape_block();
+
+        callback.call2(&JsValue::NULL, &rzx.into(), &tape_block.into())?;
+        Ok(())
     }
 
     #[wasm_bindgen]
-    pub fn wasm_tape_load(game: *mut Game<JSGui>, data: &[u8]) -> usize {
+    pub fn wasm_get_image(
+        game: *mut Game<JSGui>,
+        callback: js_sys::Function,
+    ) -> Result<(), JsValue> {
         let game = unsafe { &mut *game };
-        match game.tape_load(data) {
-            Ok(blocks) => blocks,
-            Err(e) => {
-                alert(format!("Tape error: {e}"));
-                0
-            }
-        }
+
+        let (w, h, screen_data) = game.get_screen();
+
+        let pixels = {
+            let ptr = screen_data.as_ptr() as *const u8;
+            let len = mem::size_of_val(screen_data);
+            let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+            // some browsers need a Uint8ClampedArray in non-webgl mode
+            js_sys::Uint8ClampedArray::new_from_slice(bytes)
+        };
+
+        callback.call3(&JsValue::NULL, &w.into(), &h.into(), &pixels)?;
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_get_audio(
+        game: *mut Game<JSGui>,
+        callback: js_sys::Function,
+    ) -> Result<(), JsValue> {
+        let game = unsafe { &mut *game };
+
+        let audio_data = game.get_audio();
+        let audio = js_sys::Float32Array::new_from_slice(audio_data);
+
+        callback.call1(&JsValue::NULL, &audio.into())?;
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_tape_load(game: *mut Game<JSGui>, data: &[u8]) -> Result<usize, JsError> {
+        let game = unsafe { &mut *game };
+        game.tape_load(data)
+            .map_err(|e| JsError::new(&format!("Tape error: {e}")))
     }
     #[wasm_bindgen]
     pub fn wasm_tape_name(game: *mut Game<JSGui>, index: usize) -> String {
@@ -213,7 +213,7 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_tape_seek(game: *mut Game<JSGui>, index: usize) {
         let game = unsafe { &mut *game };
-        game.tape_seek(index, &mut JSGui);
+        game.tape_seek(index);
     }
     #[wasm_bindgen]
     pub fn wasm_tape_stop(game: *mut Game<JSGui>) {
@@ -222,15 +222,10 @@ mod exports {
     }
 
     #[wasm_bindgen]
-    pub fn wasm_disk_load(game: *mut Game<JSGui>, data: &[u8]) -> bool {
+    pub fn wasm_disk_load(game: *mut Game<JSGui>, data: &[u8]) -> Result<(), JsError> {
         let game = unsafe { &mut *game };
-        match game.load_disk(data) {
-            Ok(()) => true,
-            Err(e) => {
-                alert(format!("Disk error: {e}"));
-                false
-            }
-        }
+        game.load_disk(data)
+            .map_err(|e| JsError::new(&format!("Disk error: {e}")))
     }
     #[wasm_bindgen]
     pub fn wasm_disk_eject(game: *mut Game<JSGui>) {
@@ -271,6 +266,6 @@ mod exports {
     #[wasm_bindgen]
     pub fn wasm_stop_rzx_replay(game: *mut Game<JSGui>) {
         let game = unsafe { &mut *game };
-        game.stop_rzx_replay(&mut JSGui);
+        game.stop_rzx_replay();
     }
 }

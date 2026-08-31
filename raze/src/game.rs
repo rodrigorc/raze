@@ -12,20 +12,6 @@ use std::io::{Cursor, Read, Write};
 
 const TIME_TO_INT: i32 = 69888;
 
-/*
-//margins
-const BX0: usize = 5;
-const BX1: usize = 5;
-const BY0: usize = 4;
-const BY1: usize = 4;
-
-//256x192 plus border
-const SCREEN_WIDTH: usize = BX0 + 256 + BX1;
-const SCREEN_HEIGHT: usize = BY0 + 192 + BY1;
-const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
-
-*/
-
 struct RzxInfo {
     frames: Vec<rzx::InputFrame>,
     frame_idx: usize,
@@ -55,23 +41,12 @@ impl Ula {
         self.delay = 0;
         r
     }
-    pub fn add_time(&mut self, t: u32, gui: &mut impl Gui) {
+    pub fn add_time(&mut self, t: u32) {
         self.time += t as i32;
         self.tape = match self.tape.take() {
             Some((tape, Some(pos))) => {
-                let index_pre = pos.block(&tape);
-                let index_post;
                 let next = tape.play(t, pos);
-                if let Some(p) = &next {
-                    self.mic = p.mic();
-                    index_post = p.block(&tape);
-                } else {
-                    self.mic = false;
-                    index_post = 0xffff_ffff;
-                }
-                if index_pre != index_post {
-                    gui.on_tape_block(index_post);
-                }
+                self.mic = next.as_ref().is_some_and(|p| p.mic());
                 Some((tape, next))
             }
             tape => tape,
@@ -92,7 +67,7 @@ impl Ula {
             self.time >= TIME_TO_INT
         }
     }
-    fn update_time_after_exec(&mut self, t: &mut u32, gui: &mut impl Gui) {
+    fn update_time_after_exec(&mut self, t: &mut u32) {
         //contended memory and IO
         let delay_m = self.memory.take_delay();
         let delay_io = self.take_delay();
@@ -106,10 +81,10 @@ impl Ula {
                 x => *t += 6 * x - 2, //more than 1 contention: they use to chain so max up all but the first one
             }
         }
-        self.add_time(*t, gui);
+        self.add_time(*t);
     }
 
-    fn post_interrupt(&mut self, gui: &mut impl Gui) {
+    fn post_interrupt(&mut self) {
         if let Some(rzx) = &mut self.rzx_info {
             self.fetch_count = 0;
             self.time = 0;
@@ -118,18 +93,13 @@ impl Ula {
             rzx.frame_idx += 1;
             if rzx.frame_idx >= total_frames {
                 self.rzx_info = None;
-                gui.on_rzx_running(false, 0);
                 return;
             }
             rzx.in_idx = 0;
             let frame = &rzx.frames[rzx.frame_idx];
-            if matches!(frame.in_values, rzx::InValues::Data(_)) {
+            if let rzx::InValues::Data(_) = frame.in_values {
                 rzx.frame_data_idx = rzx.frame_idx;
             }
-            gui.on_rzx_running(
-                true,
-                (rzx.frame_idx * 100).checked_div(total_frames).unwrap_or(0) as u32,
-            );
         } else {
             //we drag the excess T to the next loop
             self.time -= TIME_TO_INT;
@@ -344,11 +314,6 @@ pub trait Gui {
     type Pixel: Copy + 'static;
     //Palette of colors: 2 intensities, each with 8 basic colors
     const PALETTE: [[Self::Pixel; 8]; 2];
-
-    fn on_rzx_running(&mut self, running: bool, percent: u32);
-    fn on_tape_block(&mut self, index: usize);
-    fn put_sound_data(&mut self, data: &[f32]);
-    fn put_image_data(&mut self, w: usize, h: usize, data: &[Self::Pixel]);
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -373,8 +338,7 @@ pub struct Screen<Pixel: Copy> {
     by1: usize,
     screen_width: usize,
     screen_height: usize,
-    screen_size: usize,
-    // image.len() == screen_size
+    // image.len() == screen_width * screen_height
     image: Vec<Pixel>,
 }
 
@@ -387,7 +351,6 @@ impl<Pixel: Copy> Screen<Pixel> {
             by1: 0,
             screen_width: 0,
             screen_height: 0,
-            screen_size: 0,
             image: Vec::new(),
         };
         res.set_border_size(black, 5, 4);
@@ -401,8 +364,8 @@ impl<Pixel: Copy> Screen<Pixel> {
         self.by1 = by;
         self.screen_width = self.bx0 + 256 + self.bx1;
         self.screen_height = self.by0 + 192 + self.by1;
-        self.screen_size = self.screen_width * self.screen_height;
-        self.image = vec![black; self.screen_size];
+        let screen_size = self.screen_width * self.screen_height;
+        self.image = vec![black; screen_size];
     }
 
     fn write_border_row(&mut self, y: usize, border: Pixel) {
@@ -467,18 +430,6 @@ impl<Pixel: Copy> Screen<Pixel> {
             });
         }
     }
-
-    fn write_screen(&mut self, border: Pixel, palette: &[[Pixel; 8]; 2], inv: bool, data: &[u8]) {
-        for y in 0..self.by0 {
-            self.write_border_row(y, border);
-        }
-        for y in 0..192 {
-            self.write_screen_row(y, border, inv, data, palette);
-        }
-        for y in 0..self.by1 {
-            self.write_border_row(self.by0 + 192 + y, border);
-        }
-    }
 }
 
 // General speed of the emulation is controlled by the audio output.
@@ -499,7 +450,7 @@ fn t_per_sample(model: Model) -> u32 {
 }
 
 impl<GUI: Gui> Game<GUI> {
-    pub fn new(model: Model, gui: &mut GUI) -> Game<GUI> {
+    pub fn new(model: Model) -> Game<GUI> {
         log::info!("Go!");
         let memory = Memory::new_from_model(model);
         let (psg, floppy) = match model {
@@ -507,7 +458,6 @@ impl<GUI: Gui> Game<GUI> {
             Model::Spec128k => (Some(Psg::new()), None),
             Model::Plus3 => (Some(Psg::new()), Some(Floppy::new())),
         };
-        gui.on_rzx_running(false, 0);
         Game::from_parts(model, Z80::new(), memory, 0, psg, floppy)
     }
 
@@ -558,11 +508,13 @@ impl<GUI: Gui> Game<GUI> {
         })
     }
 
-    pub fn draw_frame(&mut self, turbo: bool, gui: &mut GUI) {
+    pub fn do_frame(&mut self, turbo: bool) {
         //log::info!("Draw!");
-        let n = if turbo { 100 } else { 1 };
+        let n = if turbo { 50 } else { 1 };
 
-        for _ in 0..n {
+        self.speaker.clear();
+
+        for i in 0..n {
             self.ula.frame_counter = self.ula.frame_counter.wrapping_add(1);
             let inverted = self.ula.frame_counter % 32 < 16;
             let mut screen_time = 0;
@@ -570,11 +522,14 @@ impl<GUI: Gui> Game<GUI> {
             while !self.ula.has_to_interrupt() {
                 let mut t = self.z80.exec(&mut self.ula);
                 //self.z80._dump_regs();
-                self.ula.update_time_after_exec(&mut t, gui);
+                self.ula.update_time_after_exec(&mut t);
 
                 if !turbo {
                     let sample = self.ula.audio_sample(t);
                     self.speaker.push_sample(sample, t);
+                }
+
+                if i == n - 1 {
                     //Border is never bright
                     let border = GUI::PALETTE[0][self.ula.border as usize];
                     screen_time += t as i32;
@@ -604,28 +559,35 @@ impl<GUI: Gui> Game<GUI> {
                 }
             }
             self.z80.interrupt();
-            self.ula.post_interrupt(gui);
+            self.ula.post_interrupt();
         }
-        if turbo {
-            let vmem = self.ula.memory.video_memory();
-            //Border is never bright
-            let border = GUI::PALETTE[0][self.ula.border as usize];
-            self.screen.write_screen(border, &GUI::PALETTE, false, vmem);
-        } else {
+        if !turbo {
             //adding samples should be rarely necessary, so use lazy generation
             let ula = &mut self.ula;
-            let audio = self
-                .speaker
+            self.speaker
                 .complete_frame(TIME_TO_INT as u32, || ula.audio_sample(0));
-            gui.put_sound_data(audio);
-            self.speaker.clear();
         }
-        gui.put_image_data(
+    }
+
+    pub fn get_screen(&self) -> (usize, usize, &[GUI::Pixel]) {
+        (
             self.screen.screen_width,
             self.screen.screen_height,
             &self.screen.image,
-        );
+        )
     }
+
+    pub fn get_audio(&self) -> &[f32] {
+        self.speaker.get_audio()
+    }
+
+    pub fn rzx_status(&self) -> Option<u32> {
+        let rzx = self.ula.rzx_info.as_ref()?;
+        let total_frames = rzx.frames.len();
+        let percent = (rzx.frame_idx * 100).checked_div(total_frames).unwrap_or(0) as u32;
+        Some(percent)
+    }
+
     //Every byte in key is a key pressed:
     //  * low nibble: key number (0..5)
     //  * high nibble: row number (0..7, 8 = kempston)
@@ -653,9 +615,8 @@ impl<GUI: Gui> Game<GUI> {
     pub fn poke(&mut self, addr: u16, value: u8) {
         self.ula.memory.poke(addr, value);
     }
-    pub fn stop_rzx_replay(&mut self, gui: &mut GUI) {
+    pub fn stop_rzx_replay(&mut self) {
         self.ula.rzx_info = None;
-        gui.on_rzx_running(false, 0);
     }
     pub fn reset_input(&mut self) {
         self.ula.keys = Default::default();
@@ -669,6 +630,13 @@ impl<GUI: Gui> Game<GUI> {
             self.ula.tape = None;
         }
         Ok(res)
+    }
+
+    pub fn tape_block(&self) -> Option<usize> {
+        match &self.ula.tape {
+            Some((tape, Some(pos))) => Some(pos.block(tape)),
+            _ => None,
+        }
     }
 
     /// If there is a tape loaded, it Returns the number of blocks and, if playing, the current block.
@@ -703,12 +671,9 @@ impl<GUI: Gui> Game<GUI> {
             None => false,
         }
     }
-    pub fn tape_seek(&mut self, index: usize, gui: &mut GUI) {
+    pub fn tape_seek(&mut self, index: usize) {
         self.ula.tape = match self.ula.tape.take() {
-            Some((tape, _)) => {
-                gui.on_tape_block(index);
-                Some((tape, Some(TapePos::new_at_block(index))))
-            }
+            Some((tape, _)) => Some((tape, Some(TapePos::new_at_block(index)))),
             None => None,
         }
     }
@@ -835,7 +800,7 @@ impl<GUI: Gui> Game<GUI> {
         }
         data
     }
-    pub fn load_snapshot(data: &[u8], gui: &mut GUI) -> Result<Game<GUI>> {
+    pub fn load_snapshot(data: &[u8]) -> Result<Game<GUI>> {
         let mut data = match snapshot_from_zip(data) {
             Ok(v) => Cow::Owned(v),
             Err(_) => Cow::Borrowed(data),
@@ -1049,13 +1014,10 @@ impl<GUI: Gui> Game<GUI> {
             frame_data_idx: 0,
             in_idx: 0,
         });
-        if game.ula.rzx_info.is_some() {
-            gui.on_rzx_running(true, 0);
-        }
         Ok(game)
     }
 
-    pub fn load_rom(data: &[u8], gui: &mut GUI) -> Result<Game<GUI>> {
+    pub fn load_rom(data: &[u8]) -> Result<Game<GUI>> {
         match data.len() {
             0x2000 | 0x4000 => (),
             _ => bail!("invalid ROM length"),
@@ -1064,7 +1026,7 @@ impl<GUI: Gui> Game<GUI> {
             bail!("invalid ROM prefix");
         }
 
-        let mut game = Game::new(Model::Spec48k, gui);
+        let mut game = Game::new(Model::Spec48k);
         let mut rom = data.to_vec();
         // Extend from 0x2000 to 0x4000 if needed
         rom.resize(0x4000, 0xff);
