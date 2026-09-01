@@ -49,9 +49,10 @@ h1 span.version {
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 
-span.symbol {
+svg.symbol {
     display: inline-block;
-    transform: scale(2);
+    vertical-align: -1px;
+    overflow: visible;
 }
 
 #snapshot {
@@ -128,9 +129,6 @@ span.symbol {
 
 .rzx_mode #rzx_replay {
     display: revert;
-}
-
-#buttons #peek_poke_rzx.poke #peek_poke {
 }
 
 #buttons #peek_poke #addr {
