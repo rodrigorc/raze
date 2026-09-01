@@ -1,5 +1,16 @@
+:root {
+  --color-bg: darkgray;
+  --color-text: white;
+  --color-black: black;
+  --color-btn: lightgray;
+  --color-key-bg: #707070;
+  --color-accent: #4f46e5;
+  --gap-sm: 5px;
+  --gap-md: 10px;
+}
+
 body {
-    background: darkgray;
+    background: var(--color-bg);
 }
 * {
     font-family: monospace;
@@ -11,16 +22,17 @@ body {
 
 h1 {
    text-align: center;
-   margin: 0 0 5px;
-}
-h1 span.version {
-    font-size: 15px;
+   margin: 0 0 var(--gap-sm);
+
+   span.version {
+       font-size: 15px;
+   }
 }
 #stage {
     width: 798px;
     position: relative;
     margin: 0 auto;
-    border: 2px solid black;
+    border: 2px solid var(--color-black);
 }
 #controls {
     width: 798px;
@@ -29,11 +41,34 @@ h1 span.version {
 }
 #buttons {
     display: grid;
-    grid-gap: 5px;
+    gap: var(--gap-sm);
     grid-template-columns: 25% 25% 25% 25%;
-}
-#buttons span {
-    text-align: center;
+
+    span {
+        text-align: center;
+    }
+
+    #cursor_keys_p {
+        grid-column: 3 / 5;
+        text-align: end;
+    }
+
+    #peek_poke {
+        grid-column: 3 / 5;
+        text-align: end;
+
+        #addr {
+            width: 100px;
+        }
+
+        #byte {
+            width: 50px;
+        }
+    }
+
+    #rzx_replay {
+        grid-column: 4;
+    }
 }
 
 #reset_128k {
@@ -45,7 +80,7 @@ h1 span.version {
 #turbo_p {
     grid-column: 4;
     display: grid;
-    grid-gap: 5px;
+    gap: var(--gap-sm);
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 
@@ -73,46 +108,36 @@ svg.symbol {
 #rzx_replay {
     grid-column: 2;
     background: red;
-    color: white;
+    color: var(--color-text);
     display: block;
 }
-#buttons #cursor_keys_p {
-    grid-column-start: 3;
-    grid-column-end: 5;
-    text-align: end;
-}
 
-#cursor_keys_p .with_gamepad {
-    display: none;
-}
+#cursor_keys_p {
+    .with_gamepad {
+        display: none;
+    }
 
-#cursor_keys_p.with_gamepad .with_gamepad {
-    display: revert;
-}
+    &.with_gamepad {
+        .with_gamepad {
+            display: revert;
+        }
 
-#cursor_keys_p.with_gamepad .without_gamepad {
-    display: none;
-}
+        .without_gamepad {
+            display: none;
+        }
 
-#cursor_keys_p.with_gamepad select {
-    width: 140px;
+        select {
+            width: 140px;
+        }
+    }
 }
 
 #load_media {
     grid-column: 1;
 
     display: grid;
-    grid-gap: 5px;
+    gap: var(--gap-sm);
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-}
-#buttons #peek_poke {
-    grid-column-start: 3;
-    grid-column-end: 5;
-    text-align: end;
-}
-
-#buttons #rzx_replay {
-    grid-column: 4;
 }
 
 #peek_poke {
@@ -123,52 +148,24 @@ svg.symbol {
     display: none;
 }
 
-.rzx_mode #peek_poke {
-    display: none;
-}
+.rzx_mode {
+    #peek_poke {
+        display: none;
+    }
 
-.rzx_mode #rzx_replay {
-    display: revert;
-}
-
-#buttons #peek_poke #addr {
-    width: 100px;
-}
-
-#buttons #peek_poke #byte {
-    width: 50px;
+    #rzx_replay {
+        display: revert;
+    }
 }
 
 #canvases {
     width: 100%;
     cursor: none;
-}
 
-#canvases canvas {
-    width: 100%;
-    display: block;
-}
-
-#start-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-#start-overlay button {
-    padding: 12px 24px;
-    font-size: 16px;
-    font-weight: bold;
-    background: #4f46e5;
-    color: white;
-    border: none;
-    border-radius: 6px;
+    canvas {
+        width: 100%;
+        display: block;
+    }
 }
 
 canvas.pixelated {
@@ -177,64 +174,102 @@ canvas.pixelated {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
 }
-#tape button {
-    border: 1px solid black;
-    padding: 2px;
-    margin: 2px;
-    font-size: small;
-}
+
 button {
-    background: lightgray;
-    padding: 5px 10px;
+    background: var(--color-btn);
+    padding: 5px var(--gap-md);
+
+    &.active {
+        background: var(--color-text);
+        border-style: inset;
+    }
+
+    &.persist {
+        font-weight: bold;
+    }
+
+    &:hover {
+        background: var(--color-btn);
+
+        &.active {
+            background: var(--color-text);
+        }
+    }
 }
-button.active {
-    background: white;
-    border-style: inset;
-}
-button.persist {
-    font-weight: bold;
-}
+
 label, input {
     vertical-align: middle;
 }
 input, select {
-    background: white;
+    background: var(--color-text);
 }
 select {
-    padding: 5px 10px;
+    padding: var(--gap-sm) var(--gap-md);
 }
-#tape button.selected {
-    background: lightblue;
+
+#tape {
+    button {
+        border: 1px solid var(--color-black);
+        padding: 2px;
+        margin: 2px;
+        font-size: small;
+
+        &.selected {
+            background: lightblue;
+        }
+    }
 }
-button:hover {
-    background: lightgray;
-}
-button:hover.active {
-    background: white;
-}
+
 #keyboard {
     display: block;
 }
 #keys {
-    margin: 10px 0;
-    padding: 5px;
-    background-color: black;
+    margin: var(--gap-md) 0;
+    padding: var(--gap-sm);
+    background-color: var(--color-black);
+
+    > div {
+        display: grid;
+        gap: 1%;
+    }
 }
 
-#keys > div {
-    display: grid;
-    grid-gap: 1%;
-}
 #row1 {
-    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    grid-template-columns: repeat(10, 9%);
     padding: 5px 10% 0 0%;
+
+    .key {
+        grid-template-rows: 50% 50%;
+        padding-bottom: 14%;
+    }
+
+    .n {
+        grid-column: 1;
+        grid-row: 1 / 3;
+    }
+
+    .g {
+        font-size: 15px;
+        grid-row: 1;
+        grid-column: 2;
+    }
+
+    .ss {
+        font-size: 15px;
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    .ktop {
+        color: var(--color-text);
+    }
 }
 #row2 {
-    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    grid-template-columns: repeat(10, 9%);
     padding: 5px 5% 0 5%;
 }
 #row3 {
-    grid-template-columns: 9% 9% 9% 9% 9% 9% 9% 9% 9% 9%;
+    grid-template-columns: repeat(10, 9%);
     padding: 5px 0% 0 10%;
 }
 #row4 {
@@ -244,8 +279,8 @@ button:hover.active {
 
 .key {
     font-family: monospace;
-    background-color: #707070;
-    color: white;
+    background-color: var(--color-key-bg);
+    color: var(--color-text);
     text-align: center;
     padding: 2px 0;
     font-size: 25px;
@@ -253,78 +288,78 @@ button:hover.active {
     display: grid;
     grid-template-rows: 70% 30%;
     grid-template-columns: 50% 50%;
+
+    &.caps {
+        font-size: 15px;
+        text-align: center;
+        grid-template-rows: 45% 45%;
+        grid-template-columns: 100%;
+        padding-top: 5%;
+    }
+
+    &.space {
+        font-size: 15px;
+        text-align: center;
+        grid-template-rows: 30% 70%;
+        grid-template-columns: 100%;
+
+        .s1 {
+            font-size: 12px;
+        }
+
+        .s2 {
+            font-size: 22px;
+        }
+    }
+
+    &.symbolshift {
+        color: red;
+        font-size: 15px;
+        text-align: center;
+        grid-template-rows: 50% 50%;
+        grid-template-columns: 100%;
+        padding-top: 10%;
+    }
+
+    &.enter {
+        font-size: 15px;
+        text-align: center;
+        display: block;
+        padding: 20% 0;
+    }
+
+    .ss {
+        font-size: 12px;
+        color: red;
+
+        &.big {
+            font-size: 15px;
+            font-weight: bold;
+        }
+    }
+
+    .k {
+        font-size: 10px;
+        text-align: right;
+        grid-column: 1 / 3;
+        padding-right: 10%;
+        font-weight: bold;
+    }
+
+    .s1 {
+        grid-row: 1;
+    }
+
+    .s2 {
+        grid-row: 2;
+    }
+
+    &.pressed {
+        background-color: var(--color-text);
+        color: var(--color-black);
+    }
 }
 
-#row1 .key {
-    grid-template-rows: 50% 50%;
-    padding-bottom: 14%;
-}
-.key.caps {
-    font-size: 15px;
-    text-align: center;
-    grid-template-rows: 45% 45%;
-    grid-template-columns: 100%;
-    padding-top: 5%;
-}
-.key.space {
-    font-size: 15px;
-    text-align: center;
-    grid-template-rows: 30% 70%;
-    grid-template-columns: 100%;
-}
-.key.symbolshift {
-    color: red;
-    font-size: 15px;
-    text-align: center;
-    grid-template-rows: 50% 50%;
-    grid-template-columns: 100%;
-    padding-top: 10%;
-}
-.key.enter {
-    font-size: 15px;
-    text-align: center;
-    display: block;
-    padding: 20% 0;
-}
-
-.key .ss {
-    font-size: 12px;
-    color: red;
-}
-.key .ss.big {
-    font-size: 15px;
-    font-weight: bold;
-}
-.key .k {
-    font-size: 10px;
-    text-align: right;
-    grid-column-start: 1;
-    grid-column-end: 3;
-    padding-right: 10%;
-    font-weight: bold;
-}
-.key .s1 {
-    grid-row: 1;
-}
-.key .s2 {
-    grid-row: 2;
-}
-
-#row1 .n {
-    grid-column: 1;
-    grid-row-start: 1;
-    grid-row-end: 3;
-}
-#row1 .g {
-    font-size: 15px;
-    grid-row: 1;
-    grid-column: 2;
-}
-#row1 .ss {
-    font-size: 15px;
-    grid-column: 2;
-    grid-row: 2;
-}
 .ktop {
     padding-left: 5%;
     color: yellow;
@@ -334,26 +369,12 @@ button:hover.active {
     padding-left: 5%;
     font-size: 10px;
 }
-#row1 .ktop {
-    color: white;
-}
 .kbottom {
     padding-left: 5%;
     color: salmon;
     font-size: 10px;
 }
 
-.key.space .s1 {
-    font-size: 12px;
-}
-.key.space .s2 {
-    font-size: 22px;
-}
-
-.key.pressed {
-    background-color: white;
-    color: black;
-}
 #joystick {
     display: grid;
     padding-top: 25px;
@@ -361,12 +382,10 @@ button:hover.active {
     justify-items: center;
 }
 #joy-btns {
-    grid-column-start: 1;
-    grid-column-end: 2;
+    grid-column: 1;
     align-content: center;
 }
 #joy-fire {
-    grid-column-start: 2;
-    grid-column-end: 3;
+    grid-column: 2;
     align-content: center;
 }
