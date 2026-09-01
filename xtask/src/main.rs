@@ -1,6 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use lightningcss::stylesheet::{ParserOptions, PrinterOptions, StyleSheet};
+use lightningcss::targets::Browsers;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use xshell::Shell;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -60,7 +62,33 @@ fn do_pack(debug: bool) -> Result<()> {
     Ok(())
 }
 
-fn copy_file(sh: &Shell, src: &str, dst: &PathBuf, patch_version: Option<&str>) -> Result<()> {
+fn compile_css(sh: &Shell, src: &str, dst: &Path) -> Result<()> {
+    let cd = sh.current_dir();
+
+    let src = cd.join(src);
+    let dst = cd.join(dst).join(src.file_name().unwrap());
+
+    let modern_css = std::fs::read_to_string(&src)?;
+
+    let stylesheet = StyleSheet::parse(&modern_css, ParserOptions::default())
+        .map_err(|e| format!("CSS parse error: {e}"))?;
+    let mut popts = PrinterOptions::default();
+    popts.targets.browsers = Some(Browsers {
+        chrome: Some(57),
+        firefox: Some(52),
+        safari: Some(11),
+        edge: Some(16),
+        ..Browsers::default()
+    });
+    let old_css = stylesheet
+        .to_css(popts)
+        .map_err(|e| format!("CSS write error: {e}"))?;
+
+    std::fs::write(dst, old_css.code)?;
+    Ok(())
+}
+
+fn copy_file(sh: &Shell, src: &str, dst: &Path, patch_version: Option<&str>) -> Result<()> {
     match patch_version {
         None => {
             sh.copy_file(src, &dst)?;
@@ -79,7 +107,7 @@ fn copy_file(sh: &Shell, src: &str, dst: &PathBuf, patch_version: Option<&str>) 
     Ok(())
 }
 
-fn do_deploy(dest: &PathBuf) -> Result<()> {
+fn do_deploy(dest: &Path) -> Result<()> {
     let sh = Shell::new()?;
     ch_web(&sh);
     let dst = sh.current_dir().join(dest);
@@ -97,7 +125,7 @@ fn do_deploy(dest: &PathBuf) -> Result<()> {
 
     copy_file(&sh, "index.html", &dst, Some(ver))?;
     copy_file(&sh, "raze.js", &dst, Some(ver))?;
-    copy_file(&sh, "raze.css", &dst, None)?;
+    compile_css(&sh, "raze.css", &dst)?;
     copy_file(&sh, "favicon.png", &dst, None)?;
     copy_file(&sh, "base64.js", &dst, Some(ver))?;
     copy_file(&sh, "pkg/raze_web_bg.wasm", &pkg, None)?;
