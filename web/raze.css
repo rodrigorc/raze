@@ -42,7 +42,7 @@ h1 {
 #buttons {
     display: grid;
     gap: var(--gap-sm);
-    grid-template-columns: 25% 25% 25% 25%;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 
     span {
         text-align: center;
