@@ -53,6 +53,7 @@ function createGame(options = {}) {
     g_delayed_funcs = null;
     resetTape();
     resetDisk();
+    doPlay();
 }
 
 async function fetch_with_cors_if_needed(url, callback, error) {
@@ -1184,6 +1185,10 @@ function setTurbo(mode, persistent) {
 function doPause() {
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
+
+    let pause = document.getElementById('pause');
+    pause.classList.add('active');
+
     if (g_interval !== null) {
         window.clearInterval(g_interval);
         g_interval = null;
@@ -1193,6 +1198,10 @@ function doPause() {
 function doPlay() {
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
+
+    let pause = document.getElementById('pause');
+    pause.classList.remove('active');
+
     if (g_interval === null) {
         g_frame_next = performance.now() + 20;
         g_interval = setInterval(doFrame, 0);
@@ -1200,14 +1209,10 @@ function doPlay() {
 }
 
 function handlePause(evt) {
-    let pause = document.getElementById('pause');
-    if (g_interval == null) {
+    if (g_interval == null)
         doPlay();
-        pause.classList.remove('active');
-    } else {
+    else
         doPause();
-        pause.classList.add('active');
-    }
 }
 
 function handlePoke(evt) {
