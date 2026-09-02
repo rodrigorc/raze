@@ -402,12 +402,6 @@ async function onDocumentLoad() {
         let joyFireCtx = joyFire.getContext('2d');
         drawJoystickFire(joyFireCtx, false);
 
-        //keyboard
-        keyboard.querySelectorAll('.key').forEach(key => {
-            key.addEventListener('touchstart', onOSKeyDown, false);
-            key.addEventListener('touchend', onOSKeyUp, false);
-        });
-
         //joystick
         let joystick = document.getElementById('joystick')
         joystick.classList.remove("hidden");
@@ -436,14 +430,15 @@ async function onDocumentLoad() {
         keyboard.addEventListener('touchend', ev => {
             ev.preventDefault();
         }, false);
-    } else {
-        let keys = document.getElementsByClassName('key');
-        for (let i = 0; i < keys.length; ++i) {
-            let key = keys[i];
-            key.addEventListener('mousedown', onOSKeyDown, false);
-            key.addEventListener('mouseup', onOSKeyUp, false);
-        }
     }
+
+    //keyboard
+    keyboard.querySelectorAll('.key').forEach(key => {
+        key.addEventListener('pointerdown', onOSKeyDown, false);
+        key.addEventListener('pointerup', onOSKeyUp, false);
+    });
+
+
 }
 
 function drawJoystickBtns(ctx, t, l, r, b) {
@@ -582,31 +577,34 @@ function onOSKeyDown(ev) {
     if (g_delayed_funcs)
         return;
 
+    this.setPointerCapture(ev.pointerId);
+
     //mouse events obey sticky keys, touch events do not
     let key = parseInt(this.dataset.code);
     if (!this.classList.contains('pressed2') && !this.classList.contains('pressed')) {
         this.classList.add('pressed');
         wasm_bindgen.wasm_key_down(g_game, key);
-        if (ev.type == 'mousedown' && this.classList.contains('sticky')) {
+        if (ev.pointerType == 'mouse' && this.classList.contains('sticky')) {
             this.classList.add('pressed2');
         }
     }
 }
 
 function onOSKeyUp(ev) {
-    let key = parseInt(this.dataset.code);
     ev.preventDefault();
-    if (ev.type == 'mouseup' && this.classList.contains('sticky') && this.classList.contains('pressed2')) {
+
+    let key = parseInt(this.dataset.code);
+    if (ev.pointerType == 'mouse' && this.classList.contains('sticky') && this.classList.contains('pressed2')) {
         this.classList.remove('pressed2');
         //if symbolshift is pressed, caps-shift is not sticky
-        if (key == 0x08 && ev.type == 'mouseup') {
+        if (key == 0x08 && ev.pointerType == 'mouse') {
             let ss = document.getElementById('ss');
             if (ss.classList.contains('pressed')) {
                 this.classList.remove('pressed');
                 wasm_bindgen.wasm_key_up(g_game, key);
             }
         }
-        else if (key == 0x71 && ev.type == 'mouseup') {
+        else if (key == 0x71 && ev.pointerType == 'mouse') {
             let caps = document.getElementById('caps');
             if (caps.classList.contains('pressed')) {
                 this.classList.remove('pressed');

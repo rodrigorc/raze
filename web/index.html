@@ -23,7 +23,7 @@
 <div id="controls">
   <div id="keyboard" class="hidden">
       <div id="keys">
-          <div id="row1">
+          <div class="row" id="row1">
               <div><div class="color" style="color:blue">BLUE</div><div class="ktop">EDIT</div><div class="key" data-code="0x30"><div class="n">1</div><div class="ss big">!</div><div class="g">▝</div></div><div class="kbottom">DEF FN</div></div>
               <div><div class="color" style="color:red">RED</div><div class="ktop">CAPS&nbsp;LOCK</div><div class="key" data-code="0x31"><div class="n">2</div><div class="ss big">@</div><div class="g">▘</div></div><div class="kbottom">FN</div></div>
               <div><div class="color" style="color:magenta">MAGENTA</div><div class="ktop">TRUE&nbsp;VIDEO</div><div class="key" data-code="0x32"><div class="n">3</div><div class="ss big">#</div><div class="g">▀</div></div><div class="kbottom">LINE</div></div>
@@ -31,11 +31,11 @@
               <div><div class="color" style="color:cyan">CYAN</div><div class="ktop">◀</div><div class="key" data-code="0x34"><div class="n">5</div><div class="ss big">%</div><div class="g">▐</div></div><div class="kbottom">CLOSE#</div></div>
               <div><div class="color" style="color:yellow">YELLOW</div><div class="ktop">▼</div><div class="key" data-code="0x44"><div class="n">6</div><div class="ss big">&amp;</div><div class="g">▚</div></div><div class="kbottom">MOVE</div></div>
               <div><div class="color" style="color:white">WHITE</div><div class="ktop">▲</div><div class="key" data-code="0x43"><div class="n">7</div><div class="ss big">'</div><div class="g">▜</div></div><div class="kbottom">ERASE</div></div>
-              <div><div>&nbsp;</div><div class="ktop">▶</div><div class="key" data-code="0x42"><div class="n">8</div><div class="ss big">(</div><div class="g">█</div></div><div class="kbottom">POINT</div></div>
-              <div><div>&nbsp;</div><div class="ktop">GRAPHICS</div><div class="key" data-code="0x41"><div class="n">9</div><div class="ss big">)</div><div class="g">&nbsp;</div></div><div class="kbottom">CAT</div></div>
+              <div><div class="color">&nbsp;</div><div class="ktop">▶</div><div class="key" data-code="0x42"><div class="n">8</div><div class="ss big">(</div><div class="g">█</div></div><div class="kbottom">POINT</div></div>
+              <div><div class="color">&nbsp;</div><div class="ktop">GRAPHICS</div><div class="key" data-code="0x41"><div class="n">9</div><div class="ss big">)</div><div class="g">&nbsp;</div></div><div class="kbottom">CAT</div></div>
               <div><div class="color" style="color:black; background:white; margin-right:25%">BLACK</div><div class="ktop">DELETE</div><div class="key" data-code="0x40"><div class="n">0</div><div class="ss big">_</div><div class="g">&nbsp;</div></div><div class="kbottom">FORMAT</div></div>
           </div>
-          <div id="row2">
+          <div class="row" id="row2">
               <div><div class="ktop">SIN</div><div class="key" data-code="0x20"><div>Q</div><div class="ss big">&lt;=</div><div class="k">PLOT</div></div><div class="kbottom">ASN</div></div>
               <div><div class="ktop">COS</div><div class="key" data-code="0x21"><div>W</div><div class="ss big">&lt;&gt;</div><div class="k">DRAW</div></div><div class="kbottom">ACS</div></div>
               <div><div class="ktop">TAN</div><div class="key" data-code="0x22"><div>E</div><div class="ss big">&gt;=</div><div class="k">REM</div></div><div class="kbottom">ATN</div></div>
@@ -47,7 +47,7 @@
               <div><div class="ktop">PEEK</div><div class="key" data-code="0x51"><div>O</div><div class="ss big">;</div><div class="k">POKE</div></div><div class="kbottom">OUT</div></div>
               <div><div class="ktop">TAB</div><div class="key" data-code="0x50"><div>P</div><div class="ss big">&quot;</div><div class="k">PRINT</div></div><div class="kbottom">©</div></div>
           </div>
-          <div id="row3">
+          <div class="row" id="row3">
               <div><div class="ktop">READ</div><div class="key" data-code="0x10"><div>A</div><div class="ss">STOP</div><div class="k">NEW</div></div><div class="kbottom">~</div></div>
               <div><div class="ktop">RESTORE</div><div class="key" data-code="0x11"><div>S</div><div class="ss">NOT</div><div class="k">SAVE</div></div><div class="kbottom">|</div></div>
               <div><div class="ktop">DATA</div><div class="key" data-code="0x12"><div>D</div><div class="ss">STEP</div><div class="k">DIM</div></div><div class="kbottom">\</div></div>
@@ -59,7 +59,7 @@
               <div><div class="ktop">USR</div><div class="key" data-code="0x61"><div>L</div><div class="ss big">=</div><div class="k">LET</div></div><div class="kbottom">ATTR</div></div>
               <div><div class="ktop">&nbsp;</div><div class="key enter" data-code="0x60"><div>ENTER</div></div><div class="kbottom">&nbsp;</div></div>
           </div>
-          <div id="row4">
+          <div class="row" id="row4">
               <div><div class="ktop">&nbsp;</div><div id="caps" class="key caps sticky" data-code="0x08"><div class="s1">CAPS</div><div class="s2">SHIFT</div></div><div class="kbottom">&nbsp;</div></div>
               <div><div class="ktop">LN</div><div class="key" data-code="0x01"><div>Z</div><div class="ss big">:</div><div class="k">COPY</div></div><div class="kbottom">BEEP</div></div>
               <div><div class="ktop">EXP</div><div class="key" data-code="0x02"><div>X</div><div class="ss big">£</div><div class="k">CLEAR</div></div><div class="kbottom">INK</div></div>
