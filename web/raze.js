@@ -328,13 +328,16 @@ async function onDocumentLoad() {
         );
     }
 
+    g_actx.addEventListener('statechange', onAudioStateChanged, false);
+    onAudioStateChanged();
+    g_audio_next = g_actx.currentTime;
+    doPlay();
+
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('blur', onBlur)
     window.addEventListener("gamepadconnected", onGamepadConnected);
     window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
-    g_audio_next = g_actx.currentTime;
-    doPlay();
 
     document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, SPEC48K), false);
     document.getElementById('reset_128k').addEventListener('click', e => handleReset(e, SPEC128K), false);
@@ -742,6 +745,17 @@ function onBlur(ev) {
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
 }
+
+function onAudioStateChanged(e) {
+    let running = g_actx.state == "running";
+    let audio_indicator = document.getElementById('muted');
+    if (running)
+        audio_indicator.classList.add('hidden');
+    else
+        audio_indicator.classList.remove('hidden');
+}
+
+
 
 function onGamepadConnected(ev, connecting) {
     if (g_gamepad === null) {
