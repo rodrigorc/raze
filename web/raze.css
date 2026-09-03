@@ -188,7 +188,7 @@ canvas.pixelated {
 
 button {
     background: var(--color-btn);
-    padding: 5px var(--gap-md);
+    padding: 5px 1px;
 
     &.active {
         background: var(--color-text);
@@ -309,6 +309,10 @@ select {
 
             .ktop {
                 color: var(--color-text);
+
+                svg {
+                    vertical-align: middle;
+                }
             }
         }
         #row2 {
