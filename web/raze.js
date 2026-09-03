@@ -99,15 +99,27 @@ function boolURLParamDef(urlParams, key, def) {
 }
 
 let g_lastTapeBlock = null;
+let g_pauseTapeBlock = null;
+
 function onTapeBlock(index) {
     if (g_lastTapeBlock == index)
         return;
+
+    let stopTapeBtn = document.getElementById('stop_tape')
+    if (index == null)
+        stopTapeBtn.classList.remove("tape_playing");
+    else
+        stopTapeBtn.classList.add("tape_playing");
+
     g_lastTapeBlock = index;
+
     console.log("Block", index);
+
+    let highlight = index ?? g_pauseTapeBlock;
     let xTape = document.getElementById("tape");
     for (let i = 0; i < xTape.children.length; ++i) {
         let btn = xTape.children[i];
-        if (btn.dataset.index == index)
+        if (btn.dataset.index == highlight)
             btn.classList.add('selected');
         else
             btn.classList.remove('selected');
@@ -984,6 +996,13 @@ function resetTape() {
     let xTape = document.getElementById("tape");
     while (xTape.firstChild)
         xTape.removeChild(xTape.firstChild);
+
+    let stopTapeBtn = document.getElementById('stop_tape');
+    stopTapeBtn.classList.add("hidden");
+
+    g_lastTapeBlock = null;
+    g_pauseTapeBlock = null;
+
     return xTape;
 }
 
@@ -998,6 +1017,9 @@ function onLoadTape(data) {
 
     let xTape = resetTape();
 
+    let stopTapeBtn = document.getElementById('stop_tape');
+    stopTapeBtn.classList.remove("hidden");
+
     for (let i = 0; i < tape_len; ++i) {
         let selectable = wasm_bindgen.wasm_tape_selectable(g_game, i);
         let tape_name = wasm_bindgen.wasm_tape_name(g_game, i);
@@ -1010,8 +1032,10 @@ function onLoadTape(data) {
             btn.dataset.index = i;
         }
     }
-    if (xTape.firstChild)
+    if (xTape.firstChild) {
         xTape.firstChild.classList.add('selected');
+        stopTapeBtn.classList.add("tape_playing");
+    }
 }
 
 function handleTapeSelect(evt) {
@@ -1076,7 +1100,16 @@ function handleLoadTape(evt) {
 }
 
 function handleStopTape(evt) {
-    wasm_bindgen.wasm_tape_stop(g_game);
+    if (g_lastTapeBlock != null) {
+        // Stop
+        g_pauseTapeBlock = g_lastTapeBlock;
+        onTapeBlock(null);
+        wasm_bindgen.wasm_tape_stop(g_game);
+    } else {
+        // Play
+        wasm_bindgen.wasm_tape_seek(g_game, g_pauseTapeBlock ?? 0);
+        g_pauseTapeBlock = null;
+    }
 }
 
 function handleLoadDisk(evt) {

@@ -218,6 +218,21 @@ select {
     padding: var(--gap-sm) var(--gap-md);
 }
 
+#stop_tape {
+    #stop {
+        display: none;
+    }
+
+    &.tape_playing {
+        #stop {
+            display: revert;
+        }
+        #play {
+            display: none;
+        }
+    }
+}
+
 #tape {
     button {
         border: 1px solid var(--color-black);
