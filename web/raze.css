@@ -57,6 +57,10 @@ h1 {
         grid-column: 3 / 5;
         text-align: end;
 
+        button {
+            padding: 1px 5px 3px;
+        }
+
         #addr {
             width: 100px;
         }
