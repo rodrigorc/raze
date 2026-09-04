@@ -303,6 +303,9 @@ select {
                 font-size: 15px;
                 grid-row: 1;
                 grid-column: 2;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             .ss {
