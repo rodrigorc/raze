@@ -1,6 +1,6 @@
 'use strict';
-import raze_init, * as wasm_bindgen from "./pkg/raze_web.js";
-import * as base64 from "./base64.js";
+import raze_init, * as wasm_bindgen from "./pkg/raze_web.js?v=d17de67";
+import * as base64 from "./base64.js?v=d17de67";
 
 
 const SPEC48K = 0;
@@ -20,8 +20,9 @@ let g_delayed_funcs = null;
 let g_joyTouchIdentifier = null;
 let g_interval = null;
 let g_gamepad = null;
-let g_gamepadStatus = { fire: false, x: 0, y: 0 };
 let g_cursorKeys = null;
+let g_gamepadKeys = null;
+let g_gamepadStatus = { fire: false, left: false, right: false, up: false, down: false };
 
 // Options:
 // * snapshot: Uint8Array
@@ -39,28 +40,20 @@ function createGame(options = {}) {
         wasm_bindgen.wasm_builder_set_model(builder, options.model);
     }
 
-    let new_game = wasm_bindgen.wasm_builder_build(builder);
-    if (!new_game)
+    try {
+        let new_game = wasm_bindgen.wasm_builder_build(builder);
+        if (g_game)
+            wasm_bindgen.wasm_game_drop(g_game);
+        g_game = new_game;
+    } catch (e) {
+        alert(e.message);
         return;
+    }
 
-    if (g_game)
-        wasm_bindgen.wasm_game_drop(g_game);
-
-    g_game = new_game;
     g_delayed_funcs = null;
     resetTape();
     resetDisk();
-}
-
-async function ensureAudioRunning() {
-    //autoplay policy requires this
-    if (g_actx.state == "suspended") {
-        console.log("Resume AutoPlay");
-        await g_actx.resume();
-        if (g_actx.state != "suspended") {
-            document.getElementById('start-overlay').style.display = "none";
-        }
-    }
+    doPlay();
 }
 
 async function fetch_with_cors_if_needed(url, callback, error) {
@@ -80,8 +73,9 @@ async function fetch_with_cors_if_needed(url, callback, error) {
     }
 }
 
-function call_with_delay(first, other, args) {
-    g_delayed_funcs = [first, other, args];
+// Delays in frames (20ms each)
+function call_with_delay(first_delay, delay, funcs) {
+    g_delayed_funcs = { first_delay, delay, funcs };
 }
 
 if (window.localStorage) {
@@ -104,12 +98,28 @@ function boolURLParamDef(urlParams, key, def) {
     return true;
 }
 
-export function onTapeBlock(index) {
+let g_lastTapeBlock = null;
+let g_pauseTapeBlock = null;
+
+function onTapeBlock(index) {
+    if (g_lastTapeBlock == index)
+        return;
+
+    let stopTapeBtn = document.getElementById('stop_tape')
+    if (index == null)
+        stopTapeBtn.classList.remove("tape_playing");
+    else
+        stopTapeBtn.classList.add("tape_playing");
+
+    g_lastTapeBlock = index;
+
     console.log("Block", index);
+
+    let highlight = index ?? g_pauseTapeBlock;
     let xTape = document.getElementById("tape");
     for (let i = 0; i < xTape.children.length; ++i) {
         let btn = xTape.children[i];
-        if (btn.dataset.index == index)
+        if (btn.dataset.index == highlight)
             btn.classList.add('selected');
         else
             btn.classList.remove('selected');
@@ -118,18 +128,30 @@ export function onTapeBlock(index) {
         setTurbo(false);
 }
 
-export function onRZXRunning(isRunning, percent) {
+let g_rzxPercent = null;
+function onRZXRunning(percent) {
+    // quick path
+    if (g_rzxPercent == percent)
+        return;
+    g_rzxPercent = percent;
+
     //console.log("RZX running", isRunning);
     let btn = document.getElementById('rzx_replay');
-    if (isRunning) {
-        btn.style.display = 'block';
+    let container = document.getElementById('buttons');
+    if (percent != null) {
+        btn.innerText = "Stop replay (" + percent + "%)";
+        container.classList.add("rzx_mode");
     } else {
-        btn.style.display = 'none';
+        container.classList.remove("rzx_mode");
     }
-    btn.innerText = "Stop replay (" + percent + "%)";
 }
 
-export function putSoundData(slice) {
+function putSoundData(slice) {
+    if (g_actx.state == "suspended") {
+        g_actx.resume();
+        return;
+    }
+
     let asrc = g_actx.createBufferSource();
     //Safari cannot use random frequencies so go with a standard 22.05 kHz
     let freq = 22050;
@@ -148,17 +170,20 @@ export function putSoundData(slice) {
     g_audio_next = Math.max(g_audio_next, g_actx.currentTime) + abuf.duration;
 }
 
-export function putImageData(w, h, data) {
+function putImageData(w, h, data) {
     if (g_gl) {
         g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
         g_gl.drawArrays(g_gl.TRIANGLE_STRIP, 0, 4);
         g_gl.flush();
     } else {
-        //data is a Uint8Array, but some browsers need a Uint8ClampedArray
-        data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
         let img = new ImageData(data, w, h);
         g_ctx.putImageData(img, 0, 0);
     }
+}
+
+function putNewFrameInfo(rzx, tape_block) {
+    onRZXRunning(rzx);
+    onTapeBlock(tape_block);
 }
 
 function parse2Ints(str) {
@@ -196,7 +221,7 @@ async function onDocumentLoad() {
 
     if (g_gl && initMyGL(g_gl)) {
         console.log("using webgl rendering");
-        canvas.style.display = 'none';
+        canvas.classList.add("hidden");
         g_realCanvas = canvas3d;
     } else {
         if (webgl)
@@ -204,14 +229,16 @@ async function onDocumentLoad() {
         else
             console.log("webgl initialization skipped, falling back to canvas");
         g_gl = null;
-        canvas3d.style.display = 'none';
+        canvas3d.classList.add("hidden");
 
         g_ctx = canvas.getContext('2d');
         g_ctx.imageSmoothingEnabled = false;
         g_realCanvas = canvas;
     }
 
-    await raze_init();
+    await raze_init({
+        module_or_path: './pkg/raze_web_bg.wasm?v=d17de67',
+    });
     wasm_bindgen.wasm_main();
 
     let gameOpts = { };
@@ -258,7 +285,7 @@ async function onDocumentLoad() {
                     switch (gameOpts.model) {
                     case SPEC48K:
                         // 48K loading sequence: typìng LOAD ""
-                        call_with_delay(2000, 100, [
+                        call_with_delay(100, 5, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x63), //J (LOAD)
                             () => wasm_bindgen.wasm_key_up(g_game, 0x63),
                             () => wasm_bindgen.wasm_key_down(g_game, 0x71), //SS
@@ -276,7 +303,7 @@ async function onDocumentLoad() {
                     case PLUS3:
                         // 128K loading sequence: enter in the load menu
                         // +3 loading sequence: same as 128K but a slightly longer delay because of the floppy
-                        call_with_delay(gameOpts.model == PLUS3 ? 2000 : 1500, 100, [
+                        call_with_delay(gameOpts.model == PLUS3 ? 100 : 75, 5, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                             () => onLoadTape(bytes),
@@ -301,7 +328,7 @@ async function onDocumentLoad() {
                 // the floppy may not be detected and the system will default to loading the tape.
                 if (onLoadDisk(bytes)) {
                     if (gameOpts.model == PLUS3) {
-                        call_with_delay(2000, 100, [
+                        call_with_delay(100, 5, [
                             () => wasm_bindgen.wasm_key_down(g_game, 0x60), //ENTER
                             () => wasm_bindgen.wasm_key_up(g_game, 0x60), //ENTER
                         ]);
@@ -314,21 +341,17 @@ async function onDocumentLoad() {
         );
     }
 
+    g_actx.addEventListener('statechange', onAudioStateChanged, false);
+    onAudioStateChanged();
+    g_audio_next = g_actx.currentTime;
+    doPlay();
+
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
-    window.addEventListener('focus', onFocus)
     window.addEventListener('blur', onBlur)
     window.addEventListener("gamepadconnected", onGamepadConnected);
     window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
-    g_audio_next = g_actx.currentTime;
-    if (document.hasFocus())
-        onFocus();
 
-    if (g_actx.state == "suspended") {
-        document.getElementById('start-overlay').style.display = null;
-    }
-
-    document.querySelector('body').addEventListener('mousedown', ensureAudioRunning, false);
     document.getElementById('reset_48k').addEventListener('click', e => handleReset(e, SPEC48K), false);
     document.getElementById('reset_128k').addEventListener('click', e => handleReset(e, SPEC128K), false);
     document.getElementById('reset_plus3').addEventListener('click', e => handleReset(e, PLUS3), false);
@@ -342,6 +365,7 @@ async function onDocumentLoad() {
     document.getElementById('rzx_replay').addEventListener('click', handleRZXReplay, false);
     document.getElementById('turbo').addEventListener('click', e => handleTurbo(e, false), false);
     document.getElementById('turbo').addEventListener('dblclick', e => handleTurbo(e, true), false);
+    document.getElementById('pause').addEventListener('click', handlePause, false);
     document.getElementById('poke').addEventListener('click', handlePoke, false);
     document.getElementById('peek').addEventListener('click', handlePeek, false);
     document.getElementById('toggle_kbd').addEventListener('click', handleToggleKbd, false);
@@ -355,15 +379,31 @@ async function onDocumentLoad() {
 
     let cursorKeys = document.getElementById('cursor_keys');
     cursorKeys.addEventListener('change', handleCursorKeys, false);
+    let gamepadKeys = document.getElementById('gamepad_keys');
+    gamepadKeys.addEventListener('change', handleGamepadKeys, false);
+
     let cursorSel = parseInt(urlParams.get('cursorKeys'));
+    let gamepadSel = cursorSel;
     if (isNaN(cursorSel)) {
         if (window.localStorage) {
             cursorSel = parseInt(window.localStorage.getItem("cursorKeys"));
+            gamepadSel = parseInt(window.localStorage.getItem("gamepadKeys"));
         }
     }
-    if (!isNaN(cursorSel))
+    if (!isNaN(cursorSel)) {
         cursorKeys.selectedIndex = cursorSel;
+    } else {
+        // default cursorKeys is "cursor"
+        cursorKeys.selectedIndex = 0;
+    }
+    if (!isNaN(gamepadSel)) {
+        gamepadKeys.selectedIndex = gamepadSel;
+    } else {
+        // default gamepadKeys is "kempston"
+        gamepadKeys.selectedIndex = 1;
+    }
     handleCursorKeys.call(cursorKeys, null);
+    handleGamepadKeys.call(gamepadKeys, null);
 
     let keyboard = document.getElementById('keyboard');
     if ('ontouchstart' in keyboard) {
@@ -374,15 +414,9 @@ async function onDocumentLoad() {
         let joyFireCtx = joyFire.getContext('2d');
         drawJoystickFire(joyFireCtx, false);
 
-        //keyboard
-        keyboard.querySelectorAll('.key').forEach(key => {
-            key.addEventListener('touchstart', onOSKeyDown, false);
-            key.addEventListener('touchend', onOSKeyUp, false);
-        });
-
         //joystick
         let joystick = document.getElementById('joystick')
-        joystick.style.display = 'grid';
+        joystick.classList.remove("hidden");
         joyBtns.addEventListener('touchstart', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchmove', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchend', onOSJoyUp.bind(joyBtnsCtx), false);
@@ -392,14 +426,14 @@ async function onDocumentLoad() {
             if (g_delayed_funcs)
                 return;
             drawJoystickFire(joyFireCtx, true);
-            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[4]);
+            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.fire);
         }, false);
         joyFire.addEventListener('touchend', ev => {
             ev.preventDefault();
             if (g_delayed_funcs)
                 return;
             drawJoystickFire(joyFireCtx, false);
-            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[4]);
+            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.fire);
         }, false);
         //disable scroll/zoom
         keyboard.addEventListener('touchstart', ev => {
@@ -408,14 +442,15 @@ async function onDocumentLoad() {
         keyboard.addEventListener('touchend', ev => {
             ev.preventDefault();
         }, false);
-    } else {
-        let keys = document.getElementsByClassName('key');
-        for (let i = 0; i < keys.length; ++i) {
-            let key = keys[i];
-            key.addEventListener('mousedown', onOSKeyDown, false);
-            key.addEventListener('mouseup', onOSKeyUp, false);
-        }
     }
+
+    //keyboard
+    keyboard.querySelectorAll('.key').forEach(key => {
+        key.addEventListener('pointerdown', onOSKeyDown, false);
+        key.addEventListener('pointerup', onOSKeyUp, false);
+    });
+
+
 }
 
 function drawJoystickBtns(ctx, t, l, r, b) {
@@ -511,21 +546,21 @@ function onOSJoyDown(ev) {
     //first do the key_up, then the key_down, in case "cursor" mode is used
     //so that the shift key is properly pressed
     if (!left)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[0]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.left);
     if (!right)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[1]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.right);
     if (!down)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[2]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.down);
     if (!up)
-        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[3]);
+        wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.up);
     if (left)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[0]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.left);
     if (right)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[1]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.right);
     if (down)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[2]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.down);
     if (up)
-        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys[3]);
+        wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.up);
 }
 
 function onOSJoyUp(ev) {
@@ -543,10 +578,10 @@ function onOSJoyUp(ev) {
         return;
     g_joyTouchIdentifier = null;
     drawJoystickBtns(this, false, false, false, false);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[0]);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[1]);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[2]);
-    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys[3]);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.left);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.right);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.down);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.up);
 }
 
 function onOSKeyDown(ev) {
@@ -554,31 +589,34 @@ function onOSKeyDown(ev) {
     if (g_delayed_funcs)
         return;
 
+    this.setPointerCapture(ev.pointerId);
+
     //mouse events obey sticky keys, touch events do not
     let key = parseInt(this.dataset.code);
     if (!this.classList.contains('pressed2') && !this.classList.contains('pressed')) {
         this.classList.add('pressed');
         wasm_bindgen.wasm_key_down(g_game, key);
-        if (ev.type == 'mousedown' && this.classList.contains('sticky')) {
+        if (ev.pointerType == 'mouse' && this.classList.contains('sticky')) {
             this.classList.add('pressed2');
         }
     }
 }
 
 function onOSKeyUp(ev) {
-    let key = parseInt(this.dataset.code);
     ev.preventDefault();
-    if (ev.type == 'mouseup' && this.classList.contains('sticky') && this.classList.contains('pressed2')) {
+
+    let key = parseInt(this.dataset.code);
+    if (ev.pointerType == 'mouse' && this.classList.contains('sticky') && this.classList.contains('pressed2')) {
         this.classList.remove('pressed2');
         //if symbolshift is pressed, caps-shift is not sticky
-        if (key == 0x08 && ev.type == 'mouseup') {
+        if (key == 0x08 && ev.pointerType == 'mouse') {
             let ss = document.getElementById('ss');
             if (ss.classList.contains('pressed')) {
                 this.classList.remove('pressed');
                 wasm_bindgen.wasm_key_up(g_game, key);
             }
         }
-        else if (key == 0x71 && ev.type == 'mouseup') {
+        else if (key == 0x71 && ev.pointerType == 'mouse') {
             let caps = document.getElementById('caps');
             if (caps.classList.contains('pressed')) {
                 this.classList.remove('pressed');
@@ -593,7 +631,6 @@ function onOSKeyUp(ev) {
 
 function onKeyDown(ev) {
     //console.log(ev.code);
-    ensureAudioRunning();
     switch (ev.code) {
     case "F6":
         handleSnapshot(ev);
@@ -612,14 +649,16 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "F10":
-        if (!g_delayed_funcs)
-            setTurbo(true, false);
+        setTurbo(true, false);
         ev.preventDefault();
         return;
     case "F11":
         handleFullscreen(ev);
         ev.preventDefault();
         return;
+    case "Escape":
+        handlePause(ev);
+        ev.preventDefault();
     }
 
     let focus = document.activeElement.id;
@@ -656,53 +695,93 @@ function onKeyUp(ev) {
     wasm_bindgen.wasm_key_up(g_game, key);
 }
 
-function onFocus(ev) {
-    if (!g_delayed_funcs)
-        wasm_bindgen.wasm_reset_input(g_game);
-    if (g_interval === null) {
-        g_interval = setInterval(function(){
-            if (g_actx.state == "suspended")
-                return;
-            inputGamepad();
-            if (g_turbo) {
-                wasm_bindgen.wasm_draw_frame(g_game, true);
-            } else while (g_audio_next - g_actx.currentTime < 0.05) {
-                wasm_bindgen.wasm_draw_frame(g_game, false);
-                if (g_delayed_funcs !== null) {
-                    if ((g_delayed_funcs[0] -= 20) <= 0) {
-                        let f = g_delayed_funcs[2].shift();
-                        if (f) {
-                            f();
-                            g_delayed_funcs[0] = g_delayed_funcs[1];
-                        } else {
-                            g_delayed_funcs = null;
-                        }
+let g_frame_next = 0;
+
+function doFrame() {
+    inputGamepad();
+    if (g_turbo && !g_delayed_funcs) {
+        wasm_bindgen.wasm_do_frame(g_game, true, putNewFrameInfo);
+        g_animationFrame ??= window.requestAnimationFrame(drawAnimationFrame);
+    } else {
+        let time = performance.now();
+        // In case we are underpowered, do not do more than N emulated frames per real frame
+        for (let i = 0; i < 5; ++i) {
+            if (!g_turbo) {
+                if (g_actx.state == "running") {
+                    // in seconds
+                    if (g_audio_next - g_actx.currentTime >= 0.05) {
+                        g_frame_next = time + 20;
+                        break;
                     }
+                } else {
+                    // in milliseconds
+                    if (g_frame_next - time >= 20)
+                        break;
+                    g_frame_next += 20;
                 }
             }
-        }, 0);
+
+            wasm_bindgen.wasm_do_frame(g_game, false, putNewFrameInfo);
+            wasm_bindgen.wasm_get_audio(g_game, putSoundData);
+            g_animationFrame ??= window.requestAnimationFrame(drawAnimationFrame);
+
+            run_delayed_funcs();
+        }
+    }
+}
+
+// The actual image is drawn only once, in an animationFrame
+let g_animationFrame = null;
+function drawAnimationFrame() {
+    g_animationFrame = null;
+    wasm_bindgen.wasm_get_image(g_game, putImageData);
+}
+
+function run_delayed_funcs() {
+    if (g_delayed_funcs == null)
+        return;
+
+    if ((g_delayed_funcs.first_delay -= 1) <= 0) {
+        let f = g_delayed_funcs.funcs.shift();
+        if (f) {
+            f();
+            g_delayed_funcs.first_delay = g_delayed_funcs.delay;
+        } else {
+            g_delayed_funcs = null;
+        }
     }
 }
 
 function onBlur(ev) {
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
-    if (g_interval !== null) {
-        clearInterval(g_interval);
-        g_interval = null;
-    }
 }
 
+function onAudioStateChanged(e) {
+    let running = g_actx.state == "running";
+    let audio_indicator = document.getElementById('muted');
+    if (running)
+        audio_indicator.classList.add('hidden');
+    else
+        audio_indicator.classList.remove('hidden');
+}
+
+
+
 function onGamepadConnected(ev, connecting) {
-    if (!g_gamepad) {
+    if (g_gamepad === null) {
         g_gamepad = ev.gamepad.index;
         console.log("Using gamepad " + ev.gamepad.id);
+        let cursorKeys = document.getElementById('cursor_keys_p');
+        cursorKeys.classList.add("with_gamepad");
     }
 }
 function onGamepadDisconnected(ev) {
     if (g_gamepad == ev.gamepad.index) {
         console.log("Removing gamepad");
         g_gamepad = null;
+        let cursorKeys = document.getElementById('cursor_keys_p');
+        cursorKeys.classList.remove("with_gamepad");
     }
 }
 
@@ -714,21 +793,68 @@ function inputGamepad() {
         return;
     let gamepad = navigator.getGamepads()[g_gamepad];
     let fire = false;
-    for (let i = 0; i < 3 && i < gamepad.buttons.length && !fire; ++i)
-        fire |= gamepad.buttons[i].pressed;
+    for (let i = 0; i < 3; ++i) {
+        if (gamepad.buttons[i]?.pressed)
+            fire = true;
+    }
+    let up = gamepad.buttons[12]?.pressed ?? false;
+    let down = gamepad.buttons[13]?.pressed ?? false;
+    let left = gamepad.buttons[14]?.pressed ?? false;
+    let right = gamepad.buttons[15]?.pressed ?? false;
+
     let x = gamepad.axes[0];
     let y = gamepad.axes[1];
-    if (x != g_gamepadStatus.x) {
-        (x < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x81);
-        (x > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x80);
+
+    if (x < -0.3)
+        left = true;
+    else if (x > 0.3)
+        right = true;
+
+    if (y < -0.3)
+        up = true;
+    else if (y > 0.3)
+        down = true;
+
+    // If nothing changed, do nothing.
+    // Sending the keys down/up events will not change this controller
+    // but will prevent the keyboard/virtual-joy to be usable, because
+    // this function is called every frame.
+    if (left != g_gamepadStatus.left ||
+        right != g_gamepadStatus.right ||
+        up !=  g_gamepadStatus.up ||
+        down != g_gamepadStatus.down)
+    {
+        //first do the key_up, then the key_down, in case "cursor" mode is used
+        //so that the shift key is properly pressed
+        if (!left)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.left);
+        if (!right)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.right);
+        if (!down)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.down);
+        if (!up)
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.up);
+
+        if (left)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.left);
+        if (right)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.right);
+        if (down)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.down);
+        if (up)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.up);
     }
-    if (y != g_gamepadStatus.y) {
-        (y > 0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x82);
-        (y < -0.3? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x83);
+
+    if (fire != g_gamepadStatus.fire) {
+        // The fire never uses shift, so we are safe here
+        if (fire)
+            wasm_bindgen.wasm_key_down(g_game, g_gamepadKeys.fire);
+        else
+            wasm_bindgen.wasm_key_up(g_game, g_gamepadKeys.fire);
     }
-    if (fire != g_gamepadStatus.fire)
-        (fire? wasm_bindgen.wasm_key_down : wasm_bindgen.wasm_key_up)(g_game, 0x84);
-    g_gamepadStatus = { fire: fire, x: x, y: y };
+
+    g_gamepadStatus = { fire, left, right, up, down };
+
 }
 
 
@@ -742,29 +868,39 @@ function handleCursorKeys(evt) {
         wasm_bindgen.wasm_reset_input(g_game);
 }
 
+function handleGamepadKeys(evt) {
+    let sel = this.selectedIndex;
+    if (window.localStorage)
+        window.localStorage.setItem("gamepadKeys", sel);
+    g_gamepadKeys = CURSOR_KEYS[sel];
+    this.blur();
+    if (g_game)
+        wasm_bindgen.wasm_reset_input(g_game);
+}
+
 const CURSOR_KEYS = [
     //cursorkeys
-    [0x0834, 0x0842, 0x0844, 0x0843, 0x71], //Shift+{5,8,6,7}, SymbolShift
+    { left: 0x0834, right: 0x0842, down: 0x0844, up: 0x0843, fire: 0x71 }, //Shift+{5,8,6,7}, SymbolShift
     //kempston
-    [0x81, 0x80, 0x82, 0x83, 0x84],
+    { left: 0x81, right: 0x80, down: 0x82, up: 0x83, fire: 0x84 },
     //sinclair
-    [0x44, 0x43, 0x42, 0x41, 0x40], //6, 7, 8, 9, 0
+    { left: 0x44, right: 0x43, down: 0x42, up: 0x41, fire: 0x40 }, //6, 7, 8, 9, 0
     //protek
-    [0x34, 0x42, 0x44, 0x43, 0x40], //5, 8, 6, 7, 0
+    { left: 0x34, right: 0x42, down: 0x44, up: 0x43, fire: 0x40 }, //5, 8, 6, 7, 0
 ];
 
 function getKeyCode(ev) {
     switch (ev.code) {
     case "ArrowLeft":
-        return g_cursorKeys[0];
+        return g_cursorKeys.left;
     case "ArrowRight":
-        return g_cursorKeys[1];
+        return g_cursorKeys.right;
     case "ArrowDown":
-        return g_cursorKeys[2];
+        return g_cursorKeys.down;
     case "ArrowUp":
-        return g_cursorKeys[3];
+        return g_cursorKeys.up;
     case "ControlLeft":
-        return g_cursorKeys[4];
+        return g_cursorKeys.fire;
 
     case "ShiftLeft":
     case "ShiftRight":
@@ -860,12 +996,29 @@ function resetTape() {
     let xTape = document.getElementById("tape");
     while (xTape.firstChild)
         xTape.removeChild(xTape.firstChild);
+
+    let stopTapeBtn = document.getElementById('stop_tape');
+    stopTapeBtn.classList.add("hidden");
+
+    g_lastTapeBlock = null;
+    g_pauseTapeBlock = null;
+
     return xTape;
 }
 
 function onLoadTape(data) {
-    let tape_len = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data));
+    let tape_len;
+    try {
+        tape_len = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data));
+    } catch (e) {
+        alert(e.message);
+        return;
+    }
+
     let xTape = resetTape();
+
+    let stopTapeBtn = document.getElementById('stop_tape');
+    stopTapeBtn.classList.remove("hidden");
 
     for (let i = 0; i < tape_len; ++i) {
         let selectable = wasm_bindgen.wasm_tape_selectable(g_game, i);
@@ -879,8 +1032,10 @@ function onLoadTape(data) {
             btn.dataset.index = i;
         }
     }
-    if (xTape.firstChild)
+    if (xTape.firstChild) {
         xTape.firstChild.classList.add('selected');
+        stopTapeBtn.classList.add("tape_playing");
+    }
 }
 
 function handleTapeSelect(evt) {
@@ -906,14 +1061,17 @@ function resetDisk() {
     // but the button may not be visible
     let model = wasm_bindgen.wasm_game_model(g_game);
     if (model == PLUS3) {
-        disk.style.display = null;
+        disk.classList.remove("hidden");
     } else {
-        disk.style.display = 'none'
+        disk.classList.add("hidden");
     }
 }
 
 function onLoadDisk(data) {
-    if (!wasm_bindgen.wasm_disk_load(g_game, new Uint8Array(data))) {
+    try {
+        wasm_bindgen.wasm_disk_load(g_game, new Uint8Array(data));
+    } catch (e) {
+        alert(e.message);
         return false;
     }
     let disk = document.getElementById('load_disk');
@@ -942,7 +1100,16 @@ function handleLoadTape(evt) {
 }
 
 function handleStopTape(evt) {
-    wasm_bindgen.wasm_tape_stop(g_game);
+    if (g_lastTapeBlock != null) {
+        // Stop
+        g_pauseTapeBlock = g_lastTapeBlock;
+        onTapeBlock(null);
+        wasm_bindgen.wasm_tape_stop(g_game);
+    } else {
+        // Play
+        wasm_bindgen.wasm_tape_seek(g_game, g_pauseTapeBlock ?? 0);
+        g_pauseTapeBlock = null;
+    }
 }
 
 function handleLoadDisk(evt) {
@@ -1000,7 +1167,7 @@ function handleSnapshot(evt) {
     saveLastSnapshot(data);
 
     let a = document.createElement("a");
-    a.style = "display: none";
+    a.style.display = "none";
     a.href = url;
     a.download = "snapshot.z80";
     document.body.appendChild(a);
@@ -1046,6 +1213,39 @@ function setTurbo(mode, persistent) {
     }
 }
 
+function doPause() {
+    if (!g_delayed_funcs)
+        wasm_bindgen.wasm_reset_input(g_game);
+
+    let pause = document.getElementById('pause');
+    pause.classList.add('active');
+
+    if (g_interval !== null) {
+        window.clearInterval(g_interval);
+        g_interval = null;
+    }
+}
+
+function doPlay() {
+    if (!g_delayed_funcs)
+        wasm_bindgen.wasm_reset_input(g_game);
+
+    let pause = document.getElementById('pause');
+    pause.classList.remove('active');
+
+    if (g_interval === null) {
+        g_frame_next = performance.now() + 20;
+        g_interval = setInterval(doFrame, 0);
+    }
+}
+
+function handlePause(evt) {
+    if (g_interval == null)
+        doPlay();
+    else
+        doPause();
+}
+
 function handlePoke(evt) {
     let addr = parseInt(document.getElementById('addr').value);
     if (isNaN(addr))
@@ -1068,10 +1268,10 @@ function handleToggleKbd(evt) {
     let keyboard = document.getElementById('keyboard');
     if (this.classList.contains('active')) {
         this.classList.remove('active');
-        keyboard.style.display = 'none'
+        keyboard.classList.add("hidden");
     } else {
         this.classList.add('active');
-        keyboard.style.display = 'block'
+        keyboard.classList.remove("hidden");
     }
 }
 
