@@ -252,14 +252,27 @@ select {
 
 #keyboard {
     display: block;
+    user-select: none;
     #keys {
         margin: var(--gap-md) 0;
         padding: var(--gap-sm);
         background-color: var(--color-black);
+        position: relative;
+        overflow: hidden;
+
+        #ribbon {
+            position: absolute;
+            width: 60px;
+            height: 100%;
+            left: 760px;
+            top: 35px;
+            rotate: 22deg;
+        }
 
         .row {
             display: grid;
             gap: 1%;
+            position: relative;
 
             > div {
                 display: flex;
