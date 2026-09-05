@@ -91,7 +91,7 @@ fn compile_css(sh: &Shell, src: &str, dst: &Path) -> Result<()> {
 fn copy_file(sh: &Shell, src: &str, dst: &Path, patch_version: Option<&str>) -> Result<()> {
     match patch_version {
         None => {
-            sh.copy_file(src, &dst)?;
+            sh.copy_file(src, dst)?;
         }
         Some(ver) => {
             let cd = sh.current_dir();
