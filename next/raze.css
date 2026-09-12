@@ -184,10 +184,14 @@ svg.symbol {
 }
 
 #peek_poke {
-  display: none;
+  display: revert;
 }
 
 #rzx_replay {
+  display: none;
+}
+
+#pokes {
   display: none;
 }
 
@@ -196,6 +200,22 @@ svg.symbol {
 }
 
 .rzx_mode #rzx_replay {
+  display: revert;
+}
+
+.rzx_mode #pokes {
+  display: none;
+}
+
+.poke_mode #peek_poke {
+  display: none;
+}
+
+.poke_mode #rzx_replay {
+  display: none;
+}
+
+.poke_mode #pokes {
   display: revert;
 }
 

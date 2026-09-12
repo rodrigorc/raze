@@ -182,7 +182,7 @@ export function wasm_stop_rzx_replay(game) {
 /**
  * @param {number} game
  * @param {Uint8Array} data
- * @returns {number}
+ * @returns {any}
  */
 export function wasm_tape_load(game, data) {
     const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
@@ -191,7 +191,7 @@ export function wasm_tape_load(game, data) {
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
-    return ret[0] >>> 0;
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
@@ -270,6 +270,14 @@ function __wbg_get_imports() {
         __wbg_log_d4082f66a52944c3: function(arg0, arg1, arg2, arg3) {
             console.log(arg0, arg1, arg2, arg3);
         },
+        __wbg_new_bebc3f4757acf305: function() {
+            const ret = new Object();
+            return ret;
+        },
+        __wbg_new_ffa92086ea89f79c: function() {
+            const ret = new Array();
+            return ret;
+        },
         __wbg_new_from_slice_2221cabb71753908: function(arg0, arg1) {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
             return ret;
@@ -278,6 +286,14 @@ function __wbg_get_imports() {
             const ret = new Uint8ClampedArray(getArrayU8FromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_push_bfdf956ba476f65b: function(arg0, arg1) {
+            const ret = arg0.push(arg1);
+            return ret;
+        },
+        __wbg_set_c6a653ba22a31207: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
+            return ret;
+        }, arguments); },
         __wbg_warn_0dba8b87d6637549: function(arg0, arg1, arg2, arg3) {
             console.warn(arg0, arg1, arg2, arg3);
         },

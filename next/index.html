@@ -3,11 +3,11 @@
 <head>
 <title>R.A.Z.E. A Spectrum Emulator</title>
 <meta charset="utf-8" />
-<link rel="stylesheet" type="text/css" href="raze.css?v=d17de67" >
-<link rel="icon" href="favicon.png?v=d17de67">
+<link rel="stylesheet" type="text/css" href="raze.css?v=b7954c5" >
+<link rel="icon" href="favicon.png?v=b7954c5">
 </head>
 <body>
-<h1>R.A.Z.E. A ZX Spectrum Emulator <a href="https://github.com/rodrigorc/raze"><span class="version">v2.1</span></a></h1>
+<h1>R.A.Z.E. A ZX Spectrum Emulator <a href="https://github.com/rodrigorc/raze"><span class="version">pokes #2</span></a></h1>
 <div id="stage">
   <div id="canvases">
     <canvas id="game-layer-3d"></canvas>
@@ -119,11 +119,7 @@
     <button id="rzx_replay">Stop RZX replay</button>
     <button id="pokes">
       Pokes
-      <div id="pokes3" class="popup hidden">
-        <label><input type="checkbox" id="inf_lives">Infinite lives</label>
-        <label>Lives <input type="number" id="n_lives" value="3" min="0" max="255" step="1"></label>
-        <label>Level <input type="number" id="n_level" value="1" min="0" max="255" step="1"></label>
-      </div>
+      <div id="pokes_cheats" class="popup hidden"></div>
     </button>
 
   </div>
@@ -134,5 +130,5 @@
   </div>
 </div>
 
-<script type="module" src="./raze.js?v=d17de67"></script>
+<script type="module" src="./raze.js?v=b7954c5"></script>
 </body>
