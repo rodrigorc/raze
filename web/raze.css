@@ -73,6 +73,10 @@ h1 {
     #rzx_replay {
         grid-column: 4;
     }
+
+    #pokes {
+        grid-column: 4;
+    }
 }
 
 #reset_128k {
@@ -136,6 +140,34 @@ svg.symbol {
     }
 }
 
+#pokes {
+    position: relative;
+    .popup {
+        position: absolute;
+        left: 0;
+        bottom: 120%;
+        z-index: 10;
+        background: var(--color-text);
+        border: 1px solid var(--color-black);
+        padding: var(--gap-md);
+        display: grid;
+        gap: var(--gap-sm);
+        width: max-content;
+        min-width: 160px;
+
+        label {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--gap-sm);
+        }
+
+        input[type="number"] {
+            width: 60px;
+            margin-left: auto;
+        }
+    }
+}
+
 #load_media {
     grid-column: 1;
 
@@ -152,12 +184,34 @@ svg.symbol {
     display: none;
 }
 
+#pokes {
+    display: none;
+}
+
 .rzx_mode {
     #peek_poke {
         display: none;
     }
 
     #rzx_replay {
+        display: revert;
+    }
+
+    #pokes {
+        display: none;
+    }
+}
+
+.poke_mode {
+    #peek_poke {
+        display: none;
+    }
+
+    #rzx_replay {
+        display: none;
+    }
+
+    #pokes {
         display: revert;
     }
 }

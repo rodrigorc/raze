@@ -195,10 +195,61 @@ mod exports {
     }
 
     #[wasm_bindgen]
-    pub fn wasm_tape_load(game: *mut Game<JSGui>, data: &[u8]) -> Result<usize, JsError> {
+    pub fn wasm_tape_load(game: *mut Game<JSGui>, data: &[u8]) -> Result<JsValue, JsError> {
         let game = unsafe { &mut *game };
-        game.tape_load(data)
-            .map_err(|e| JsError::new(&format!("Tape error: {e}")))
+        let (tape_len, pok) = game
+            .tape_load(data)
+            .map_err(|e| JsError::new(&format!("Tape error: {e}")))?;
+
+        use js_sys::*;
+        let jres = Object::new();
+        let _ = Reflect::set_str(
+            &jres,
+            &JsString::from("tape_len"),
+            &Number::from(tape_len as u32),
+        );
+
+        if let Some(pok) = pok {
+            let jpok = Array::new();
+            let _ = Reflect::set_str(&jres, &JsString::from("pokes"), &jpok);
+            for cheat in pok.cheats() {
+                let jcheat = Object::new();
+                jpok.push(&jcheat);
+                let _ = Reflect::set_str(
+                    &jcheat,
+                    &JsString::from("name"),
+                    &JsString::from(cheat.name.as_str()),
+                );
+                let jentries = Array::new();
+                let _ = Reflect::set_str(&jcheat, &JsString::from("entries"), &jentries);
+                for entry in &cheat.entries {
+                    let jentry = Object::new();
+                    jentries.push(&jentry);
+                    let _ = Reflect::set_str(
+                        &jentry,
+                        &JsString::from("bank"),
+                        &Number::from(entry.bank),
+                    );
+                    let _ = Reflect::set_str(
+                        &jentry,
+                        &JsString::from("addr"),
+                        &Number::from(entry.addr),
+                    );
+                    let _ = Reflect::set_str(
+                        &jentry,
+                        &JsString::from("value"),
+                        &Number::from(entry.value),
+                    );
+                    let _ = Reflect::set_str(
+                        &jentry,
+                        &JsString::from("prev"),
+                        &Number::from(entry.prev),
+                    );
+                }
+            }
+        }
+
+        Ok(jres.into())
     }
     #[wasm_bindgen]
     pub fn wasm_tape_name(game: *mut Game<JSGui>, index: usize) -> String {

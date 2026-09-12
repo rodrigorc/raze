@@ -2,6 +2,7 @@ mod disk;
 mod floppy;
 mod game;
 mod memory;
+mod pok;
 mod psg;
 mod rzx;
 mod speaker;
@@ -9,6 +10,7 @@ mod tape;
 mod z80;
 
 pub use game::{Game, Gui, Model};
+pub use pok::{Cheat, PokFile};
 pub use z80::Z80;
 
 use std::io::{self, Read};

@@ -450,6 +450,25 @@ async function onDocumentLoad() {
         key.addEventListener('pointerup', onOSKeyUp, false);
     });
 
+    //// POK controller
+    // Dismiss popup
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#pokes')) {
+            if (showPokesPoup(false)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+    });
+    // To avoid the dismiss when handling the poke UI
+    document.getElementById('pokes_cheats').addEventListener('click', e => {
+        e.stopPropagation();
+    });
+
+    // Toggle popup
+    document.getElementById('pokes').addEventListener('click', e => {
+        showPokesPoup(!isPokesPopupVisible());
+    });
 
 }
 
@@ -657,6 +676,9 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "Escape":
+        if (showPokesPoup(false)) {
+            break;
+        }
         handlePause(ev);
         ev.preventDefault();
     }
@@ -669,7 +691,10 @@ function onKeyDown(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    ev.preventDefault();
+
+    if (!isPokesPopupVisible())
+        ev.preventDefault();
+
     if (g_delayed_funcs)
         return;
 
@@ -1002,19 +1027,19 @@ function resetTape() {
 
     g_lastTapeBlock = null;
     g_pauseTapeBlock = null;
-
     return xTape;
 }
 
 function onLoadTape(data) {
-    let tape_len;
+    let tape_len, pokes;
     try {
-        tape_len = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data));
+        ({tape_len, pokes} = wasm_bindgen.wasm_tape_load(g_game, new Uint8Array(data)));
     } catch (e) {
         alert(e.message);
         return;
     }
 
+    console.log("tape_len", tape_len);
     let xTape = resetTape();
 
     let stopTapeBtn = document.getElementById('stop_tape');
@@ -1036,6 +1061,100 @@ function onLoadTape(data) {
         xTape.firstChild.classList.add('selected');
         stopTapeBtn.classList.add("tape_playing");
     }
+
+    if (pokes) {
+        console.log("pokes", pokes);
+        let buttons = document.getElementById('buttons');
+        buttons.classList.add("poke_mode");
+        rebuildPokes(pokes);
+    }
+}
+
+let g_pokeData = new WeakMap();
+
+function rebuildPokes(pokes) {
+    let cheats = document.getElementById('pokes_cheats');
+
+    // clear children
+    cheats.textContent = '';
+
+    for (let cheat of pokes) {
+        let lbl = document.createElement('label');
+        let input = document.createElement('input');
+        cheats.appendChild(lbl);
+
+        g_pokeData.set(input, { cheat });
+
+        if (cheat.entries.some(e => e.value == 256)) {
+            // By value cheat
+            input.type = 'number';
+
+            lbl.appendChild(document.createTextNode(cheat.name));
+            lbl.appendChild(input);
+        } else {
+            // Boolean cheat
+            input.type = 'checkbox';
+
+            lbl.appendChild(input);
+            lbl.appendChild(document.createTextNode(cheat.name));
+        }
+
+        input.addEventListener('change', function(e) {
+            let data = g_pokeData.get(this);
+            if (data == null)
+                return; //shouldn't happen
+
+            if (this.type == 'checkbox') {
+                if (this.checked) {
+                    for (let e of data.cheat.entries) {
+                        e.prev = wasm_bindgen.wasm_peek(g_game, e.addr);
+                        wasm_bindgen.wasm_poke(g_game, e.addr, e.value);
+                    }
+                } else {
+                    for (let e of data.cheat.entries) {
+                        wasm_bindgen.wasm_poke(g_game, e.addr, e.prev);
+                    }
+                }
+            } else {
+                wasm_bindgen.wasm_poke(g_game, e.addr, this.value);
+            }
+        });
+    }
+}
+
+function isPokesPopupVisible() {
+    return !document.getElementById('pokes_cheats').classList.contains('hidden');
+}
+
+// Returns true if it actually changed visibility
+function showPokesPoup(visible) {
+    if (isPokesPopupVisible() == visible) {
+        return false;
+    }
+
+    let cheats = document.getElementById('pokes_cheats');
+    if (visible) {
+        for (let input of cheats.getElementsByTagName('input')) {
+            let data = g_pokeData.get(input);
+            if (data == null)
+                continue; //shouldn't happen
+
+            // When making the popup visible, update the values
+            for (let e of data.cheat.entries) {
+                let b = wasm_bindgen.wasm_peek(g_game, e.addr);
+                if (e.value == 256) {
+                    input.value = b;
+                } else {
+                    input.checked = b == e.value;
+                }
+            }
+        }
+        cheats.classList.remove('hidden');
+    } else {
+        cheats.classList.add('hidden');
+    }
+
+    return true;
 }
 
 function handleTapeSelect(evt) {

@@ -3,6 +3,7 @@ use anyhow::anyhow;
 use std::io::{self, prelude::*};
 
 use crate::game::Model;
+use crate::pok::PokFile;
 
 #[derive(Copy, Clone, Debug)]
 struct Tone {
@@ -336,26 +337,46 @@ pub struct Tape {
 }
 
 #[cfg(feature = "zip")]
-fn new_zip<R: Read + Seek>(r: &mut R, model: Model) -> anyhow::Result<Vec<Block>> {
+fn new_zip<R: Read + Seek>(
+    r: &mut R,
+    model: Model,
+) -> anyhow::Result<(Vec<Block>, Option<PokFile>)> {
     let mut zip = zip::ZipArchive::new(r)?;
 
+    let mut tape = None;
+    let mut pok = PokFile::new();
     for i in 0..zip.len() {
         let mut ze = zip.by_index(i)?;
         let name = ze.name();
         let name_l = name.to_ascii_lowercase();
         if name_l.ends_with(".tap") {
-            log::debug!("unzipping TAP {name}");
-            return new_tap(&mut ze);
+            if tape.is_none() {
+                log::debug!("unzipping TAP {name}");
+                tape = Some(new_tap(&mut ze)?);
+            }
         } else if name_l.ends_with(".tzx") {
-            log::debug!("unzipping TZX {name}");
-            return new_tzx(&mut ze, model);
+            if tape.is_none() {
+                log::debug!("unzipping TZX {name}");
+                tape = Some(new_tzx(&mut ze, model)?);
+            }
+        } else if name_l.ends_with(".pok") {
+            let rdr = std::io::BufReader::new(&mut ze);
+            let _ = pok.parse(rdr);
         }
     }
-    Err(anyhow!("ZIP file does not contain any *.tap or *.tzx file"))
+
+    let pok = if pok.is_empty() { None } else { Some(pok) };
+    match tape {
+        Some(t) => Ok((t, pok)),
+        None => Err(anyhow!("ZIP file does not contain any *.tap or *.tzx file")),
+    }
 }
 
 #[cfg(not(feature = "zip"))]
-fn new_zip<R: Read + Seek>(_r: &mut R, _is128k: bool) -> anyhow::Result<Vec<Block>> {
+fn new_zip<R: Read + Seek>(
+    _r: &mut R,
+    _model: Model,
+) -> anyhow::Result<(Vec<Block>, Option<PokFile>)> {
     Err(anyhow!("ZIP format not supported"))
 }
 
@@ -1052,17 +1073,20 @@ fn string_from_zx(bs: &[u8]) -> String {
 }
 
 impl Tape {
-    pub fn new<R: Read + Seek>(mut tap: R, model: Model) -> anyhow::Result<Tape> {
+    pub fn new<R: Read + Seek>(
+        mut tap: R,
+        model: Model,
+    ) -> anyhow::Result<(Tape, Option<PokFile>)> {
         let start_pos = tap.stream_position()?;
 
-        let mut blocks = new_zip(tap.by_ref(), model)
+        let (mut blocks, pok) = new_zip(tap.by_ref(), model)
             .or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;
-                new_tzx(tap.by_ref(), model)
+                new_tzx(tap.by_ref(), model).map(|t| (t, None))
             })
             .or_else(|_| {
                 tap.seek(io::SeekFrom::Start(start_pos))?;
-                new_tap(tap.by_ref())
+                new_tap(tap.by_ref()).map(|t| (t, None))
             })
             .map_err(|_| anyhow!("Invalid tape file"))?;
 
@@ -1100,7 +1124,7 @@ impl Tape {
                 block.name = name;
             }
         }
-        Ok(Tape { blocks })
+        Ok((Tape { blocks }, pok))
     }
     pub fn play(&self, mut d: u32, pos: TapePos) -> Option<TapePos> {
         let TapePos {
