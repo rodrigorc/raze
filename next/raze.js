@@ -1,6 +1,6 @@
 'use strict';
-import raze_init, * as wasm_bindgen from "./pkg/raze_web.js?v=b7954c5";
-import * as base64 from "./base64.js?v=b7954c5";
+import raze_init, * as wasm_bindgen from "./pkg/raze_web.js?v=a730d94";
+import * as base64 from "./base64.js?v=a730d94";
 
 
 const SPEC48K = 0;
@@ -237,7 +237,7 @@ async function onDocumentLoad() {
     }
 
     await raze_init({
-        module_or_path: './pkg/raze_web_bg.wasm?v=b7954c5',
+        module_or_path: './pkg/raze_web_bg.wasm?v=a730d94',
     });
     wasm_bindgen.wasm_main();
 
@@ -337,6 +337,25 @@ async function onDocumentLoad() {
             },
             error => {
                 alert("Cannot download file " + disk);
+            }
+        );
+    }
+
+    let poke = urlParams.get("poke");
+    if (poke) {
+        console.log("POKE=", poke);
+        await fetch_with_cors_if_needed(poke,
+            bytes => {
+                let cheats = parsePokFile(new TextDecoder().decode(bytes));
+                if (cheats.length > 0) {
+                    console.log("pokes", cheats);
+                    let buttons = document.getElementById('buttons');
+                    buttons.classList.add("poke_mode");
+                    rebuildPokes(cheats);
+                }
+            },
+            error => {
+                alert("Cannot download file " + poke);
             }
         );
     }
@@ -1071,6 +1090,37 @@ function onLoadTape(data) {
 }
 
 let g_pokeData = new WeakMap();
+
+function parsePokFile(text) {
+    let lines = text.split(/\r?\n/);
+
+    let cheats = [];
+    for (let line of lines) {
+        if (!line)
+            continue;
+        let c = line[0];
+        switch (line[0]) {
+            case 'N':
+                let name = line.slice(1).trim();
+                cheats.push({ name, entries: [] });
+                break;
+            case 'M': case 'Z':
+                let words = line.slice(1).trim().split(/\s+/);
+                if (words.length < 4)
+                    continue;
+                let bank = parseInt(words[0]);
+                let addr = parseInt(words[1]);
+                let value = parseInt(words[2]);
+                let prev = parseInt(words[3]);
+                if (isNaN(bank) || isNaN(addr) || isNaN(value) || isNaN(prev))
+                    continue;
+                if (cheats)
+                    cheats[cheats.length - 1].entries.push({ bank, addr, value, prev });
+                break;
+        }
+    }
+    return cheats;
+}
 
 function rebuildPokes(pokes) {
     let cheats = document.getElementById('pokes_cheats');
