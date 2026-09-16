@@ -147,6 +147,8 @@ svg.symbol {
         left: 0;
         bottom: 120%;
         z-index: 10;
+        overflow-y: scroll;
+        max-height: 16em;
         background: var(--color-text);
         border: 1px solid var(--color-black);
         padding: var(--gap-md);
