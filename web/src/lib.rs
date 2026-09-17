@@ -305,14 +305,14 @@ mod exports {
         game.key_down(key as usize);
     }
     #[wasm_bindgen]
-    pub fn wasm_peek(game: *mut Game<JSGui>, addr: u16) -> u8 {
+    pub fn wasm_peek(game: *mut Game<JSGui>, bank: Option<u8>, addr: u16) -> u8 {
         let game = unsafe { &mut *game };
-        game.peek(addr)
+        game.peek(bank, addr)
     }
     #[wasm_bindgen]
-    pub fn wasm_poke(game: *mut Game<JSGui>, addr: u16, value: u8) {
+    pub fn wasm_poke(game: *mut Game<JSGui>, bank: Option<u8>, addr: u16, value: u8) {
         let game = unsafe { &mut *game };
-        game.poke(addr, value);
+        game.poke(bank, addr, value);
     }
     #[wasm_bindgen]
     pub fn wasm_stop_rzx_replay(game: *mut Game<JSGui>) {

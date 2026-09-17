@@ -610,11 +610,11 @@ impl<GUI: Gui> Game<GUI> {
             keys >>= 8;
         }
     }
-    pub fn peek(&mut self, addr: u16) -> u8 {
-        self.ula.memory.peek_no_delay(addr)
+    pub fn peek(&mut self, bank: Option<u8>, addr: u16) -> u8 {
+        self.ula.memory.peek_no_delay(bank, addr)
     }
-    pub fn poke(&mut self, addr: u16, value: u8) {
-        self.ula.memory.poke(addr, value);
+    pub fn poke(&mut self, bank: Option<u8>, addr: u16, value: u8) {
+        self.ula.memory.poke_no_delay(bank, addr, value);
     }
     pub fn stop_rzx_replay(&mut self) {
         self.ula.rzx_info = None;

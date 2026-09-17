@@ -1109,13 +1109,15 @@ function parsePokFile(text) {
                 if (words.length < 4)
                     continue;
                 let bank = parseInt(words[0]);
+                if (bank >= 8)
+                    bank = null;
                 let addr = parseInt(words[1]);
                 let value = parseInt(words[2]);
                 let prev = parseInt(words[3]);
                 if (isNaN(bank) || isNaN(addr) || isNaN(value) || isNaN(prev))
                     continue;
                 if (cheats)
-                    cheats[cheats.length - 1].entries.push({ bank, addr, value, prev });
+                    cheats[cheats.length - 1].entries.push({ bank, addr, value, prev, peek: null });
                 break;
         }
     }
@@ -1157,16 +1159,16 @@ function rebuildPokes(pokes) {
             if (this.type == 'checkbox') {
                 if (this.checked) {
                     for (let e of data.cheat.entries) {
-                        e.prev = wasm_bindgen.wasm_peek(g_game, e.addr);
-                        wasm_bindgen.wasm_poke(g_game, e.addr, e.value);
+                        e.peek = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
+                        wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, e.value);
                     }
                 } else {
                     for (let e of data.cheat.entries) {
-                        wasm_bindgen.wasm_poke(g_game, e.addr, e.prev);
+                        wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, e.peek ?? e.prev );
                     }
                 }
             } else {
-                wasm_bindgen.wasm_poke(g_game, e.addr, this.value);
+                wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, this.value);
             }
         });
     }
@@ -1190,13 +1192,14 @@ function showPokesPoup(visible) {
                 continue; //shouldn't happen
 
             // When making the popup visible, update the values
-            for (let e of data.cheat.entries) {
-                let b = wasm_bindgen.wasm_peek(g_game, e.addr);
-                if (e.value == 256) {
-                    input.value = b;
-                } else {
-                    input.checked = b == e.value;
-                }
+            let byNum = data.cheat.entries.find(e => e.value == 256);
+            if (byNum != null) {
+                input.value = wasm_bindgen.wasm_peek(g_game, byNum.bank, byNum.addr);
+            } else {
+                input.checked = !data.cheat.entries.some(e => {
+                    let b = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
+                    return b != e.value;
+                });
             }
         }
         cheats.classList.remove('hidden');
@@ -1422,14 +1425,14 @@ function handlePoke(evt) {
     let value = parseInt(document.getElementById('byte').value);
     if (isNaN(value))
         return;
-    wasm_bindgen.wasm_poke(g_game, addr, value);
+    wasm_bindgen.wasm_poke(g_game, null, addr, value);
 }
 
 function handlePeek(evt) {
     let addr = parseInt(document.getElementById('addr').value);
     if (isNaN(addr))
         return;
-    let value = wasm_bindgen.wasm_peek(g_game, addr);
+    let value = wasm_bindgen.wasm_peek(g_game, null, addr);
     document.getElementById('byte').value = value;
 }
 
