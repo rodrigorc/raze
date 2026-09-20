@@ -53,6 +53,7 @@ function createGame(options = {}) {
     g_delayed_funcs = null;
     resetTape();
     resetDisk();
+    resetPokes();
     doPlay();
 }
 
@@ -1164,7 +1165,13 @@ function rebuildPokes(pokes) {
                     }
                 } else {
                     for (let e of data.cheat.entries) {
-                        wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, e.peek ?? e.prev );
+                        // if peek != null, it is always the correct value, read by us.
+                        // else, we can use prev, as long as it is not 0, for some reason 0 means unknown
+                        let d = e.peek;
+                        if (d == null && e.prev != 0)
+                            d = e.prev;
+                        if (d != null)
+                            wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, e.peek ?? e.prev );
                     }
                 }
             } else {
@@ -1172,6 +1179,9 @@ function rebuildPokes(pokes) {
             }
         });
     }
+}
+
+function resetPokes() {
 }
 
 function isPokesPopupVisible() {
@@ -1196,10 +1206,17 @@ function showPokesPoup(visible) {
             if (byNum != null) {
                 input.value = wasm_bindgen.wasm_peek(g_game, byNum.bank, byNum.addr);
             } else {
-                input.checked = !data.cheat.entries.some(e => {
+                let checked = true;
+                let has_prev = true;
+                for (let e of data.cheat.entries) {
                     let b = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
-                    return b != e.value;
-                });
+                    if (b != e.value)
+                        checked = false;
+                    if (e.peek == null && e.prev == 0)
+                        has_prev = false;
+                }
+                input.checked = checked;
+                input.disabled = checked && !has_prev;
             }
         }
         cheats.classList.remove('hidden');

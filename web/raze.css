@@ -509,3 +509,9 @@ select {
     grid-column: 2;
     align-content: center;
 }
+
+label:has(input:disabled) {
+    color: #888888;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
