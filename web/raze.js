@@ -15,6 +15,8 @@ let g_turbo = false;
 let g_turboPersistent = false;
 let g_realCanvas = null;
 let g_ctx = null, g_gl = null;
+// Size of the texture currently allocated in g_gl, 0 if none yet.
+let g_tex_w = 0, g_tex_h = 0;
 let g_lastSnapshot = null;
 let g_delayed_funcs = null;
 let g_joyTouchIdentifier = null;
@@ -173,7 +175,14 @@ function putSoundData(slice) {
 
 function putImageData(w, h, data) {
     if (g_gl) {
-        g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
+        // The texture size shouldn't change, but just in case.
+        if (w != g_tex_w || h != g_tex_h) {
+            console.log("resize GL tex", w, h)
+            g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, null);
+            g_tex_w = w;
+            g_tex_h = h;
+        }
+        g_gl.texSubImage2D(g_gl.TEXTURE_2D, 0, 0, 0, w, h, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
         g_gl.drawArrays(g_gl.TRIANGLE_STRIP, 0, 4);
         g_gl.flush();
     } else {
@@ -1586,8 +1595,10 @@ function initMyGL(gl) {
     const texture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    const pixel = new Uint8Array([255, 0, 255, 255]); //dummy image
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+
+    g_tex_w = gl.drawingBufferWidth;
+    g_tex_h = gl.drawingBufferHeight;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, g_tex_w, g_tex_h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
