@@ -20,6 +20,7 @@ let g_tex_w = 0, g_tex_h = 0;
 let g_lastSnapshot = null;
 let g_delayed_funcs = null;
 let g_joyTouchIdentifier = null;
+let g_joyFireIdentifiers = new Set();
 let g_interval = null;
 let g_gamepad = null;
 let g_cursorKeys = null;
@@ -448,21 +449,11 @@ async function onDocumentLoad() {
         joyBtns.addEventListener('touchstart', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchmove', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchend', onOSJoyUp.bind(joyBtnsCtx), false);
+        joyBtns.addEventListener('touchcancel', onOSJoyUp.bind(joyBtnsCtx), false);
         //joystick fire
-        joyFire.addEventListener('touchstart', ev => {
-            ev.preventDefault();
-            if (g_delayed_funcs)
-                return;
-            drawJoystickFire(joyFireCtx, true);
-            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.fire);
-        }, false);
-        joyFire.addEventListener('touchend', ev => {
-            ev.preventDefault();
-            if (g_delayed_funcs)
-                return;
-            drawJoystickFire(joyFireCtx, false);
-            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.fire);
-        }, false);
+        joyFire.addEventListener('touchstart', onOSJoyFireDown.bind(joyFireCtx), false);
+        joyFire.addEventListener('touchend', onOSJoyFireUp.bind(joyFireCtx), false);
+        joyFire.addEventListener('touchcancel', onOSJoyFireUp.bind(joyFireCtx), false);
         //disable scroll/zoom
         keyboard.addEventListener('touchstart', ev => {
             ev.preventDefault();
@@ -476,6 +467,7 @@ async function onDocumentLoad() {
     keyboard.querySelectorAll('.key').forEach(key => {
         key.addEventListener('pointerdown', onOSKeyDown, false);
         key.addEventListener('pointerup', onOSKeyUp, false);
+        key.addEventListener('pointercancel', onOSKeyUp, false);
     });
 
     //// POK controller
@@ -631,6 +623,41 @@ function onOSJoyUp(ev) {
     wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.up);
 }
 
+function onOSJoyFireDown(ev) {
+    ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
+    let wasEmpty = g_joyFireIdentifiers.size == 0;
+    for (let i = 0; i < ev.changedTouches.length; ++i)
+        g_joyFireIdentifiers.add(ev.changedTouches[i].identifier);
+
+    // trigger the fire onlyl if it was empty and now it is not
+    if (!wasEmpty || g_joyFireIdentifiers.size == 0)
+        return;
+
+    drawJoystickFire(this, true);
+    // The fire never uses shift, so unlike the direction keys there is nothing
+    // to order here.
+    wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.fire);
+}
+
+function onOSJoyFireUp(ev) {
+    ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
+    for (let i = 0; i < ev.changedTouches.length; ++i)
+        g_joyFireIdentifiers.delete(ev.changedTouches[i].identifier);
+
+    // Trigger the unfire only if empty
+    if (g_joyFireIdentifiers.size != 0)
+        return;
+
+    drawJoystickFire(this, false);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.fire);
+}
+
 function onOSKeyDown(ev) {
     ev.preventDefault();
     if (g_delayed_funcs)
@@ -676,6 +703,15 @@ function onOSKeyUp(ev) {
     }
 }
 
+// Returns true if the focus is in a text control, so that the emulated keyboard is disabled when typing in the browser.
+function isTypingTarget() {
+    let el = document.activeElement;
+    if (!el)
+        return false;
+    let tag = el.tagName;
+    return tag == 'INPUT' || tag == 'SELECT' || tag == 'TEXTAREA';
+}
+
 function onKeyDown(ev) {
     //console.log(ev.code);
     switch (ev.code) {
@@ -711,10 +747,8 @@ function onKeyDown(ev) {
         ev.preventDefault();
     }
 
-    let focus = document.activeElement.id;
-    if (focus == 'addr' || focus == 'byte') {
+    if (isTypingTarget())
         return;
-    }
 
     let key = getKeyCode(ev);
     if (key == undefined)
@@ -736,6 +770,9 @@ function onKeyUp(ev) {
         ev.preventDefault();
         return;
     }
+
+    if (isTypingTarget())
+        return;
 
     let key = getKeyCode(ev);
     if (key == undefined)
@@ -806,6 +843,11 @@ function run_delayed_funcs() {
 }
 
 function onBlur(ev) {
+    // A touch held when we lose the focus never gets its touchend, so the
+    // identifiers must be forgotten here, else the joystick would ignore every
+    // subsequent touch.
+    g_joyTouchIdentifier = null;
+    g_joyFireIdentifiers.clear();
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
 }
@@ -818,8 +860,6 @@ function onAudioStateChanged(e) {
     else
         audio_indicator.classList.remove('hidden');
 }
-
-
 
 function onGamepadConnected(ev, connecting) {
     if (g_gamepad === null) {
@@ -1052,6 +1092,7 @@ function resetTape() {
 
     let stopTapeBtn = document.getElementById('stop_tape');
     stopTapeBtn.classList.add("hidden");
+    stopTapeBtn.classList.remove("tape_playing");
 
     g_lastTapeBlock = null;
     g_pauseTapeBlock = null;
@@ -1361,7 +1402,8 @@ function handleSnapshot(evt) {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    // give a grace period before revoking, just in case
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 }
 
 function handleFullscreen(evt) {
