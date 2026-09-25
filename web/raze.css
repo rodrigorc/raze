@@ -114,10 +114,8 @@ svg.symbol {
     grid-column: 1;
 }
 #rzx_replay {
-    grid-column: 2;
     background: red;
     color: var(--color-text);
-    display: block;
 }
 
 #cursor_keys_p {
