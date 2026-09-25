@@ -163,11 +163,6 @@ impl Memory {
         res
     }
     #[inline]
-    pub fn peek_no_delay(&mut self, addr: u16) -> u8 {
-        let (bank, offs) = self.split_addr(addr);
-        bank.data[offs]
-    }
-    #[inline]
     pub fn poke(&mut self, addr: impl Into<u16>, data: u8) {
         let (bank, offs) = self.split_addr(addr);
         if bank.ro {
@@ -178,6 +173,32 @@ impl Memory {
         if bank.contended {
             self.delay += 1;
         }
+    }
+    pub fn peek_no_delay(&mut self, bank: Option<u8>, addr: u16) -> u8 {
+        let (bank, offs) = match bank {
+            None => self.split_addr(addr),
+            Some(b) => {
+                let Some(bank) = self.data.get_mut(b as usize) else {
+                    return 0;
+                };
+                let offs = (addr & 0x3fff) as usize;
+                (bank, offs)
+            }
+        };
+        bank.data[offs]
+    }
+    pub fn poke_no_delay(&mut self, bank: Option<u8>, addr: u16, data: u8) {
+        let (bank, offs) = match bank {
+            None => self.split_addr(addr),
+            Some(b) => {
+                let Some(bank) = self.data.get_mut(b as usize) else {
+                    return;
+                };
+                let offs = (addr & 0x3fff) as usize;
+                (bank, offs)
+            }
+        };
+        bank.data[offs] = data;
     }
     pub fn take_delay(&mut self) -> u32 {
         std::mem::take(&mut self.delay)

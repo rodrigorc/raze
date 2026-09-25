@@ -141,6 +141,7 @@ function onRZXRunning(percent) {
     if (percent != null) {
         btn.innerText = "Stop replay (" + percent + "%)";
         container.classList.add("rzx_mode");
+        container.classList.remove("poke_mode");
     } else {
         container.classList.remove("rzx_mode");
     }
@@ -341,6 +342,24 @@ async function onDocumentLoad() {
         );
     }
 
+    let poke = urlParams.get("poke");
+    if (poke) {
+        console.log("POKE=", poke);
+        await fetch_with_cors_if_needed(poke,
+            bytes => {
+                let cheats = parsePokFile(new TextDecoder().decode(bytes));
+                if (cheats.length > 0) {
+                    let buttons = document.getElementById('buttons');
+                    buttons.classList.add("poke_mode");
+                    rebuildPokes(cheats);
+                }
+            },
+            error => {
+                alert("Cannot download file " + poke);
+            }
+        );
+    }
+
     g_actx.addEventListener('statechange', onAudioStateChanged, false);
     onAudioStateChanged();
     g_audio_next = g_actx.currentTime;
@@ -450,6 +469,25 @@ async function onDocumentLoad() {
         key.addEventListener('pointerup', onOSKeyUp, false);
     });
 
+    //// POK controller
+    // Dismiss popup
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#pokes')) {
+            if (showPokesPoup(false)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+    });
+    // To avoid the dismiss when handling the poke UI
+    document.getElementById('pokes_cheats').addEventListener('click', e => {
+        e.stopPropagation();
+    });
+
+    // Toggle popup
+    document.getElementById('pokes').addEventListener('click', e => {
+        showPokesPoup(!isPokesPopupVisible());
+    });
 
 }
 
@@ -657,6 +695,9 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "Escape":
+        if (showPokesPoup(false)) {
+            break;
+        }
         handlePause(ev);
         ev.preventDefault();
     }
@@ -669,7 +710,10 @@ function onKeyDown(ev) {
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    ev.preventDefault();
+
+    if (!isPokesPopupVisible())
+        ev.preventDefault();
+
     if (g_delayed_funcs)
         return;
 
@@ -1002,7 +1046,6 @@ function resetTape() {
 
     g_lastTapeBlock = null;
     g_pauseTapeBlock = null;
-
     return xTape;
 }
 
@@ -1036,6 +1079,142 @@ function onLoadTape(data) {
         xTape.firstChild.classList.add('selected');
         stopTapeBtn.classList.add("tape_playing");
     }
+}
+
+let g_pokeData = new WeakMap();
+
+function parsePokFile(text) {
+    let lines = text.split(/\r?\n/);
+
+    let cheats = [];
+    for (let line of lines) {
+        if (!line)
+            continue;
+        let c = line[0];
+        switch (line[0]) {
+            case 'N':
+                let name = line.slice(1).trim();
+                cheats.push({ name, entries: [] });
+                break;
+            case 'M': case 'Z':
+                let words = line.slice(1).trim().split(/\s+/);
+                if (words.length < 4)
+                    continue;
+                let bank = parseInt(words[0]);
+                if (bank >= 8)
+                    bank = null;
+                let addr = parseInt(words[1]);
+                let value = parseInt(words[2]);
+                let prev = parseInt(words[3]);
+                if (isNaN(bank) || isNaN(addr) || isNaN(value) || isNaN(prev))
+                    continue;
+                if (cheats.length > 0)
+                    cheats[cheats.length - 1].entries.push({ bank, addr, value, prev, peek: null });
+                break;
+        }
+    }
+    return cheats;
+}
+
+function rebuildPokes(pokes) {
+    let cheats = document.getElementById('pokes_cheats');
+
+    // clear children
+    cheats.textContent = '';
+
+    for (let cheat of pokes) {
+        let lbl = document.createElement('label');
+        let input = document.createElement('input');
+        cheats.appendChild(lbl);
+
+        g_pokeData.set(input, { cheat });
+
+        if (cheat.entries.some(e => e.value == 256)) {
+            // By value cheat
+            input.type = 'number';
+
+            lbl.appendChild(document.createTextNode(cheat.name));
+            lbl.appendChild(input);
+        } else {
+            // Boolean cheat
+            input.type = 'checkbox';
+
+            lbl.appendChild(input);
+            lbl.appendChild(document.createTextNode(cheat.name));
+        }
+
+        input.addEventListener('change', function(e) {
+            let data = g_pokeData.get(this);
+            if (data == null)
+                return; //shouldn't happen
+
+            if (this.type == 'checkbox') {
+                if (this.checked) {
+                    for (let e of data.cheat.entries) {
+                        e.peek = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
+                        wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, e.value);
+                    }
+                } else {
+                    for (let e of data.cheat.entries) {
+                        // if peek != null, it is always the correct value, read by us.
+                        // else, we can use prev, as long as it is not 0, for some reason 0 means unknown
+                        let d = e.peek;
+                        if (d == null && e.prev != 0)
+                            d = e.prev;
+                        if (d != null)
+                            wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, d);
+                    }
+                }
+            } else {
+                for (let e of data.cheat.entries) {
+                    wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, this.value);
+                }
+            }
+        });
+    }
+}
+
+function isPokesPopupVisible() {
+    return !document.getElementById('pokes_cheats').classList.contains('hidden');
+}
+
+// Returns true if it actually changed visibility
+function showPokesPoup(visible) {
+    if (isPokesPopupVisible() == visible) {
+        return false;
+    }
+
+    let cheats = document.getElementById('pokes_cheats');
+    if (visible) {
+        for (let input of cheats.getElementsByTagName('input')) {
+            let data = g_pokeData.get(input);
+            if (data == null)
+                continue; //shouldn't happen
+
+            // When making the popup visible, update the values
+            let byNum = data.cheat.entries.find(e => e.value == 256);
+            if (byNum != null) {
+                input.value = wasm_bindgen.wasm_peek(g_game, byNum.bank, byNum.addr);
+            } else {
+                let checked = true;
+                let has_prev = true;
+                for (let e of data.cheat.entries) {
+                    let b = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
+                    if (b != e.value)
+                        checked = false;
+                    if (e.peek == null && e.prev == 0)
+                        has_prev = false;
+                }
+                input.checked = checked;
+                input.disabled = checked && !has_prev;
+            }
+        }
+        cheats.classList.remove('hidden');
+    } else {
+        cheats.classList.add('hidden');
+    }
+
+    return true;
 }
 
 function handleTapeSelect(evt) {
@@ -1253,14 +1432,14 @@ function handlePoke(evt) {
     let value = parseInt(document.getElementById('byte').value);
     if (isNaN(value))
         return;
-    wasm_bindgen.wasm_poke(g_game, addr, value);
+    wasm_bindgen.wasm_poke(g_game, null, addr, value);
 }
 
 function handlePeek(evt) {
     let addr = parseInt(document.getElementById('addr').value);
     if (isNaN(addr))
         return;
-    let value = wasm_bindgen.wasm_peek(g_game, addr);
+    let value = wasm_bindgen.wasm_peek(g_game, null, addr);
     document.getElementById('byte').value = value;
 }
 

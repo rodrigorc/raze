@@ -48,6 +48,7 @@ You can customize the behaviour of the web version by adding query parameters to
 | `snapshot` | URL | Load a Z80 or RZX snapshot, or a ROM file, from the given URL. |
 | `tape` | URL | Load a TAP or TZX tape from the given URL and type the corresponding LOAD sequence. |
 | `disk` | URL | Load a DSK disk from the given URL. Only relevant for the +3 model; if no model is given, the +3 is assumed. |
+| `poke` | URL | Load a POK file with cheats from the given URL. |
 | `48k` | boolean | Start in 48K mode. |
 | `plus3` | boolean | Start in +3 mode. |
 | `128k` | boolean | Start in 128K mode. This is the default if no model is specified. |
