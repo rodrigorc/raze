@@ -147,11 +147,11 @@ svg.symbol {
     }
     .popup {
         position: absolute;
-        left: 0;
+        right: 0;
         bottom: 120%;
         z-index: 10;
         overflow-y: scroll;
-        max-height: 16em;
+        max-height: 21em;
         background: var(--color-text);
         border: 1px solid var(--color-black);
         padding: var(--gap-md);
