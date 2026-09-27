@@ -79,6 +79,10 @@ h1 span.version {
   grid-column: 4;
 }
 
+#buttons #pokes_cnt {
+  grid-column: 4;
+}
+
 #reset_128k {
   grid-column: 1;
 }
@@ -121,10 +125,8 @@ svg.symbol {
 }
 
 #rzx_replay {
-  grid-column: 2;
   background: red;
   color: var(--color-text);
-  display: block;
 }
 
 #cursor_keys_p .with_gamepad {
@@ -143,6 +145,42 @@ svg.symbol {
   width: 140px;
 }
 
+#pokes_cnt {
+  position: relative;
+}
+
+#pokes_cnt button {
+  width: 100%;
+  height: 100%;
+}
+
+#pokes_cnt .popup {
+  position: absolute;
+  right: 0;
+  bottom: 120%;
+  z-index: 10;
+  overflow-y: scroll;
+  max-height: 21em;
+  background: var(--color-text);
+  border: 1px solid var(--color-black);
+  padding: var(--gap-md);
+  display: grid;
+  gap: var(--gap-sm);
+  width: max-content;
+  min-width: 160px;
+}
+
+#pokes_cnt .popup label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+#pokes_cnt .popup input[type="number"] {
+  width: 60px;
+  margin-left: auto;
+}
+
 #load_media {
   grid-column: 1;
   display: grid;
@@ -158,11 +196,31 @@ svg.symbol {
   display: none;
 }
 
+#pokes_cnt {
+  display: none;
+}
+
 .rzx_mode #peek_poke {
   display: none;
 }
 
 .rzx_mode #rzx_replay {
+  display: revert;
+}
+
+.rzx_mode #pokes_cnt {
+  display: none;
+}
+
+.poke_mode #peek_poke {
+  display: none;
+}
+
+.poke_mode #rzx_replay {
+  display: none;
+}
+
+.poke_mode #pokes_cnt {
   display: revert;
 }
 
@@ -456,4 +514,10 @@ select {
 #joy-fire {
   grid-column: 2;
   align-content: center;
+}
+
+label:has(input:disabled) {
+  color: #888;
+  cursor: not-allowed;
+  opacity: .6;
 }

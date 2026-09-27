@@ -1,6 +1,6 @@
 'use strict';
-import raze_init, * as wasm_bindgen from "./pkg/raze_web.js?v=d17de67";
-import * as base64 from "./base64.js?v=d17de67";
+import raze_init, * as wasm_bindgen from "./pkg/raze_web.js?v=99dd086";
+import * as base64 from "./base64.js?v=99dd086";
 
 
 const SPEC48K = 0;
@@ -15,9 +15,12 @@ let g_turbo = false;
 let g_turboPersistent = false;
 let g_realCanvas = null;
 let g_ctx = null, g_gl = null;
+// Size of the texture currently allocated in g_gl, 0 if none yet.
+let g_tex_w = 0, g_tex_h = 0;
 let g_lastSnapshot = null;
 let g_delayed_funcs = null;
 let g_joyTouchIdentifier = null;
+let g_joyFireIdentifiers = new Set();
 let g_interval = null;
 let g_gamepad = null;
 let g_cursorKeys = null;
@@ -141,6 +144,7 @@ function onRZXRunning(percent) {
     if (percent != null) {
         btn.innerText = "Stop replay (" + percent + "%)";
         container.classList.add("rzx_mode");
+        container.classList.remove("poke_mode");
     } else {
         container.classList.remove("rzx_mode");
     }
@@ -172,7 +176,14 @@ function putSoundData(slice) {
 
 function putImageData(w, h, data) {
     if (g_gl) {
-        g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
+        // The texture size shouldn't change, but just in case.
+        if (w != g_tex_w || h != g_tex_h) {
+            console.log("resize GL tex", w, h)
+            g_gl.texImage2D(g_gl.TEXTURE_2D, 0, g_gl.RGBA, w, h, 0, g_gl.RGBA, g_gl.UNSIGNED_BYTE, null);
+            g_tex_w = w;
+            g_tex_h = h;
+        }
+        g_gl.texSubImage2D(g_gl.TEXTURE_2D, 0, 0, 0, w, h, g_gl.RGBA, g_gl.UNSIGNED_BYTE, data);
         g_gl.drawArrays(g_gl.TRIANGLE_STRIP, 0, 4);
         g_gl.flush();
     } else {
@@ -237,7 +248,7 @@ async function onDocumentLoad() {
     }
 
     await raze_init({
-        module_or_path: './pkg/raze_web_bg.wasm?v=d17de67',
+        module_or_path: './pkg/raze_web_bg.wasm?v=99dd086',
     });
     wasm_bindgen.wasm_main();
 
@@ -341,6 +352,24 @@ async function onDocumentLoad() {
         );
     }
 
+    let poke = urlParams.get("poke");
+    if (poke) {
+        console.log("POKE=", poke);
+        await fetch_with_cors_if_needed(poke,
+            bytes => {
+                let cheats = parsePokFile(new TextDecoder().decode(bytes));
+                if (cheats.length > 0) {
+                    let buttons = document.getElementById('buttons');
+                    buttons.classList.add("poke_mode");
+                    rebuildPokes(cheats);
+                }
+            },
+            error => {
+                alert("Cannot download file " + poke);
+            }
+        );
+    }
+
     g_actx.addEventListener('statechange', onAudioStateChanged, false);
     onAudioStateChanged();
     g_audio_next = g_actx.currentTime;
@@ -420,21 +449,11 @@ async function onDocumentLoad() {
         joyBtns.addEventListener('touchstart', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchmove', onOSJoyDown.bind(joyBtnsCtx), false);
         joyBtns.addEventListener('touchend', onOSJoyUp.bind(joyBtnsCtx), false);
+        joyBtns.addEventListener('touchcancel', onOSJoyUp.bind(joyBtnsCtx), false);
         //joystick fire
-        joyFire.addEventListener('touchstart', ev => {
-            ev.preventDefault();
-            if (g_delayed_funcs)
-                return;
-            drawJoystickFire(joyFireCtx, true);
-            wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.fire);
-        }, false);
-        joyFire.addEventListener('touchend', ev => {
-            ev.preventDefault();
-            if (g_delayed_funcs)
-                return;
-            drawJoystickFire(joyFireCtx, false);
-            wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.fire);
-        }, false);
+        joyFire.addEventListener('touchstart', onOSJoyFireDown.bind(joyFireCtx), false);
+        joyFire.addEventListener('touchend', onOSJoyFireUp.bind(joyFireCtx), false);
+        joyFire.addEventListener('touchcancel', onOSJoyFireUp.bind(joyFireCtx), false);
         //disable scroll/zoom
         keyboard.addEventListener('touchstart', ev => {
             ev.preventDefault();
@@ -448,8 +467,28 @@ async function onDocumentLoad() {
     keyboard.querySelectorAll('.key').forEach(key => {
         key.addEventListener('pointerdown', onOSKeyDown, false);
         key.addEventListener('pointerup', onOSKeyUp, false);
+        key.addEventListener('pointercancel', onOSKeyUp, false);
     });
 
+    //// POK controller
+    // Dismiss popup
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#pokes')) {
+            if (showPokesPoup(false)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+    });
+    // To avoid the dismiss when handling the poke UI
+    document.getElementById('pokes_cheats').addEventListener('click', e => {
+        e.stopPropagation();
+    });
+
+    // Toggle popup
+    document.getElementById('pokes').addEventListener('click', e => {
+        showPokesPoup(!isPokesPopupVisible());
+    });
 
 }
 
@@ -584,6 +623,41 @@ function onOSJoyUp(ev) {
     wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.up);
 }
 
+function onOSJoyFireDown(ev) {
+    ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
+    let wasEmpty = g_joyFireIdentifiers.size == 0;
+    for (let i = 0; i < ev.changedTouches.length; ++i)
+        g_joyFireIdentifiers.add(ev.changedTouches[i].identifier);
+
+    // trigger the fire onlyl if it was empty and now it is not
+    if (!wasEmpty || g_joyFireIdentifiers.size == 0)
+        return;
+
+    drawJoystickFire(this, true);
+    // The fire never uses shift, so unlike the direction keys there is nothing
+    // to order here.
+    wasm_bindgen.wasm_key_down(g_game, g_cursorKeys.fire);
+}
+
+function onOSJoyFireUp(ev) {
+    ev.preventDefault();
+    if (g_delayed_funcs)
+        return;
+
+    for (let i = 0; i < ev.changedTouches.length; ++i)
+        g_joyFireIdentifiers.delete(ev.changedTouches[i].identifier);
+
+    // Trigger the unfire only if empty
+    if (g_joyFireIdentifiers.size != 0)
+        return;
+
+    drawJoystickFire(this, false);
+    wasm_bindgen.wasm_key_up(g_game, g_cursorKeys.fire);
+}
+
 function onOSKeyDown(ev) {
     ev.preventDefault();
     if (g_delayed_funcs)
@@ -629,6 +703,15 @@ function onOSKeyUp(ev) {
     }
 }
 
+// Returns true if the focus is in a text control, so that the emulated keyboard is disabled when typing in the browser.
+function isTypingTarget() {
+    let el = document.activeElement;
+    if (!el)
+        return false;
+    let tag = el.tagName;
+    return tag == 'INPUT' || tag == 'SELECT' || tag == 'TEXTAREA';
+}
+
 function onKeyDown(ev) {
     //console.log(ev.code);
     switch (ev.code) {
@@ -657,19 +740,23 @@ function onKeyDown(ev) {
         ev.preventDefault();
         return;
     case "Escape":
+        if (showPokesPoup(false)) {
+            break;
+        }
         handlePause(ev);
         ev.preventDefault();
     }
 
-    let focus = document.activeElement.id;
-    if (focus == 'addr' || focus == 'byte') {
+    if (isTypingTarget())
         return;
-    }
 
     let key = getKeyCode(ev);
     if (key == undefined)
         return;
-    ev.preventDefault();
+
+    if (!isPokesPopupVisible())
+        ev.preventDefault();
+
     if (g_delayed_funcs)
         return;
 
@@ -683,6 +770,9 @@ function onKeyUp(ev) {
         ev.preventDefault();
         return;
     }
+
+    if (isTypingTarget())
+        return;
 
     let key = getKeyCode(ev);
     if (key == undefined)
@@ -753,6 +843,11 @@ function run_delayed_funcs() {
 }
 
 function onBlur(ev) {
+    // A touch held when we lose the focus never gets its touchend, so the
+    // identifiers must be forgotten here, else the joystick would ignore every
+    // subsequent touch.
+    g_joyTouchIdentifier = null;
+    g_joyFireIdentifiers.clear();
     if (!g_delayed_funcs)
         wasm_bindgen.wasm_reset_input(g_game);
 }
@@ -765,8 +860,6 @@ function onAudioStateChanged(e) {
     else
         audio_indicator.classList.remove('hidden');
 }
-
-
 
 function onGamepadConnected(ev, connecting) {
     if (g_gamepad === null) {
@@ -999,10 +1092,10 @@ function resetTape() {
 
     let stopTapeBtn = document.getElementById('stop_tape');
     stopTapeBtn.classList.add("hidden");
+    stopTapeBtn.classList.remove("tape_playing");
 
     g_lastTapeBlock = null;
     g_pauseTapeBlock = null;
-
     return xTape;
 }
 
@@ -1036,6 +1129,142 @@ function onLoadTape(data) {
         xTape.firstChild.classList.add('selected');
         stopTapeBtn.classList.add("tape_playing");
     }
+}
+
+let g_pokeData = new WeakMap();
+
+function parsePokFile(text) {
+    let lines = text.split(/\r?\n/);
+
+    let cheats = [];
+    for (let line of lines) {
+        if (!line)
+            continue;
+        let c = line[0];
+        switch (line[0]) {
+            case 'N':
+                let name = line.slice(1).trim();
+                cheats.push({ name, entries: [] });
+                break;
+            case 'M': case 'Z':
+                let words = line.slice(1).trim().split(/\s+/);
+                if (words.length < 4)
+                    continue;
+                let bank = parseInt(words[0]);
+                if (bank >= 8)
+                    bank = null;
+                let addr = parseInt(words[1]);
+                let value = parseInt(words[2]);
+                let prev = parseInt(words[3]);
+                if (isNaN(bank) || isNaN(addr) || isNaN(value) || isNaN(prev))
+                    continue;
+                if (cheats.length > 0)
+                    cheats[cheats.length - 1].entries.push({ bank, addr, value, prev, peek: null });
+                break;
+        }
+    }
+    return cheats;
+}
+
+function rebuildPokes(pokes) {
+    let cheats = document.getElementById('pokes_cheats');
+
+    // clear children
+    cheats.textContent = '';
+
+    for (let cheat of pokes) {
+        let lbl = document.createElement('label');
+        let input = document.createElement('input');
+        cheats.appendChild(lbl);
+
+        g_pokeData.set(input, { cheat });
+
+        if (cheat.entries.some(e => e.value == 256)) {
+            // By value cheat
+            input.type = 'number';
+
+            lbl.appendChild(document.createTextNode(cheat.name));
+            lbl.appendChild(input);
+        } else {
+            // Boolean cheat
+            input.type = 'checkbox';
+
+            lbl.appendChild(input);
+            lbl.appendChild(document.createTextNode(cheat.name));
+        }
+
+        input.addEventListener('change', function(e) {
+            let data = g_pokeData.get(this);
+            if (data == null)
+                return; //shouldn't happen
+
+            if (this.type == 'checkbox') {
+                if (this.checked) {
+                    for (let e of data.cheat.entries) {
+                        e.peek = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
+                        wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, e.value);
+                    }
+                } else {
+                    for (let e of data.cheat.entries) {
+                        // if peek != null, it is always the correct value, read by us.
+                        // else, we can use prev, as long as it is not 0, for some reason 0 means unknown
+                        let d = e.peek;
+                        if (d == null && e.prev != 0)
+                            d = e.prev;
+                        if (d != null)
+                            wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, d);
+                    }
+                }
+            } else {
+                for (let e of data.cheat.entries) {
+                    wasm_bindgen.wasm_poke(g_game, e.bank, e.addr, this.value);
+                }
+            }
+        });
+    }
+}
+
+function isPokesPopupVisible() {
+    return !document.getElementById('pokes_cheats').classList.contains('hidden');
+}
+
+// Returns true if it actually changed visibility
+function showPokesPoup(visible) {
+    if (isPokesPopupVisible() == visible) {
+        return false;
+    }
+
+    let cheats = document.getElementById('pokes_cheats');
+    if (visible) {
+        for (let input of cheats.getElementsByTagName('input')) {
+            let data = g_pokeData.get(input);
+            if (data == null)
+                continue; //shouldn't happen
+
+            // When making the popup visible, update the values
+            let byNum = data.cheat.entries.find(e => e.value == 256);
+            if (byNum != null) {
+                input.value = wasm_bindgen.wasm_peek(g_game, byNum.bank, byNum.addr);
+            } else {
+                let checked = true;
+                let has_prev = true;
+                for (let e of data.cheat.entries) {
+                    let b = wasm_bindgen.wasm_peek(g_game, e.bank, e.addr);
+                    if (b != e.value)
+                        checked = false;
+                    if (e.peek == null && e.prev == 0)
+                        has_prev = false;
+                }
+                input.checked = checked;
+                input.disabled = checked && !has_prev;
+            }
+        }
+        cheats.classList.remove('hidden');
+    } else {
+        cheats.classList.add('hidden');
+    }
+
+    return true;
 }
 
 function handleTapeSelect(evt) {
@@ -1173,7 +1402,8 @@ function handleSnapshot(evt) {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    // give a grace period before revoking, just in case
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 }
 
 function handleFullscreen(evt) {
@@ -1253,14 +1483,14 @@ function handlePoke(evt) {
     let value = parseInt(document.getElementById('byte').value);
     if (isNaN(value))
         return;
-    wasm_bindgen.wasm_poke(g_game, addr, value);
+    wasm_bindgen.wasm_poke(g_game, null, addr, value);
 }
 
 function handlePeek(evt) {
     let addr = parseInt(document.getElementById('addr').value);
     if (isNaN(addr))
         return;
-    let value = wasm_bindgen.wasm_peek(g_game, addr);
+    let value = wasm_bindgen.wasm_peek(g_game, null, addr);
     document.getElementById('byte').value = value;
 }
 
@@ -1407,8 +1637,10 @@ function initMyGL(gl) {
     const texture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    const pixel = new Uint8Array([255, 0, 255, 255]); //dummy image
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+
+    g_tex_w = gl.drawingBufferWidth;
+    g_tex_h = gl.drawingBufferHeight;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, g_tex_w, g_tex_h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);

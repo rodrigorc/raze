@@ -3,11 +3,11 @@
 <head>
 <title>R.A.Z.E. A Spectrum Emulator</title>
 <meta charset="utf-8" />
-<link rel="stylesheet" type="text/css" href="raze.css?v=d17de67" >
-<link rel="icon" href="favicon.png?v=d17de67">
+<link rel="stylesheet" type="text/css" href="raze.css?v=99dd086" >
+<link rel="icon" href="favicon.png?v=99dd086">
 </head>
 <body>
-<h1>R.A.Z.E. A ZX Spectrum Emulator <a href="https://github.com/rodrigorc/raze"><span class="version">v2.1</span></a></h1>
+<h1>R.A.Z.E. A ZX Spectrum Emulator <a href="https://github.com/rodrigorc/raze"><span class="version">v2.2</span></a></h1>
 <div id="stage">
   <div id="canvases">
     <canvas id="game-layer-3d"></canvas>
@@ -117,13 +117,20 @@
       <input id="addr" type="text" /><input id="byte" type="text" /><button id="poke">Poke</button><button id="peek">Peek</button>
     </span>
     <button id="rzx_replay">Stop RZX replay</button>
+    <div id="pokes_cnt">
+      <button id="pokes">
+        Pokes
+      </button>
+      <div id="pokes_cheats" class="popup hidden"></div>
+    </div>
+
   </div>
   <div id="tape"></div>
   <div id="joystick" class="hidden">
       <canvas id="joy-btns" width="400" height="400" style="left: 50px; top: 50px;"></canvas>
-      <canvas id="joy-fire" width="300" height="300" style="left: 500px; top: 100px"></div>
+      <canvas id="joy-fire" width="300" height="300" style="left: 500px; top: 100px"></canvas>
   </div>
 </div>
 
-<script type="module" src="./raze.js?v=d17de67"></script>
+<script type="module" src="./raze.js?v=99dd086"></script>
 </body>
